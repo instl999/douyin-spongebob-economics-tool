@@ -370,43 +370,95 @@ says so rather than producing something a third too long.
 
 ## Changing the look
 
-Everything about who is in the video and what it looks like lives in the cast
-file. **No module needs touching.** Which casts exist, what each is called and
-which one is the default live in one more file: **`casts/styles.json`, the
-art-style registry.** That registry is the file to edit when you want to switch
-or manage styles; a cast file is where you edit a style's actual art direction.
+**No module needs touching to change anything about how the video looks.**
 
-Where exactly the art direction lives:
+`casts/styles.json` is the configuration file. It holds two things: which
+styles exist and which is the default, and `look` - every setting that decides
+how the finished video reads. Caption size and position, how tight the shots
+are, what the label colours mean, how long a dissolve runs, how much clearance
+the layout keeps between sprites, how hard the matte is choked. Each of those
+used to be a constant in `layout.py`, `render.py`, `checks.py` or `matting.py`,
+so changing a caption size meant editing Python.
+
+A style's *art direction* - who is in it, what they look like, the background
+prompt - stays in its own `casts/<style>.json`, so one malformed style cannot
+take the other six down with it.
 
 | What you want to change | Where |
 |---|---|
+| Caption size or position, shot tightness, label colours, dissolve length, layout clearance, matting strength | `casts/styles.json` → `look` |
+| Any of those **for one style only** | that style's entry in `casts/styles.json` → `look`, writing only the keys that differ |
 | Switch the default style, rename one, add or hide one | `casts/styles.json` |
 | Use a style | the project JSON's `cast` field: the style key (`"clay"`) or the path to its cast file |
 | Change a style's overall art direction | the `"style"` field at the top of that `casts/<style>.json` (e.g. `casts/bikini_bottom.json` line 4) |
 | Change the background plate every shot sits on | `"background"` → `"prompt"` in the same file |
 | Create a brand-new style | copy `casts/_template.json` to `casts/<key>.json`, fill it in following the `_hint_*` comments, validate with `python scripts/build.py --check`, then generate the library with `python scripts/build_library.py <key> --plates` |
 
-### The style registry
-
-`casts/styles.json` is small on purpose:
+### The configuration file
 
 ```json
 {
   "default": "bikini_bottom",
+
+  "look": {
+    "frame": {
+      "landscape": { "stage": [0.0, 0.0, 1.0, 0.86],
+                     "subtitle_size": 0.0323, "subtitle_y": 0.903,
+                     "subtitle_max_width": 0.86, "label_size": 0.0344,
+                     "image_size": "2560x1440" },
+      "portrait":  { "…": "…" }
+    },
+    "framing":     { "wide": 0.88, "medium": 1.0, "close": 1.30 },
+    "label_tones": { "neutral": [30,30,30], "good": [22,122,58],
+                     "bad": [183,40,30], "money": [176,112,8] },
+    "caption":     { "fill": [255,255,255], "stroke_fill": [0,0,0],
+                     "highlight_fill": [255,210,60] },
+    "timing":      { "dissolve": 0.5, "caption_fade": 0.12,
+                     "element_fade": 0.28 },
+    "safe_zones":  { "edge_tolerance": 0.06, "min_gap": 0.012,
+                     "repair_gap_multiple": 2.5, "side_margin": 0.02,
+                     "max_passes": 3 },
+    "matting":     { "chroma_lo": 40.0, "chroma_hi": 130.0,
+                     "white_lo": 8.0, "white_hi": 44.0,
+                     "choke": 0.22, "rim_pixels": 6.0 }
+  },
+
   "styles": {
-    "bikini_bottom": { "label": "比奇堡", "note": "..." },
-    "clay":          { "label": "黏土定格", "note": "..." }
+    "bikini_bottom": { "label": "比奇堡", "note": "…" },
+    "neon_cyberpunk": { "label": "赛博霓虹", "note": "…",
+                        "look": { "caption": { "highlight_fill": [0,255,220] } } }
   }
 }
 ```
 
 - `default` — the style used when a project does not name one
+- `look` — shared by every style. **Overrides are partial**: a style writes only
+  the keys it wants to differ and inherits the rest, at any depth
 - `styles` — one entry per style: `label` and `note` are display-only, `file`
   is optional (it defaults to `casts/<key>.json`), `hidden: true` keeps a style
-  out of the listings while projects can still name it
+  out of the listings while projects can still name it, `look` overrides the
+  shared settings for that style alone
 - **Registering a cast is optional.** A cast file dropped into `casts/` is
   discovered automatically; the registry entry only adds its Chinese label and
   note. `new_project.py --list-styles` prints the whole table.
+
+Every value is optional. The measured defaults live in `styles.py` as
+`LOOK_DEFAULTS` and are merged under whatever the file provides, so a missing
+file or a half-filled one still builds the same video rather than failing —
+the config can be incomplete, never wrong in a way that stops a build.
+
+Two things guard against the file quietly becoming decorative, which is the
+failure mode that looks exactly like success:
+
+- `selftest.py` asserts that every constant the modules use is the one
+  `styles.py` resolved. Re-hardcoding any of them fails the check by name.
+- It also builds a `Layout` under a synthetic style override and asserts the
+  override reaches the geometry and leaves its siblings alone.
+
+The storyboard records the resolved `look` when it is built, and the renderer,
+the draft exporter and the draft checker all read it from there. Re-rendering
+an old storyboard reproduces the video it described rather than quietly picking
+up a caption size someone changed last week.
 
 Seven casts ship:
 
@@ -449,13 +501,20 @@ and generate nothing.
   "props":       { "oven": "..." },
   "hanging":     ["whiteboard", "clock"],
   "foreground":  ["desk", "counter"],
+  "writable":    ["whiteboard", "chart_up"],
   "panel_color": [176, 196, 205]
 }
 ```
 
 - `hanging` — props that float at eye level rather than standing on the ground
 - `foreground` — furniture drawn over the legs of whoever stands at it
+- `writable` — surfaces a label belongs *on*: boards, charts, menus, signage.
+  A label landing on one is snapped to its centre so the number sits on the
+  chart instead of floating beside it
 - `panel_color` — the slab used to build a room over the fixed plate
+
+All three lists are checked against the actual prop names by
+`build.py --check`, so a typo reports itself instead of silently doing nothing.
 
 The **background prompt is worth more time than anything else** — the horizon
 decides whether characters look planted or adrift. Say where the ground line

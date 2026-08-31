@@ -70,6 +70,14 @@
     "diner_counter",
     "garage_workbench"
   ],
+  "writable": [
+    "chart_down",
+    "chart_up",
+    "diner_sign",
+    "route_signpost",
+    "wall_clock",
+    "whiteboard"
+  ],
   "panel_color": [
     230,
     206,

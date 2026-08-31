@@ -81,8 +81,20 @@ class Project:
         return assets_mod.Cast.load(p, root=ROOT / "casts")
 
     @property
+    def style_key(self):
+        """Which registered style this project uses, or None for a bare path."""
+        key, _ = styles_mod.resolve(self.data.get("cast") or None)
+        return key
+
+    @property
+    def look(self):
+        """Look settings for this project: the shared ones plus its style's."""
+        return styles_mod.look(self.style_key)
+
+    @property
     def layout(self):
-        return Layout(self.data.get("orientation", "landscape"))
+        return Layout(self.data.get("orientation", "landscape"),
+                      style=self.style_key)
 
     def resolve_speed(self):
         """Speech rate to use, honouring `target_seconds` when it is set.
@@ -240,6 +252,7 @@ def stage_voice(project, plan, force=False, speed=None):
 
 def stage_storyboard(project, plan, voice_index):
     lay = project.layout
+    look = project.look
     tail = float(project.get("tail_pad", 0.35))
     scenes, pieces, srt = [], [], []
     clock = 0.0
@@ -280,10 +293,16 @@ def stage_storyboard(project, plan, voice_index):
             "width": lay.width, "height": lay.height,
             "fps": int(project.get("fps", 30)),
             "background": "background.png",
-            "dissolve": float(project.get("dissolve", 0.5)),
+            "dissolve": float(project.get("dissolve",
+                                          look["timing"]["dissolve"])),
             "crf": int(project.get("crf", 20)),
             "preset": project.get("preset", "veryfast"),
             "panel_color": list(project.cast.panel_color),
+            # Carried with the storyboard so the renderer, the draft exporter
+            # and the draft checker all use one set of numbers. Looking them up
+            # again from casts/styles.json would let an edit between render and
+            # export silently put the two out of step.
+            "look": look,
         },
         "scenes": scenes,
     }

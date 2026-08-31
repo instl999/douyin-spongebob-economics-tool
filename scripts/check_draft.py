@@ -26,7 +26,7 @@ import numpy as np
 from PIL import Image
 
 import render as render_mod
-from layout import Layout
+from layout import from_video as layout_from_video
 
 SEC = 1_000_000
 # Two frames of the same shot, one rebuilt through the draft and one straight
@@ -90,7 +90,7 @@ def compare(project, draft_dir):
     sb = json.loads((project / "storyboard.json").read_text(encoding="utf-8-sig"))
     video = sb.get("video", {})
     W, H = int(video.get("width", 1920)), int(video.get("height", 1080))
-    lay = Layout(video.get("orientation", "landscape"))
+    lay = layout_from_video(video)
     assets = render_mod.Assets(project)
     background = Image.open(
         project / video.get("background", "background.png")).convert("RGBA")

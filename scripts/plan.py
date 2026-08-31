@@ -16,13 +16,16 @@ are put back on the ground, and a character cannot appear twice in one shot. A
 director that hallucinates should cost one element, not the run.
 """
 import ark
+import styles as styles_mod
 
 CHARS_PER_SECOND = 5.2
 SENTENCE_END = "。！？!?；;"
 # A closing card longer than this stops being a punchline.
 ENDING_MAX_CHARS = 24
-# Kept in step with render.LABEL_TONES.
-LABEL_TONES = ("neutral", "good", "bad", "money")
+# The tone names the director may use, taken from the same config the renderer
+# colours them from. Adding a tone to casts/styles.json makes it usable here
+# too, rather than being silently rewritten to "neutral" by the validator.
+LABEL_TONES = tuple(styles_mod.look()["label_tones"])
 
 SYSTEM = """You are the director of a SpongeBob-style animated explainer.
 

@@ -1,26 +1,137 @@
 {
   "_README": [
-    "画风总配置 —— 想换画风、加画风、改画风名字，只改这一个文件。",
+    "画风与观感总配置 —— 想换画风、加画风、改字幕大小、改标签配色、改镜头松紧，",
+    "都只改这一个文件，不用动 Python 代码。",
     "",
-    "每个画风对应 casts/<key>.json 一个班底文件（画风本身的内容 - 美术风格、",
-    "背景板、角色、道具 - 都在那个文件里改，见 casts/_template.json 的说明）。",
+    "文件分两半：",
+    "  look    全片观感：字幕、镜头、配色、节奏、安全边距、抠图。所有画风共用，",
+    "          单个画风可以在自己的条目里写 look 覆盖其中任意一项。",
+    "  styles  有哪些画风、叫什么、默认用哪个。每个画风的美术内容（角色、道具、",
+    "          背景板、画风描述）在 casts/<key>.json 里，见 casts/_template.json。",
     "",
     "常用改法：",
-    "  换默认画风        改下面的 default（project 没写 cast 字段时用它）",
-    "  给画风改中文名    改对应条目的 label / note，只影响展示，不影响生成",
-    "  加新画风          复制 casts/_template.json 成 casts/<key>.json，填好即可，",
-    "                    不注册也会被自动发现；想要中文名就在 styles 里加一条",
-    "                    {\"<key>\": {\"label\": \"中文名\", \"note\": \"一句话说明\"}}",
-    "  隐藏某个画风       条目里加 \"hidden\": true（不再出现在列表里，但项目里",
-    "                    写了它的 key 或路径就仍然可用）",
+    "  换默认画风        改 default",
+    "  字幕大一点        look.frame.landscape.subtitle_size 调大（占画面宽的比例）",
+    "  镜头再紧一点      look.framing.close 调大",
+    "  换标签配色        look.label_tones",
+    "  转场慢一点        look.timing.dissolve",
+    "  只给某个画风改    在该画风条目里加 \"look\": { ... }，只写要改的那几项",
+    "  加新画风          复制 casts/_template.json 成 casts/<key>.json 填好；",
+    "                    不注册也会被自动发现，想要中文名就在 styles 里加一条",
+    "  隐藏某个画风      条目里加 \"hidden\": true（列表里不再出现，仍可按 key 使用）",
     "",
-    "改完先跑 python scripts/build.py --check 验证一遍。",
-    "project 文件里 cast 字段可以直接写画风 key（如 \"clay\"），也可以写路径。",
-    "下划线开头的文件被当作模板跳过，不会被当成画风。"
+    "改完先跑 python scripts/build.py --check 验证一遍；数值写错了它会指出来，",
+    "而不是等到出片才发现。下划线开头的键都是注释，程序不读。"
   ],
 
   "default": "bikini_bottom",
-  "_hint_default": "project 没写 cast 字段、命令行也没指定 --cast 时，用这个画风。",
+  "_hint_default": "project 没写 cast 字段时用这个画风。",
+
+  "look": {
+    "_README": [
+      "这里的每个数字原来都硬编码在 Python 里。默认值是从参考成片逐帧量出来的，",
+      "改之前先看 references/reference-findings.md —— 有些数字改了就不像了。"
+    ],
+
+    "frame": {
+      "_hint": [
+        "画面几何，横竖屏各一套。比例都是相对画面的，所以同一个分镜横竖屏通用。",
+        "stage 是[左, 上, 右, 下]，下边缘 = 角色站的地平线，不是画面底边：",
+        "参考片里脚落在画面高 80% 左右，字幕在 90%，舞台若到底边角色就踩在字幕上。"
+      ],
+      "landscape": {
+        "stage": [0.0, 0.0, 1.0, 0.86],
+        "subtitle_size": 0.0323,
+        "subtitle_y": 0.903,
+        "subtitle_max_width": 0.86,
+        "label_size": 0.0344,
+        "image_size": "2560x1440",
+        "_hint_subtitle_size": "占画面宽的比例，1920 宽下 = 62px（参考片实测值）",
+        "_hint_subtitle_y": "字幕中心线在画面高的位置，参考片实测 90.3%",
+        "_hint_label_size": "画面里的标签字号，比字幕略大才压得住"
+      },
+      "portrait": {
+        "stage": [0.0, 0.14, 1.0, 0.80],
+        "subtitle_size": 0.050,
+        "subtitle_y": 0.845,
+        "subtitle_max_width": 0.90,
+        "label_size": 0.052,
+        "image_size": "1440x2560",
+        "_hint": "竖屏字要更大才在手机上看得清：1080 宽下 = 54px"
+      }
+    },
+
+    "framing": {
+      "wide": 0.88,
+      "medium": 1.0,
+      "close": 1.30,
+      "_hint": [
+        "镜头松紧：每一镜的 framing 乘在角色高度上。",
+        "参考片里最大前景物占画面高 0.51–0.86，最松到最紧约差 1.4 倍。",
+        "一连串一样松紧的镜头就是这个格式看起来像 PPT 的原因，所以导演会换着来。"
+      ]
+    },
+
+    "label_tones": {
+      "neutral": [30, 30, 30],
+      "good": [22, 122, 58],
+      "bad": [183, 40, 30],
+      "money": [176, 112, 8],
+      "_hint": [
+        "标签按含义配色，不按好看配色：赚了是绿的，亏了是红的，钱是琥珀色。",
+        "作者只写 tone（good/bad/money/neutral），颜色由这里决定，",
+        "所以整片配色一致，也不用每个标签单独挑颜色。"
+      ]
+    },
+
+    "caption": {
+      "fill": [255, 255, 255],
+      "stroke_fill": [0, 0, 0],
+      "highlight_fill": [255, 210, 60],
+      "_hint": "白字黑边是参考片的做法；highlight 是金句卡里被强调的那几个字。"
+    },
+
+    "timing": {
+      "dissolve": 0.5,
+      "caption_fade": 0.12,
+      "element_fade": 0.28,
+      "_hint": [
+        "dissolve 是换镜时整镜溶解的秒数，参考片实测 0.65s，0.5 更利落。",
+        "caption_fade 是一镜之内换字幕的淡入淡出；element_fade 是元素中途入场。",
+        "这三个之外不要再加动效 —— 参考片里一个都没有，加了只会更不像。"
+      ]
+    },
+
+    "safe_zones": {
+      "edge_tolerance": 0.06,
+      "min_gap": 0.012,
+      "repair_gap_multiple": 2.5,
+      "side_margin": 0.02,
+      "max_passes": 3,
+      "_hint": [
+        "构图安全区。导演只写坐标、看不到画面，素材多大要等 PNG 落地才知道，",
+        "所以撞没撞、出没出画是在这一步算出来并自动排开的。",
+        "repair_gap_multiple 必须大于 1：正好排到 min_gap，坐标一取整又差半个像素，",
+        "下一轮又报同一个重叠，会来回修不收敛。"
+      ]
+    },
+
+    "matting": {
+      "chroma_lo": 40.0,
+      "chroma_hi": 130.0,
+      "white_lo": 8.0,
+      "white_hi": 44.0,
+      "choke": 0.22,
+      "rim_pixels": 6.0,
+      "_hint": [
+        "抠图。素材生成在品红底上，chroma_lo/hi 是判定背景的色差范围。",
+        "choke 把边缘往里收约一个像素，扔掉 JPEG 压缩在轮廓外糊出来的一圈脏色；",
+        "rim_pixels 是往里多少像素之内还算「边缘」，只在这一圈里去色偏。",
+        "实测：边缘残留品红 6.7% → 0.59%，代价是 0.5% 的像素。",
+        "这两个数调大了会啃掉线稿，调小了紫边会回来。"
+      ]
+    }
+  },
 
   "styles": {
     "bikini_bottom": {
@@ -54,7 +165,9 @@
   },
   "_hint_styles": [
     "key 必须和 casts/<key>.json 同名（或者用 file 字段指到别处）。",
-    "label 是展示用的中文名，note 是一句话说明，都会显示在 --list-styles 里。",
-    "完整条目字段：file（可选，默认 casts/<key>.json）、label、note、hidden（可选）。"
+    "完整条目字段：file（可选）、label、note、hidden（可选）、look（可选覆盖）。",
+    "look 覆盖只写要改的那几项，其余继承上面的全局 look，例如：",
+    "  \"neon_cyberpunk\": { \"label\": \"赛博霓虹\", \"look\": {",
+    "      \"caption\": { \"highlight_fill\": [0, 255, 220] } } }"
   ]
 }

@@ -68,6 +68,13 @@
     "market_stall",
     "wooden_table"
   ],
+  "writable": [
+    "chalkboard_menu",
+    "chart_down",
+    "chart_up",
+    "clock",
+    "whiteboard"
+  ],
   "panel_color": [
     233,
     216,

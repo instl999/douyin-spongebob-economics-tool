@@ -102,6 +102,50 @@ def main():
             suite.check(f"cast {key} file exists", entry["file"].exists(),
                         str(entry["file"]))
 
+    # --- the config actually drives the code ------------------------------
+    # A settings file that everything ignores looks exactly like one that
+    # works. These assert the wiring rather than the file: every look value
+    # the modules use has to be the one styles.py resolved, so re-hardcoding
+    # any of them fails here instead of silently making the file decorative.
+    look = styles_mod.look()
+    wired = {
+        "render.FRAMING": (render_mod.FRAMING, look["framing"]),
+        "render.CAPTION_FADE": (render_mod.CAPTION_FADE,
+                                look["timing"]["caption_fade"]),
+        "render.ELEMENT_FADE": (render_mod.ELEMENT_FADE,
+                                look["timing"]["element_fade"]),
+        "checks.MIN_GAP": (checks_mod.MIN_GAP, look["safe_zones"]["min_gap"]),
+        "checks.SIDE_MARGIN": (checks_mod.SIDE_MARGIN,
+                               look["safe_zones"]["side_margin"]),
+        "checks.EDGE_TOLERANCE": (checks_mod.EDGE_TOLERANCE,
+                                  look["safe_zones"]["edge_tolerance"]),
+        "matting.CHOKE": (matting.CHOKE, look["matting"]["choke"]),
+        "matting.RIM_PIXELS": (matting.RIM_PIXELS, look["matting"]["rim_pixels"]),
+        "plan.LABEL_TONES": (set(plan_mod.LABEL_TONES), set(look["label_tones"])),
+    }
+    adrift = [name for name, (got, want) in wired.items() if got != want]
+    suite.check("every look setting comes from casts/styles.json", not adrift,
+                f"{len(wired)} checked" if not adrift else ", ".join(adrift))
+
+    # And an override has to reach the geometry, not just the dict.
+    real_registry = styles_mod.registry
+    try:
+        styles_mod.registry = lambda: {
+            "styles": {"_probe": {"look": {"frame": {"landscape": {
+                "subtitle_size": 0.08, "subtitle_y": 0.5}}}}}}
+        probe = Layout("landscape", style="_probe")
+        plain = Layout("landscape")
+        suite.check("a style's look override reaches the frame geometry",
+                    probe.subtitle_font_px() > plain.subtitle_font_px()
+                    and probe.subtitle_center_y != plain.subtitle_center_y,
+                    f"caption {plain.subtitle_font_px()}px@{plain.subtitle_center_y} "
+                    f"-> {probe.subtitle_font_px()}px@{probe.subtitle_center_y}")
+        suite.check("an override leaves its siblings alone",
+                    Layout("landscape", style="_probe").cfg["stage"]
+                    == plain.cfg["stage"])
+    finally:
+        styles_mod.registry = real_registry
+
     # --- a parameter accepted and then dropped ----------------------------
     # `panel_color` was threaded from the cast into compose_plate and never
     # passed on to the function that uses it. Nothing failed; panels just kept

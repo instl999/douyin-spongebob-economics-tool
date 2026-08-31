@@ -27,8 +27,9 @@ import numpy as np
 from PIL import Image
 
 import config
+import styles as styles_mod
 import textkit
-from layout import Layout
+from layout import Layout, from_video as layout_from_video
 
 # How much of the frame the subject fills, per shot. Measured on the
 # references, the largest foreground object runs 0.51-0.86 of frame height with
@@ -36,19 +37,16 @@ from layout import Layout
 # shots is what makes this format read as a slideshow, so the director picks one
 # of these per shot and the renderer scales the sprites accordingly. Only
 # sprites scale - labels and balloons are screen furniture and stay put.
-FRAMING = {"wide": 0.88, "medium": 1.0, "close": 1.30}
+_LOOK = styles_mod.look()
+
+FRAMING = _LOOK["framing"]
 
 # Label colour carries meaning in the references - the good outcome in green,
 # the bad one in red - so it is chosen by naming the meaning, not the colour.
-LABEL_TONES = {
-    "neutral": (30, 30, 30),
-    "good": (22, 122, 58),
-    "bad": (183, 40, 30),
-    "money": (176, 112, 8),
-}
+LABEL_TONES = {k: tuple(v) for k, v in _LOOK["label_tones"].items()}
 
-CAPTION_FADE = 0.12       # subtitle swaps inside a held shot
-ELEMENT_FADE = 0.28       # for elements that appear part-way through a shot
+CAPTION_FADE = _LOOK["timing"]["caption_fade"]   # subtitle swaps inside a shot
+ELEMENT_FADE = _LOOK["timing"]["element_fade"]   # elements arriving mid-shot
 
 
 def smoothstep(t):
@@ -312,8 +310,8 @@ class Renderer:
         self.sb = storyboard
         self.workdir = Path(workdir)
         cfg = storyboard.get("video", {})
-        self.lay = lay or Layout(cfg.get("orientation", "landscape"),
-                                 cfg.get("width"), cfg.get("height"))
+        self.lay = lay or layout_from_video(cfg)
+        self.look = styles_mod.look(carried=cfg.get("look"))
         self.fps = int(cfg.get("fps", 30))
         self.dissolve = float(cfg.get("dissolve", 0.5))
         # Carried in the storyboard rather than looked up from the cast, so a
@@ -354,11 +352,15 @@ class Renderer:
     def caption_layer(self, text, highlight):
         key = (text, highlight)
         if key not in self._captions:
+            caption = self.look["caption"]
             layer, bbox = textkit.render_caption(
                 self.lay.size, text,
                 size=self.lay.subtitle_font_px(),
                 center_y=self.lay.subtitle_center_y,
                 max_width=self.lay.subtitle_max_px,
+                fill=tuple(caption["fill"]) + (255,),
+                stroke_fill=tuple(caption["stroke_fill"]) + (255,),
+                highlight_fill=tuple(caption["highlight_fill"]) + (255,),
                 highlight=highlight)
             if layer is None:
                 self._captions[key] = (None, None, None)

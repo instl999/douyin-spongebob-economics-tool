@@ -184,7 +184,7 @@ class Cast:
                     "the separator for poses - sprite names would be ambiguous")
 
         props = set(self.data.get("props") or {})
-        for key in ("hanging", "foreground"):
+        for key in ("hanging", "foreground", "writable"):
             listed = self.data.get(key) or []
             if not isinstance(listed, list):
                 issues.append(f"`{key}` must be a list of prop names")

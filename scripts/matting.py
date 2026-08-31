@@ -35,14 +35,18 @@ import numpy as np
 from PIL import Image
 from scipy import ndimage
 
+import styles as styles_mod
+
+_LOOK = styles_mod.look()["matting"]
+
 # Distance-from-white below LO is certainly background, above HI certainly not.
-LO = 8.0
-HI = 44.0
+LO = _LOOK["white_lo"]
+HI = _LOOK["white_hi"]
 # How far to pull the matte inward, as a fraction of the alpha ramp.
-CHOKE = 0.22
+CHOKE = _LOOK["choke"]
 # How far in from the cut edge spill can still be. Wide enough for a JPEG halo,
 # narrow enough that no character is a few pixels thick.
-RIM_PIXELS = 6.0
+RIM_PIXELS = _LOOK["rim_pixels"]
 
 
 def cutout(img, lo=LO, hi=HI, pad=8, decontaminate=True, autocrop=True):
@@ -112,7 +116,8 @@ def sample_key(img, trim=2):
     return np.median(ring, axis=0)
 
 
-def cutout_chroma(img, key, lo=40.0, hi=130.0, pad=8, decontaminate=True,
+def cutout_chroma(img, key, lo=_LOOK["chroma_lo"], hi=_LOOK["chroma_hi"],
+                  pad=8, decontaminate=True,
                   autocrop=True, choke=CHOKE):
     """Remove everything close to `key` in colour, wherever it appears."""
     rgb = np.asarray(img.convert("RGB"), dtype=np.float32)

@@ -68,6 +68,11 @@
     "workbench",
     "wooden_table"
   ],
+  "writable": [
+    "chart_down",
+    "chart_up",
+    "whiteboard"
+  ],
   "panel_color": [
     214,
     226,

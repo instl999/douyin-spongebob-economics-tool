@@ -69,6 +69,13 @@
     "noodle_counter",
     "service_counter"
   ],
+  "writable": [
+    "digital_clock",
+    "holo_board",
+    "holo_chart_down",
+    "holo_chart_up",
+    "neon_signboard"
+  ],
   "panel_color": [
     88,
     72,

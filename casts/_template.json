@@ -108,5 +108,27 @@
     "Prop names that draw OVER the characters: tables, counters, sinks, desks",
     "- anything a character stands or works behind. This overlap is most of",
     "what makes a shot read as a scene rather than as cut-outs side by side."
+  ],
+
+  "writable": [],
+  "_hint_writable": [
+    "Prop names that are surfaces meant to be written on: whiteboards, charts,",
+    "chalkboard menus, signage, clock faces. A label that lands on one of",
+    "these is snapped to its centre, so the number sits ON the chart instead",
+    "of floating beside it; a label that lands on a character is moved away.",
+    "Leave a prop out and text will never be placed on it - which is right for",
+    "tables, vehicles and scenery, and wrong for anything board-shaped.",
+    "",
+    "Names that do not match a prop are reported by --check rather than",
+    "silently ignored, so a typo here tells you about itself."
+  ],
+
+  "_hint_look": [
+    "Not a field in this file. Everything about how the finished video looks -",
+    "caption size and position, shot tightness, label colours, dissolve length,",
+    "layout clearance, matting strength - lives in casts/styles.json under",
+    "`look`, shared by every style. If THIS style needs to differ, add a",
+    "`look` block to its entry in casts/styles.json and write only the keys",
+    "that change; the rest is inherited."
   ]
 }

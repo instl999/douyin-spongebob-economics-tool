@@ -1,4 +1,4 @@
-﻿---
+---
 name: cartoon-econ-video
 description: "把一段口播文案自动做成知识科普成片（MP4）。内置多种画风（比奇堡海绵宝宝为默认，另有水彩动漫、黏土定格、赛博霓虹、复古欧式插画、复古公路海报、极简几何商务；画风名单与默认项由 casts/styles.json 统一配置）。固定背景板 + AI生成的透明底角色/道具素材分层合成，逐镜演绎文案，镜头间溶解转场，底部白字黑边字幕，AI书法标题开场与金句收尾。用户只需给出文案、确认画风、选择横屏或竖屏，其余（分镜编排、素材生成与抠图、AI配音、渲染、混音、出片、质检）全自动完成。当用户说『把这段文案做成视频』『做个海绵宝宝讲XX的视频』『地瓜经济那种风格』『自动剪一条科普短视频』并附上文案时使用。只需一把 Volcengine Ark Agent Plan 的 API key（导演、生图、配音共用）。"
 ---
@@ -189,23 +189,33 @@ python scripts/draft.py out/my_video --install
 
 ## 五、想调效果，改哪里
 
+**观感相关的一切都在 `casts/styles.json`，不用改 Python。** 字幕大小/位置、镜头
+松紧、标签配色、转场时长、构图安全边距、抠图力度，原来都硬编码在
+`layout.py` / `render.py` / `checks.py` / `matting.py` 里，现在全在 `look` 段。
+只想改某一个画风就在该画风条目里写 `look`，只写要改的那几项，其余自动继承。
+
 | 想改什么 | 改哪里 |
 |---|---|
-| **画风总配置（名单 / 默认画风 / 中文名 / 隐藏）** | `casts/styles.json` —— 画风的专门配置文件，换默认画风只改这一个 |
+| **字幕大小 / 位置** | `casts/styles.json` → `look.frame.<横竖屏>.subtitle_size` / `subtitle_y` |
+| **镜头松紧、标签配色、转场时长** | `casts/styles.json` → `look.framing` / `look.label_tones` / `look.timing` |
+| **构图安全边距、抠图力度** | `casts/styles.json` → `look.safe_zones` / `look.matting`（改之前先看注释） |
+| **只给某一个画风改上面任意一项** | 该画风条目里加 `"look": { ... }`，只写要改的那几项 |
+| **画风总配置（名单 / 默认画风 / 中文名 / 隐藏）** | `casts/styles.json` —— 换默认画风只改这一个 |
 | project 用哪套画风 | project 的 `cast` 字段写画风 key（如 `"clay"`）或 cast 文件路径；不写就用 `styles.json` 的 `default` |
 | 谁出场、什么姿势、有什么道具 | `casts/<cast>.json` 的 `characters` / `props` |
 | 画风 | `casts/<cast>.json` 的 `style` |
 | 背景（**最影响观感**：地平线位置决定角色站得稳不稳） | `casts/<cast>.json` 的 `background.prompt`，说清地平线在哪、两边留空 |
 | 哪些道具可以悬空 | `casts/<cast>.json` 的 `hanging` 列表 |
 | 哪些道具挡在角色前面 | `casts/<cast>.json` 的 `foreground` 列表 |
-| 标签配色 | 标签的 `tone`：`good` 绿 / `bad` 红 / `money` 琥珀 / 不写就是深灰 |
+| 哪些道具是「可以往上写字」的板面 | `casts/<cast>.json` 的 `writable` 列表；落在上面的标签会自动吸附到板中央，落在角色身上的会被挪开 |
+| 标签用哪个色 | 标签的 `tone`：`good` / `bad` / `money` / 不写就是深灰；**具体颜色**在 `styles.json` 的 `look.label_tones` |
 | 精确的前后遮挡 | 元素上写 `z`（数字，小的在后），只在三层默认排序不够用时才写 |
 | 某一镜的构图 | `out/<name>/plan.json` 的 `x` / `y` / `h` / `framing` |
 | 把某一镜放到别的场景（办公室/码头/店里） | 加一个 `{"type":"panel", ...}`，是一块画在所有人后面的色块，参考片就是这么在同一张背景上做出室内场景的 |
-| 镜头松紧 | 每镜的 `framing`：`wide` / `medium` / `close`（×0.88 / ×1.0 / ×1.30） |
+| 镜头松紧 | 每镜的 `framing`：`wide` / `medium` / `close`；**倍数**在 `styles.json` 的 `look.framing` |
 | 每镜多长 | project 的 `shot_seconds`（默认 5.0） |
 | 成片时长 | project 的 `target_seconds`；语速在 0.85×–1.20× 内自动拟合，超出范围会报出来 |
-| 溶解快慢 | project 的 `dissolve`（默认 0.5） |
+| 溶解快慢 | project 的 `dissolve`；不写就用 `styles.json` 的 `look.timing.dissolve` |
 | 音色 / 语速 | project 的 `voice`（音色必须 `_uranus_` 系列） |
 | 重新生成某个素材 | 删 `casts/<cast>/sprites/<name>.png` 再跑 |
 

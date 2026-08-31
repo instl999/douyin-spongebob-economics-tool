@@ -40,7 +40,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from PIL import Image
 
 import render as render_mod
-from layout import Layout
+from layout import from_video as layout_from_video
 
 import pyJianYingDraft as jy
 from pyJianYingDraft import (AudioSegment, ClipSettings, ScriptFile, Timerange,
@@ -100,7 +100,7 @@ class DraftBuilder:
         self.W = int(video.get("width", 1920))
         self.H = int(video.get("height", 1080))
         self.fps = int(video.get("fps", 30))
-        self.lay = Layout(video.get("orientation", "landscape"))
+        self.lay = layout_from_video(video)
         self.assets = render_mod.Assets(self.project)
         self.panel_color = self.sb.get("panel_color")
         self._frames = {}

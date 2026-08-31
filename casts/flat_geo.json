@@ -69,6 +69,12 @@
     "kiosk",
     "meeting_table"
   ],
+  "writable": [
+    "chart_down",
+    "chart_up",
+    "wall_clock",
+    "whiteboard"
+  ],
   "panel_color": [
     208,
     206,

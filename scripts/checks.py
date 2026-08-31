@@ -18,16 +18,20 @@ authoritative. `inspect` then re-checks its own work and repeats up to
 MAX_PASSES, so a residual can never reach the renderer.
 """
 import render as render_mod
+import styles as styles_mod
 
-EDGE_TOLERANCE = 0.06     # how far a sprite may lean past the frame edge
-MIN_GAP = 0.012           # closer than this reads as one mass, and is reported
+_ZONES = styles_mod.look()["safe_zones"]
+
+EDGE_TOLERANCE = _ZONES["edge_tolerance"]  # how far a sprite may lean off-frame
+MIN_GAP = _ZONES["min_gap"]                # closer than this reads as one mass
 # What the repair aims for. Deliberately wider than MIN_GAP: spacing to exactly
 # the reporting threshold leaves the result half a pixel under it once the
 # coordinates are rounded and the sprite is re-measured, so the repair would
-# report the same overlap it just fixed, for ever.
-REPAIR_GAP = MIN_GAP * 2.5
-SIDE_MARGIN = 0.02
-MAX_PASSES = 3
+# report the same overlap it just fixed, for ever. Hence a multiple in the
+# config rather than a second free-standing number that could be set below it.
+REPAIR_GAP = MIN_GAP * _ZONES["repair_gap_multiple"]
+SIDE_MARGIN = _ZONES["side_margin"]
+MAX_PASSES = int(_ZONES["max_passes"])
 
 
 def _extent(el, assets, lay, framing):
@@ -79,7 +83,6 @@ def _place_text(scene, assets, lay, framing, W, H, caption_top, cast):
     a character is moved to the nearest free spot, searched outward from where
     the director wanted it so the association with the subject survives.
     """
-    import render as render_mod
 
     findings = []
     elements = scene.get("elements", [])
@@ -310,7 +313,6 @@ def inspect(storyboard, assets, lay, repair=True, cast=None):
     returns is a description of a picture that is actually clean rather than
     one repair's worth of good intentions.
     """
-    import render as render_mod
 
     W, H = lay.size
     caption_top = lay.subtitle_center_y - lay.subtitle_font_px() * 1.1

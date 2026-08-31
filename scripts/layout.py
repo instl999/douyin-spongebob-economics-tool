@@ -15,40 +15,28 @@ visual size in both orientations - sizing to the frame would make every sprite
 balloon when the frame got taller.
 """
 
-ORIENTATIONS = {
-    "landscape": {
-        "width": 1920, "height": 1080,
-        "stage": (0.0, 0.0, 1.0, 0.86),   # bottom edge = the ground line
-        "subtitle_size": 0.0323,        # of frame width  -> 62px at 1920
-        "subtitle_y": 0.903,            # centre line, of frame height
-        "subtitle_max_width": 0.86,
-        "label_size": 0.0344,           # -> 66px, reads larger than the caption
-        "image_size": "2560x1440",
-    },
-    "portrait": {
-        "width": 1080, "height": 1920,
-        "stage": (0.0, 0.14, 1.0, 0.80),  # bottom edge = the ground line
-        "subtitle_size": 0.050,         # -> 54px at 1080, readable on a phone
-        "subtitle_y": 0.845,
-        "subtitle_max_width": 0.90,
-        "label_size": 0.052,
-        "image_size": "1440x2560",
-    },
-}
+import styles as styles_mod
+
+# The canvas an orientation means. This is what the word denotes, not a
+# preference, so it stays here; everything that *is* a preference - stage,
+# caption size and position, label size - lives in casts/styles.json under
+# look.frame, and can be overridden per style.
+CANVAS = {"landscape": (1920, 1080), "portrait": (1080, 1920)}
 
 
 class Layout:
     """Turns relative storyboard coordinates into pixels for one frame size."""
 
     def __init__(self, orientation="landscape", width=None, height=None,
-                 overrides=None):
-        if orientation not in ORIENTATIONS:
-            raise ValueError(f"orientation must be one of {sorted(ORIENTATIONS)}")
-        cfg = dict(ORIENTATIONS[orientation])
+                 overrides=None, style=None):
+        if orientation not in CANVAS:
+            raise ValueError(f"orientation must be one of {sorted(CANVAS)}")
+        cfg = styles_mod.frame(orientation, style)
         cfg.update(overrides or {})
+        default_w, default_h = CANVAS[orientation]
         self.orientation = orientation
-        self.width = int(width or cfg["width"])
-        self.height = int(height or cfg["height"])
+        self.width = int(width or cfg.get("width") or default_w)
+        self.height = int(height or cfg.get("height") or default_h)
         self.cfg = cfg
 
         x0, y0, x1, y1 = cfg["stage"]
@@ -93,3 +81,18 @@ class Layout:
         return (f"{self.orientation} {self.width}x{self.height}  "
                 f"stage {int(self.stage_w)}x{int(self.stage_h)} at "
                 f"({int(self.stage_x)},{int(self.stage_y)})")
+
+
+def from_video(video):
+    """The Layout a storyboard's `video` block describes.
+
+    The renderer, the draft exporter and the draft checker each used to build
+    their own Layout from the same three fields. They agreed only because the
+    geometry was a constant; once it became configurable, one shared reading of
+    the storyboard is what keeps the exported draft matching the render.
+    """
+    orientation = video.get("orientation", "landscape")
+    look = styles_mod.look(carried=video.get("look"))
+    frame = (look.get("frame") or {}).get(orientation) or {}
+    return Layout(orientation, video.get("width"), video.get("height"),
+                  overrides=frame)

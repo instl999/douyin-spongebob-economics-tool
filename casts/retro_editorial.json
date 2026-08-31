@@ -68,6 +68,13 @@
     "cafe_table",
     "shop_counter"
   ],
+  "writable": [
+    "chalkboard_menu",
+    "chart_down",
+    "chart_up",
+    "wall_clock",
+    "whiteboard"
+  ],
   "panel_color": [
     228,
     208,
