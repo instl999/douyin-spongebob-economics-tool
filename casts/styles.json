@@ -27,6 +27,14 @@
   "default": "bikini_bottom",
   "_hint_default": "project 没写 cast 字段时用这个画风。",
 
+  "default_orientation": "landscape",
+  "_hint_default_orientation": [
+    "project 没写 orientation 时用哪种画幅：",
+    "  landscape  16:9 横屏 1920x1080（默认，B站 / YouTube / 公众号）",
+    "  portrait   9:16 竖屏 1080x1920（抖音 / 小红书）",
+    "改这一个值就换掉全局默认；单条视频仍可在 project 里写 orientation 覆盖。"
+  ],
+
   "look": {
     "_README": [
       "这里的每个数字原来都硬编码在 Python 里。默认值是从参考成片逐帧量出来的，",

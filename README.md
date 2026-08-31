@@ -634,6 +634,50 @@ as a fault in the pipeline rather than in your input — because it is.
 
 ## Design decisions
 
+### The director casts the action, not the noun
+
+The narration is split into beats before the model sees it. For each beat it
+first states what the sentence depicts — subject, action, object, emotion,
+relation — and only then chooses what goes on screen. The test it is given is
+whether someone watching with the sound off would use the same verb as the
+sentence.
+
+Two things make that possible, and both were missing:
+
+**It can see what each sprite shows.** The catalogue used to be a list of bare
+filenames, so poses were chosen by guessing at their names. Asked for someone
+being handed a pay packet it picked `krabs_stand` and `sponge_happy`, because
+nothing told it that `krabs_greedy` is claws clasped and eyes gleaming while
+`krabs_point` is a raised claw mid-explanation. It now gets each pose's
+description, grouped by character, and chooses on that.
+
+**It can ask for a pose that does not exist.** A cast is mostly postures —
+standing, thinking, pleased — and most scripts describe things nobody in it is
+doing. When no pose performs the action, the director requests one:
+
+```json
+{"asset": "sponge_take_envelope.png",
+ "new_pose": "both hands reaching to take the envelope, huge open grin"}
+```
+
+The request is checked against the cast (a real character, a well-formed new
+pose name, one figure only), generated once, and recorded in
+`casts/<style>/learned_poses.json` so every later video reuses it. There is a
+budget of 8 per video: uncapped, a director asks for a bespoke pose per shot,
+the catalogue stops being a catalogue, and the next video pays again. Past the
+cap, requests fall back to the nearest existing pose.
+
+On a script whose second line is 蟹老板把工资信封递过来，他双手接过, the
+director now asks for `krabs_hand_envelope` — *one claw holding out a paper pay
+envelope, grudging expression* — and `sponge_take_envelope` — *both hands
+reaching to take the envelope, huge open grin, eyes crinkled with joy*. Before,
+that beat was two characters standing near a pile of coins.
+
+A pose that fails to arrive — quota, a content filter, a dropped connection —
+stands in the nearest existing pose rather than disappearing. The first real
+run of this hit a quota wall and the shot lost both its characters, which is
+worse than the generic casting the request was meant to improve on.
+
 ### The model never writes narration
 
 The script is split by `split_script`; the director only chooses sprites. This

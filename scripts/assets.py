@@ -74,7 +74,63 @@ class Cast:
     def load(cls, path, root=None):
         path = Path(path)
         data = json.loads(path.read_text(encoding="utf-8-sig"))
-        return cls(data, root or path.parent)
+        cast = cls(data, root or path.parent)
+        cast._merge_learned()
+        return cast
+
+    # --- poses the director asked for -------------------------------------
+
+    @property
+    def learned_path(self):
+        return self.dir / "learned_poses.json"
+
+    def _merge_learned(self):
+        """Fold in poses earlier videos asked for, so they can be reused.
+
+        Kept in a sidecar rather than written back into the cast file. The cast
+        file is hand-authored and the one thing a user is expected to edit;
+        a program that rewrites it while they have it open is a good way to
+        lose their work, and a generated pose mixed in with their own gives
+        them no way to tell which is which.
+        """
+        if not self.learned_path.exists():
+            return
+        try:
+            learned = json.loads(self.learned_path.read_text(encoding="utf-8-sig"))
+        except (json.JSONDecodeError, OSError):
+            return
+        characters = self.data.setdefault("characters", {})
+        for char_name, poses in (learned.get("poses") or {}).items():
+            char = characters.get(char_name)
+            if not char:
+                continue          # the cast was edited; the pose has no owner
+            # Hand-written poses win: a user who redefines a name means it.
+            for pose, description in poses.items():
+                char.setdefault("poses", {}).setdefault(pose, description)
+
+    def learn_pose(self, character, pose, description):
+        """Record a new pose for this cast. Returns its sprite filename."""
+        char = (self.data.get("characters") or {}).get(character)
+        if not char:
+            raise ValueError(f"{character!r} is not a character in this cast")
+        char.setdefault("poses", {})[pose] = description
+        self.learned_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            stored = json.loads(self.learned_path.read_text(encoding="utf-8-sig"))
+        except (json.JSONDecodeError, OSError, FileNotFoundError):
+            stored = {}
+        stored.setdefault("_README", [
+            "Poses the director asked for while making a video, because no pose "
+            "in the cast file expressed what the narration described.",
+            "Generated once, then reused by every later video.",
+            "Safe to delete: anything still wanted is simply asked for again.",
+            "Editing casts/<style>.json wins over anything in here.",
+        ])
+        stored.setdefault("poses", {}).setdefault(character, {})[pose] = description
+        self.learned_path.write_text(
+            json.dumps(stored, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8")
+        return f"{character}_{pose}.png"
 
     # --- prompt construction ---------------------------------------------
     def sprite_prompt(self, description, rules=SPRITE_RULES):
@@ -200,6 +256,29 @@ class Cast:
                 f"{sorted(overlap)} are in both `hanging` and `foreground`; "
                 "`hanging` wins, so the `foreground` entry does nothing")
         return issues
+
+    def brief(self):
+        """What each sprite depicts, for the director to choose between.
+
+        `catalogue` returns the full generation prompt - style, costume, chroma
+        rules - which is what an image model needs and the wrong thing entirely
+        to choose from. The director was given bare filenames instead and so
+        picked poses by guessing at their names: asked for someone being handed
+        a pay packet it chose `krabs_stand` and `sponge_happy`, because nothing
+        told it that `krabs_greedy` is claws clasped and gleaming while
+        `krabs_point` is a raised claw mid-explanation.
+
+        Returns {"characters": {name: (role, {file: what the body is doing})},
+                 "props": {file: what the object is}}.
+        """
+        characters = {}
+        for name, char in (self.data.get("characters") or {}).items():
+            poses = {f"{name}_{pose}.png": desc
+                     for pose, desc in (char.get("poses") or {}).items()}
+            characters[name] = (char.get("role", ""), poses)
+        props = {f"prop_{name}.png": desc
+                 for name, desc in (self.data.get("props") or {}).items()}
+        return {"characters": characters, "props": props}
 
     def catalogue(self):
         """Every asset this cast can produce: {filename: prompt}."""

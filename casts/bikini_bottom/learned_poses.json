@@ -1,0 +1,16 @@
+{
+  "_README": [
+    "Poses the director asked for while making a video, because no pose in the cast file expressed what the narration described.",
+    "Generated once, then reused by every later video.",
+    "Safe to delete: anything still wanted is simply asked for again.",
+    "Editing casts/<style>.json wins over anything in here."
+  ],
+  "poses": {
+    "krabs": {
+      "hand_envelope": "one claw holding out a paper pay envelope toward the viewer, other claw at side, grudging expression"
+    },
+    "sponge": {
+      "take_envelope": "both hands reaching to take the envelope, huge open grin, eyes crinkled with joy"
+    }
+  }
+}

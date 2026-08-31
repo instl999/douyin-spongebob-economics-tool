@@ -93,7 +93,7 @@ class Project:
 
     @property
     def layout(self):
-        return Layout(self.data.get("orientation", "landscape"),
+        return Layout(self.data.get("orientation") or styles_mod.default_orientation(),
                       style=self.style_key)
 
     def resolve_speed(self):
@@ -161,7 +161,8 @@ def stage_plan(project, force=False):
     if config.have_ark():
         result = plan_mod.direct(project.script, cast, shot_seconds,
                                  model=project.get("director_model"),
-                                 orientation=project.get("orientation", "landscape"))
+                                 orientation=project.get("orientation")
+                                 or styles_mod.default_orientation())
     else:
         log("  ! ARK_API_KEY not set - falling back to the offline plan")
         result = plan_mod.offline_plan(project.script, cast, shot_seconds)
@@ -170,6 +171,14 @@ def stage_plan(project, force=False):
         log(f"  ! {problem}")
     log(f"  {len(result['scenes'])} shots, "
         f"{len(plan_mod.used_sprites(result))} distinct sprites")
+    # New poses are the one thing here that spends money and changes the cast,
+    # so they are reported as their own line rather than buried in `problems`.
+    for req in result.get("new_poses") or []:
+        log(f"  + new pose {req['asset']} (shot {req['shot']}): "
+            f"{req['description']}")
+    if result.get("new_poses"):
+        log(f"    {len(result['new_poses'])} pose(s) added to this cast - "
+            f"drawn once, reused by later videos")
     target.write_text(json.dumps(result, ensure_ascii=False, indent=2),
                       encoding="utf-8")
     return result
@@ -199,7 +208,46 @@ def stage_assets(project, plan, force=False):
         plan["_title_card_image"] = "title_card.png" if card else None
 
     assets_mod.link_into(project.out, cast, names=wanted)
+    reconcile_sprites(project, plan, cast)
     return background
+
+
+def reconcile_sprites(project, plan, cast):
+    """Stand in an existing pose for any sprite that did not reach the disk.
+
+    A pose the director asked for can fail to arrive - a quota wall, a content
+    filter, a dropped connection - and the renderer's answer to a missing PNG
+    is to skip that element. That is the wrong answer here. A shot that asked
+    for two new poses and got neither lost both its characters and rendered as
+    an empty plate, which is worse than the generic casting the request was
+    meant to improve on. A near pose is always better than nobody.
+    """
+    present = {n for n in cast.catalogue() if (project.out / n).exists()}
+    for scene in plan.get("scenes") or []:
+        kept, subjects = [], set()
+        for el in scene.get("elements") or []:
+            asset = el.get("asset")
+            if not asset or asset in present:
+                if asset:
+                    subjects.add(_subject_of(asset))
+                kept.append(el)
+                continue
+            swap = plan_mod.nearest(asset, present)
+            # The stand-in may be a pose of someone already in the shot, and
+            # one character twice is a worse picture than one character once.
+            if swap and _subject_of(swap) not in subjects:
+                log(f"  ! {asset} was not generated, standing in {swap}")
+                subjects.add(_subject_of(swap))
+                kept.append(dict(el, asset=swap,
+                                 rel=cast.relative_height(swap)))
+            else:
+                log(f"  ! {asset} was not generated and has no stand-in, dropped")
+        scene["elements"] = kept
+
+
+def _subject_of(asset):
+    stem = asset[:-4] if asset.endswith(".png") else asset
+    return stem if stem.startswith("prop_") else stem.split("_", 1)[0]
 
 
 def stage_voice(project, plan, force=False, speed=None):
@@ -289,7 +337,8 @@ def stage_storyboard(project, plan, voice_index):
 
     storyboard = {
         "video": {
-            "orientation": project.get("orientation", "landscape"),
+            "orientation": (project.get("orientation")
+                            or styles_mod.default_orientation()),
             "width": lay.width, "height": lay.height,
             "fps": int(project.get("fps", 30)),
             "background": "background.png",

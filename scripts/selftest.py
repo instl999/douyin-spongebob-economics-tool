@@ -146,6 +146,98 @@ def main():
     finally:
         styles_mod.registry = real_registry
 
+    # --- the director may ask for a pose the cast does not have -----------
+    # The catalogue is postures, not actions, so a sentence like "he is handed
+    # his pay" has nothing that performs it and used to settle for whoever
+    # looked closest. A request is accepted only if it names a real character,
+    # a well-formed new pose, and one figure.
+    with tempfile.TemporaryDirectory() as tmp:
+        casts = Path(tmp)
+        cast_data = {
+            "name": "probe", "style": "test style",
+            "background": {"prompt": "a plate"},
+            "characters": {
+                "alice": {"look": "a woman", "role": "the worker",
+                          "relative_height": 1.0, "poses": {"stand": "standing"}},
+                "bob": {"look": "a man", "role": "the boss",
+                        "relative_height": 1.0, "poses": {"stand": "standing"}}},
+            "props": {"desk": "a desk"},
+        }
+        (casts / "probe.json").write_text(json.dumps(cast_data), encoding="utf-8")
+        probe = assets_mod.Cast.load(casts / "probe.json", root=casts)
+
+        def ask(asset, pose_text, shot=1):
+            return {"id": shot, "framing": "medium", "elements": [
+                {"asset": asset, "new_pose": pose_text,
+                 "x": 0.5, "y": 0.97, "h": 0.46}]}
+
+        result = plan_mod.validate(
+            {"shots": [ask("alice_take_pay.png",
+                           "both hands out taking a pay envelope, beaming"),
+                       ask("alice_nope.png", "", 2),
+                       ask("carol_wave.png", "waving", 3),
+                       ask("alice_Take Pay.png", "taking pay", 4),
+                       ask("alice_hand_over.png",
+                           "handing an envelope to bob", 5)]},
+            ["一。", "二。", "三。", "四。", "五。"], probe)
+        added = {r["asset"] for r in result["new_poses"]}
+        suite.check("a described action becomes a new pose",
+                    added == {"alice_take_pay.png"},
+                    f"accepted {sorted(added)}")
+        suite.check("the pose is recorded for later videos",
+                    (probe.dir / "learned_poses.json").exists()
+                    and "take_pay" in probe.data["characters"]["alice"]["poses"])
+        reloaded = assets_mod.Cast.load(casts / "probe.json", root=casts)
+        suite.check("and is in the catalogue next time",
+                    "alice_take_pay.png" in reloaded.catalogue())
+
+        # A requested pose that never reaches the disk must not take the
+        # character out of the shot with it. The first real run of this asked
+        # for two poses, hit a quota wall, and shot 2 rendered as an empty
+        # plate - worse than the generic casting the request improved on.
+        import build as build_mod
+
+        class _FakeProject:
+            pass
+
+        stub = _FakeProject()
+        stub.out = casts / "out"
+        stub.out.mkdir(exist_ok=True)
+        for name in ("alice_stand.png", "bob_stand.png", "prop_desk.png"):
+            (stub.out / name).write_bytes(b"")
+        starved = {"scenes": [{"id": 1, "elements": [
+            {"asset": "alice_take_pay.png", "x": 0.3, "y": 0.97, "h": 0.46},
+            {"asset": "bob_hand_over.png", "x": 0.7, "y": 0.97, "h": 0.46},
+            {"asset": "prop_desk.png", "x": 0.5, "y": 0.97, "h": 0.3},
+        ]}]}
+        build_mod.log = lambda *a, **k: None
+        build_mod.reconcile_sprites(stub, starved, reloaded)
+        stood_in = [e["asset"] for e in starved["scenes"][0]["elements"]]
+        suite.check("a pose that failed to generate stands in, not vanishes",
+                    stood_in == ["alice_stand.png", "bob_stand.png",
+                                 "prop_desk.png"],
+                    f"{stood_in}")
+
+        # ...and a stand-in must not put one character on screen twice.
+        clash = {"scenes": [{"id": 1, "elements": [
+            {"asset": "alice_stand.png", "x": 0.3, "y": 0.97, "h": 0.46},
+            {"asset": "alice_take_pay.png", "x": 0.7, "y": 0.97, "h": 0.46},
+        ]}]}
+        build_mod.reconcile_sprites(stub, clash, reloaded)
+        suite.check("a stand-in never doubles a character",
+                    [e["asset"] for e in clash["scenes"][0]["elements"]]
+                    == ["alice_stand.png"])
+
+        # Budget: past the cap, requests fall back to the old snapping.
+        many = [ask(f"bob_act{n}.png", f"doing thing number {n}", n)
+                for n in range(1, plan_mod.NEW_POSE_BUDGET + 4)]
+        capped = plan_mod.validate({"shots": many},
+                                   ["句。"] * len(many), reloaded)
+        suite.check("new poses are capped per video",
+                    len(capped["new_poses"]) == plan_mod.NEW_POSE_BUDGET,
+                    f"{len(capped['new_poses'])} of {len(many)} requested, "
+                    f"cap {plan_mod.NEW_POSE_BUDGET}")
+
     # --- a parameter accepted and then dropped ----------------------------
     # `panel_color` was threaded from the cast into compose_plate and never
     # passed on to the function that uses it. Nothing failed; panels just kept

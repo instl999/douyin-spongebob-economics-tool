@@ -1,0 +1,12 @@
+{
+  "name": "payday",
+  "title": "工资的错觉",
+  "script": "examples\\payday.txt",
+  "cast": "bikini_bottom",
+  "orientation": "landscape",
+  "shot_seconds": 5.0,
+  "voice": {
+    "speaker": "zh_male_yuanboxiaoshu_uranus_bigtts",
+    "speed": 1.0
+  }
+}

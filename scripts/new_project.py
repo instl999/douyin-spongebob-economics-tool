@@ -150,8 +150,11 @@ def main():
                          "cast file (default: the registry's default style)")
     ap.add_argument("--list-styles", action="store_true",
                     help="list every available style and exit")
-    ap.add_argument("--orientation", default="landscape",
-                    choices=["landscape", "portrait"])
+    ap.add_argument("--orientation", default=None,
+                    choices=["landscape", "portrait"],
+                    help="default: whatever casts/styles.json says "
+                         "(default_orientation, currently "
+                         f"{styles_mod.default_orientation()})")
     ap.add_argument("--target", type=float, default=None,
                     help="wanted length in seconds; the speech rate is fitted to it")
     ap.add_argument("--voice", default="male",
@@ -159,6 +162,7 @@ def main():
     ap.add_argument("--shot-seconds", type=float, default=5.0,
                     help="how much narration one shot carries")
     args = ap.parse_args()
+    args.orientation = args.orientation or styles_mod.default_orientation()
 
     if args.list_styles:
         return list_styles() or 0

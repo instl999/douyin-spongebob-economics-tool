@@ -19,7 +19,7 @@ from layout import Layout
 
 def contact_sheet(storyboard, workdir, out_path, columns=4, thumb_width=440):
     cfg = storyboard.get("video", {})
-    lay = Layout(cfg.get("orientation", "landscape"), cfg.get("width"), cfg.get("height"))
+    lay = Layout(cfg.get("orientation"), cfg.get("width"), cfg.get("height"))
     renderer = render_mod.Renderer(storyboard, workdir, lay=lay)
 
     panels = []

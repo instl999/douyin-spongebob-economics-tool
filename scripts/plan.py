@@ -27,6 +27,14 @@ ENDING_MAX_CHARS = 24
 # too, rather than being silently rewritten to "neutral" by the validator.
 LABEL_TONES = tuple(styles_mod.look()["label_tones"])
 
+# How many poses one video may add to its cast. Every one is an image that gets
+# generated and paid for, so this is a spending limit as much as a style rule -
+# but it is also what keeps the catalogue a catalogue. Left uncapped a director
+# asks for a bespoke pose per shot, the library stops being reusable, and the
+# next video pays all over again. Past the cap, requests fall back to the
+# nearest existing pose exactly as an unknown sprite name always has.
+NEW_POSE_BUDGET = 8
+
 SYSTEM = """You are the director of a SpongeBob-style animated explainer.
 
 The picture is built by compositing: one fixed background plate, with cut-out
@@ -45,7 +53,11 @@ Return exactly {count} shots, with these ids.
 
 {beats}
 
-# Sprites you may use (exact filenames, nothing else exists)
+# Sprites you may use
+
+Exact filenames; nothing else exists unless you ask for it (see below). The
+text after each name is what that sprite shows - choose on that, not on the
+name.
 
 {catalogue}
 
@@ -55,9 +67,74 @@ Return exactly {count} shots, with these ids.
 
 # For each shot
 
-Pick {lo_elements}-{hi_elements} elements that *act out* what that shot's sentence
-says. Put the prop the sentence is about next to the character, and change who
-is on screen when the subject changes. One lone character is a wasted shot.
+## First read the sentence, then cast it
+
+Before choosing anything, work out what the sentence actually depicts, and put
+it in the shot as "beat":
+
+{{"subject": "who it happens to",
+  "action": "what they physically do - a verb someone could perform",
+  "object": "the thing involved, or null",
+  "emotion": "how the subject feels about it, or null",
+  "relation": "who does it to whom, or null"}}
+
+Then choose {lo_elements}-{hi_elements} elements that **perform that action**.
+
+The test is whether someone watching with the sound off would describe the
+picture using the same verb as the sentence. A character standing next to the
+thing the sentence mentions does not pass: "拿到工资" is not a person and a bag
+of money in the same frame, it is a person **being handed** money and pleased
+about it. Cast the *action*, then let the object and the feeling follow from it.
+
+- **action** decides the pose. Pick the pose whose description contains that
+  verb, not merely the character the sentence is about
+- **emotion** decides which of the near-matching poses to use. The same beat
+  ends differently if the subject is pleased or dismayed, and that difference
+  is most of what the shot is for
+- **object** goes in the frame, positioned so it is being acted on: held,
+  handed over, pointed at, worked at - not parked beside someone
+- **relation** decides who else is on screen. "A pays B" needs both, facing
+  each other. A one-sided action needs one
+- Change who is on screen when the subject changes. One lone character with
+  nothing happening is a wasted shot
+
+## When no pose performs the action - ask for one
+
+The catalogue is mostly postures: standing, thinking, pleased, worried. Most
+scripts describe things nobody in it is doing. **This is the normal case, not
+an edge case, and asking is the normal response to it.**
+
+Run this test on every shot, before you cast it:
+
+> Read the pose descriptions for the character in `subject`. Does any of them
+> describe a body performing `action`? Not the right mood - the right *action*.
+
+If none does, ask for the pose:
+
+{{"asset": "sponge_take_pay.png",
+  "new_pose": "both hands out taking a pay envelope, beaming, delighted",
+  "x": 0.62, "y": 0.97, "h": 0.46}}
+
+"蟹老板把工资信封递过来，他双手接过" fails the test twice. No krabs pose
+describes handing something over, and no sponge pose describes taking something
+with both hands. `krabs_stand` plus `sponge_happy` plus a pile of coins is two
+people standing near money - it is the failure this whole section exists to
+prevent. Ask for `krabs_hand_over` and `sponge_take_pay` and the shot performs
+the sentence.
+
+- the filename must be `<character>_<pose>.png` for a character in the cast,
+  and `<pose>` must be new, lowercase, no spaces
+- `new_pose` describes the **body**: what the hands, arms, posture and face are
+  doing. Do not describe clothing, colour or art style - those come from the
+  cast. Do not name other characters; one figure only
+- Do **not** ask when the difference is only mood and a pose already performs
+  the action. `sponge_sad` covers any dejected standing
+- You have {pose_budget} requests for the whole video. A script about people
+  doing things should use most of them. Spend them on the shots where the
+  action *is* the point, and settle on the shots that are only commentary
+- Anything you ask for is drawn once and then belongs to this cast, so prefer
+  a pose that other scripts would also use ("take_pay") over one welded to this
+  sentence ("take_pay_from_krabs_on_friday")
 
 {orientation_note}
 
@@ -133,9 +210,16 @@ characters.
   "ending": {{"text": "the closing line, may contain \\n", "highlight": "<= 4 characters from it"}},
   "shots": [
     {{"id": 1, "framing": "medium",
+      "beat": {{"subject": "sponge", "action": "is handed his pay packet",
+                "object": "pay envelope", "emotion": "delighted",
+                "relation": "krabs hands it to sponge"}},
       "elements": [
-        {{"asset": "krabs_point.png", "x": 0.32, "y": 0.97, "h": 0.46}},
-        {{"type": "label", "text": "涨工资", "x": 0.70, "y": 0.42, "anchor": "center"}}
+        {{"asset": "krabs_point.png", "x": 0.30, "y": 0.97, "h": 0.46}},
+        {{"asset": "sponge_take_pay.png",
+          "new_pose": "both hands out taking a pay envelope, beaming, delighted",
+          "x": 0.66, "y": 0.97, "h": 0.46}},
+        {{"type": "label", "text": "发工资", "tone": "money",
+          "x": 0.48, "y": 0.40, "anchor": "center"}}
       ]}}
   ]}}"""
 
@@ -241,13 +325,36 @@ ORIENTATION_NOTES = {
 }
 
 
-def build_prompt(beats, cast, orientation="landscape"):
-    catalogue = chr(10).join(f"- {n}" for n in sorted(cast.catalogue()))
+def _catalogue_text(cast):
+    """The sprite list, with what each one actually shows.
+
+    Grouped by character so that the choice reads as "which of these bodies is
+    doing the thing", which is the question, rather than as a flat list of
+    filenames to pattern-match against.
+    """
+    brief = cast.brief()
+    lines = []
+    for name, (role, poses) in brief["characters"].items():
+        lines.append(f"## {name}" + (f" - {role}" if role else ""))
+        for filename, description in poses.items():
+            lines.append(f"- {filename} - {description}")
+        lines.append("")
+    if brief["props"]:
+        lines.append("## props")
+        for filename, description in brief["props"].items():
+            lines.append(f"- {filename} - {description}")
+    return chr(10).join(lines)
+
+
+def build_prompt(beats, cast, orientation="landscape",
+                 pose_budget=NEW_POSE_BUDGET):
+    catalogue = _catalogue_text(cast)
     listing = chr(10).join(f"{i}. {text}" for i, text in enumerate(beats, 1))
     portrait = orientation == "portrait"
     return TEMPLATE.format(
         count=len(beats), beats=listing, catalogue=catalogue,
         casting=_casting_notes(cast),
+        pose_budget=pose_budget,
         lo_elements=2, hi_elements=3 if portrait else 4,
         orientation_note=ORIENTATION_NOTES.get(
             orientation, ORIENTATION_NOTES["landscape"]))
@@ -276,7 +383,7 @@ def _clamp(value, lo, hi, default):
         return default
 
 
-def _nearest(asset, known):
+def nearest(asset, known):
     """Map a plausible-but-missing sprite onto one the cast really has.
 
     Directors reach for poses that read well in the sentence - patrick_happy,
@@ -298,7 +405,48 @@ def _nearest(asset, known):
     return sorted(siblings)[0]
 
 
-def _elements(raw_elements, cast, known, shot_id, problems):
+POSE_NAME = __import__("re").compile(r"^[a-z][a-z0-9_]{1,23}$")
+
+
+def _pose_request(el, cast, known, shot_id, problems):
+    """Turn a director's `new_pose` into a pose this cast can draw, or None.
+
+    Everything about the request is checked against the cast, because the one
+    thing being handed to an image model here is a sentence the director wrote.
+    A malformed name would produce a sprite nothing can address; a pose that
+    already exists would quietly redraw it; a description naming a second
+    character would put that character on screen twice.
+    """
+    asset = el.get("asset") or ""
+    description = (el.get("new_pose") or "").strip()
+    if not description:
+        return None
+    stem = asset[:-4] if asset.endswith(".png") else asset
+    character, _, pose = stem.partition("_")
+    characters = cast.data.get("characters") or {}
+    if character not in characters:
+        problems.append(
+            f"shot {shot_id}: new pose {asset!r} is not <character>_<pose> for "
+            f"anyone in this cast, ignored")
+        return None
+    if not POSE_NAME.match(pose):
+        problems.append(f"shot {shot_id}: {pose!r} is not a usable pose name, ignored")
+        return None
+    if asset in known:
+        return None                       # already drawable; nothing to add
+    if len(description) > 200:
+        description = description[:200].rsplit(",", 1)[0]
+    others = [n for n in characters if n != character and n in description.lower()]
+    if others:
+        problems.append(
+            f"shot {shot_id}: new pose {asset!r} described {others[0]} too; "
+            "a sprite holds one figure, ignored")
+        return None
+    return character, pose, description
+
+
+def _elements(raw_elements, cast, known, shot_id, problems,
+              requests=None, budget=0):
     elements, seen = [], set()
     for el in raw_elements or []:
         kind = el.get("type", "sprite")
@@ -328,12 +476,31 @@ def _elements(raw_elements, cast, known, shot_id, problems):
         else:
             asset = el.get("asset") or el.get("sprite") or ""
             if asset not in known:
-                swap = _nearest(asset, known)
-                if not swap:
-                    problems.append(f"shot {shot_id}: unknown sprite {asset!r}, dropped")
-                    continue
-                problems.append(f"shot {shot_id}: {asset!r} -> {swap!r}")
-                asset = swap
+                # A name the catalogue does not have is usually a hallucination
+                # and snaps to a near pose. But when the director says what the
+                # body should be doing, it is a request: the sentence describes
+                # an action nothing in the cast performs, which is exactly the
+                # case this format is otherwise bad at.
+                asked = (_pose_request(el, cast, known, shot_id, problems)
+                         if requests is not None and budget > 0 else None)
+                if asked:
+                    character, pose, description = asked
+                    asset = cast.learn_pose(character, pose, description)
+                    known.add(asset)
+                    requests.append({"asset": asset, "character": character,
+                                     "pose": pose, "description": description,
+                                     "shot": shot_id})
+                    budget -= 1
+                    problems.append(
+                        f"shot {shot_id}: new pose {asset!r} - {description}")
+                else:
+                    swap = nearest(asset, known)
+                    if not swap:
+                        problems.append(
+                            f"shot {shot_id}: unknown sprite {asset!r}, dropped")
+                        continue
+                    problems.append(f"shot {shot_id}: {asset!r} -> {swap!r}")
+                    asset = swap
 
             anchor = el.get("anchor", "bottom")
             y = _clamp(el.get("y"), 0.05, 1.02, 0.97)
@@ -409,7 +576,7 @@ def validate(data, beats, cast, max_sprites=None):
         except (TypeError, ValueError):
             continue
 
-    scenes, recent = [], []
+    scenes, recent, requests = [], [], []
     for i, narration in enumerate(beats, 1):
         raw = by_id.get(i, {})
         if not raw:
@@ -424,7 +591,8 @@ def validate(data, beats, cast, max_sprites=None):
             framing = "close" if framing != "close" else "medium"
         recent.append(framing)
 
-        elements = _elements(raw.get("elements"), cast, known, i, problems)
+        elements = _elements(raw.get("elements"), cast, known, i, problems,
+                             requests, NEW_POSE_BUDGET - len(requests))
         if max_sprites:
             sprites = [e for e in elements if "asset" in e]
             if len(sprites) > max_sprites:
@@ -466,8 +634,18 @@ def validate(data, beats, cast, max_sprites=None):
                 elements = carried + [e for e in elements if "asset" not in e]
             else:
                 problems.append(f"shot {i}: no usable elements and nothing to hold")
-        scenes.append({"id": i, "narration": narration, "framing": framing,
-                       "elements": elements})
+        scene = {"id": i, "narration": narration, "framing": framing,
+                 "elements": elements}
+        # What the director understood the sentence to depict. Kept so that a
+        # shot that looks wrong can be read rather than guessed at: the beat
+        # says whether the casting missed the meaning or the meaning was read
+        # wrong in the first place.
+        beat = raw.get("beat")
+        if isinstance(beat, dict):
+            scene["beat"] = {k: beat.get(k) for k in
+                             ("subject", "action", "object", "emotion", "relation")
+                             if beat.get(k)}
+        scenes.append(scene)
 
     # Rebalance the framing. The "no three in a row" rule stops a run but does
     # not create variety: a 32-shot video came back 16 medium, 13 wide and only
@@ -510,6 +688,7 @@ def validate(data, beats, cast, max_sprites=None):
         "ending": {"text": ending_text,
                    "highlight": (ending.get("highlight") or "").strip() or None},
         "scenes": scenes,
+        "new_poses": requests,
         "problems": problems,
     }
 

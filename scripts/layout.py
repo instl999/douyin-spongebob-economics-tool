@@ -27,8 +27,9 @@ CANVAS = {"landscape": (1920, 1080), "portrait": (1080, 1920)}
 class Layout:
     """Turns relative storyboard coordinates into pixels for one frame size."""
 
-    def __init__(self, orientation="landscape", width=None, height=None,
+    def __init__(self, orientation=None, width=None, height=None,
                  overrides=None, style=None):
+        orientation = orientation or styles_mod.default_orientation()
         if orientation not in CANVAS:
             raise ValueError(f"orientation must be one of {sorted(CANVAS)}")
         cfg = styles_mod.frame(orientation, style)
@@ -91,7 +92,7 @@ def from_video(video):
     geometry was a constant; once it became configurable, one shared reading of
     the storyboard is what keeps the exported draft matching the render.
     """
-    orientation = video.get("orientation", "landscape")
+    orientation = video.get("orientation") or styles_mod.default_orientation()
     look = styles_mod.look(carried=video.get("look"))
     frame = (look.get("frame") or {}).get(orientation) or {}
     return Layout(orientation, video.get("width"), video.get("height"),

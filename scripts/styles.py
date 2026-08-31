@@ -122,8 +122,21 @@ def look(key=None, carried=None):
     return _merge(merged, carried) if carried else merged
 
 
-def frame(orientation="landscape", key=None):
+# 16:9. The format is built around a fixed background plate with characters
+# standing on a ground line, and that reads best wide; portrait is a deliberate
+# choice for a phone feed, not the thing to fall into by accident.
+FALLBACK_ORIENTATION = "landscape"
+
+
+def default_orientation():
+    """The video shape to use when a project does not name one."""
+    wanted = registry().get("default_orientation")
+    return wanted if wanted in ("landscape", "portrait") else FALLBACK_ORIENTATION
+
+
+def frame(orientation=None, key=None):
     """Just the geometry for one orientation - what Layout wants."""
+    orientation = orientation or default_orientation()
     return dict((look(key).get("frame") or {}).get(orientation) or {})
 
 
