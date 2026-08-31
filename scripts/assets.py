@@ -108,6 +108,19 @@ class Cast:
         value = self.data.get("panel_color") or (176, 196, 205)
         return tuple(int(v) for v in value)[:3]
 
+    def writable(self, filename):
+        """Whether this prop is a surface meant to be written on.
+
+        The distinction the layout needs is not "does text overlap something"
+        but "does text overlap the *wrong* thing". A label centred on a blank
+        whiteboard is the whole point of the whiteboard; the same label across
+        a character's face is the defect.
+        """
+        stem = filename[:-4] if filename.endswith(".png") else filename
+        if not stem.startswith("prop_"):
+            return False
+        return stem[len("prop_"):] in set(self.data.get("writable") or [])
+
     def in_front(self, filename):
         """Whether this prop is drawn over the characters rather than behind.
 

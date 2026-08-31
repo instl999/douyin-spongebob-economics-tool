@@ -96,22 +96,36 @@ def _warn_once(message):
         print(f"  ! {message} - skipping that element", flush=True)
 
 
-def _paste(canvas, sprite, cx, cy, anchor, opacity=1.0):
+def element_origin(el, image, lay):
+    """Top-left pixel for one element - the single definition of placement.
+
+    The renderer, the layout checks and the draft exporter all have to agree
+    about where an element goes, and for a while they did not: each had its own
+    copy of this arithmetic with its own default y, one 0.97, one 0.95, one
+    0.5. Real storyboards hid it, because the director writes x, y and anchor
+    on every element and the defaults never fire. A hand-written shot found it
+    immediately, and the draft came out 12/255 away from the render.
+    """
+    cx, cy = lay.point(el.get("x", 0.5), el.get("y", 0.95))
+    anchor = el.get("anchor", "bottom")
+    if anchor == "top_left":
+        return int(cx), int(cy)
+    left = int(cx - image.width / 2)
+    if anchor == "bottom":
+        return left, int(cy - image.height)
+    if anchor == "top":
+        return left, int(cy)
+    return left, int(cy - image.height / 2)
+
+
+def _paste(canvas, sprite, origin, opacity=1.0):
     if opacity <= 0.004:
         return
     if opacity < 1.0:
         sprite = sprite.copy()
         alpha = sprite.getchannel("A").point(lambda v: int(v * opacity))
         sprite.putalpha(alpha)
-    if anchor == "bottom":
-        pos = (int(cx - sprite.width / 2), int(cy - sprite.height))
-    elif anchor == "top":
-        pos = (int(cx - sprite.width / 2), int(cy))
-    elif anchor == "top_left":
-        pos = (int(cx), int(cy))
-    else:  # center
-        pos = (int(cx - sprite.width / 2), int(cy - sprite.height / 2))
-    canvas.alpha_composite(sprite, pos)
+    canvas.alpha_composite(sprite, origin)
 
 
 def build_element_image(el, assets, lay, framing=1.0, panel_color=None):
@@ -164,8 +178,7 @@ def compose_plate(scene, background, assets, lay, panel_color=None):
             continue
         if img is None:
             continue
-        cx, cy = lay.point(el.get("x", 0.5), el.get("y", 0.95))
-        _paste(canvas, img, cx, cy, el.get("anchor", "bottom"))
+        _paste(canvas, img, element_origin(el, img, lay))
     return np.asarray(canvas.convert("RGB"), dtype=np.uint8)
 
 
@@ -183,8 +196,7 @@ def compose_partial(scene, background, assets, lay, opacities, panel_color=None)
             continue
         if img is None:
             continue
-        cx, cy = lay.point(el.get("x", 0.5), el.get("y", 0.95))
-        _paste(canvas, img, cx, cy, el.get("anchor", "bottom"), opacity)
+        _paste(canvas, img, element_origin(el, img, lay), opacity)
     return np.asarray(canvas.convert("RGB"), dtype=np.uint8)
 
 

@@ -70,5 +70,12 @@
     180,
     164
   ],
-  "_panel_color_note": "Default colour for panel slabs: a warm grey clearly darker than the cream wall. Too close in value and the slab does not read as a room at all - it just tints the wall."
+  "_panel_color_note": "Default colour for panel slabs: a warm grey clearly darker than the cream wall. Too close in value and the slab does not read as a room at all - it just tints the wall.",
+  "writable": [
+    "chart_down",
+    "chart_up",
+    "clock",
+    "whiteboard"
+  ],
+  "_writable_note": "Props that exist to be written on - blank boards, cards, signs. Text is allowed to sit on these and is snapped to their centre. Text over anything else, especially a character, is a defect and gets moved."
 }

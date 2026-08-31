@@ -1,6 +1,10 @@
-"""Main entry point: a project file in, a finished MP4 out.
+"""Main entry point: a project file in, an editable Jianying draft out.
 
     python scripts/build.py projects/efficiency_wage.json
+
+The MP4 beside it is the preview. The draft is the deliverable, because
+automatic layout is good enough to watch and not good enough to ship without
+somebody looking at it.
 
 Every stage writes its result into the project's own output directory and skips
 itself when that result is already there and still current, so a re-run after
@@ -9,7 +13,7 @@ storyboard re-renders without paying for narration again. `--from <stage>`
 redoes that one stage; the stages after it consult their own caches and
 re-derive only what actually changed.
 
-Stages: plan -> assets -> voice -> storyboard -> render -> audio -> mux
+Stages: plan -> assets -> voice -> storyboard -> render -> audio -> mux -> draft
 """
 import argparse
 import json
@@ -29,7 +33,8 @@ import tts as tts_mod
 from layout import Layout
 
 ROOT = Path(__file__).resolve().parent.parent
-STAGES = ["plan", "assets", "voice", "storyboard", "render", "audio", "mux"]
+STAGES = ["plan", "assets", "voice", "storyboard", "render", "audio", "mux",
+          "draft"]
 
 
 def log(message=""):
@@ -111,6 +116,7 @@ DOWNSTREAM = {
     "render": [],
     "audio": [],
     "mux": [],
+    "draft": [],
 }
 
 
@@ -291,7 +297,8 @@ def stage_storyboard(project, plan, voice_index):
     import checks as checks_mod
     import render as render_mod
     findings = checks_mod.inspect(
-        storyboard, render_mod.Assets(project.out), lay, repair=True)
+        storyboard, render_mod.Assets(project.out), lay, repair=True,
+        cast=project.cast)
     for line in findings:
         log(f"  {line}")
 
@@ -467,6 +474,29 @@ def stage_mux(project, video, audio_track):
     return out
 
 
+def stage_draft(project):
+    """Write the editable Jianying project and prove it matches the render."""
+    import check_draft
+    import draft as draft_mod
+
+    builder = draft_mod.DraftBuilder(project.out, name=project.name)
+    path, total, layers = builder.build(project.out / "jianying")
+    log(f"  {path.name}: {total:.1f}s over {layers} element layers")
+    # Checked here rather than left to the operator: the draft is written
+    # blind - Jianying is not needed to write one and may not be installed -
+    # so the only thing standing between a wrong transform and a broken
+    # project the user opens is this comparison against the renderer.
+    diffs = check_draft.compare(project.out, path) or []
+    off = [f"shot {i}" for i, d in diffs if d > check_draft.MAX_MEAN_DIFF]
+    if off:
+        raise QualityError(f"the draft does not match the render at {', '.join(off)}"
+                         f" - run scripts/check_draft.py {project.out} for detail")
+    if diffs:
+        log(f"  matches the render to "
+            f"{max(d for _, d in diffs):.2f}/255 at worst, over {len(diffs)} shots")
+    return path
+
+
 # --- checks ----------------------------------------------------------------
 
 def check():
@@ -518,6 +548,8 @@ def run_build():
                     help="skip the automatic check of the finished file")
     ap.add_argument("--preview", action="store_true",
                     help="write a contact sheet of the shots and stop")
+    ap.add_argument("--no-draft", action="store_true",
+                    help="skip the editable Jianying project, leaving only the mp4")
     args = ap.parse_args()
 
     if args.check or not args.project:
@@ -555,7 +587,7 @@ def run_build():
         for line in cast_problems:
             log(f"  - {line}")
         return 1
-    log("\n[1/7] plan")
+    log("\n[1/8] plan")
     plan = stage_plan(project, force=should("plan"))
     invalidate(project, forced)
 
@@ -570,15 +602,15 @@ def run_build():
     if fit and not fit["ok"]:
         log(f"  ! {fit['note']}")
 
-    log("\n[2/7] assets")
+    log("\n[2/8] assets")
     stage_assets(project, plan, force=should("assets"))
 
-    log("\n[3/7] voice")
+    log("\n[3/8] voice")
     voice_index = stage_voice(project, plan, force=should("voice"), speed=speed)
     if done("voice"):
         return 0
 
-    log("\n[4/7] storyboard")
+    log("\n[4/8] storyboard")
     storyboard, pieces, total = stage_storyboard(project, plan, voice_index)
     log(f"  {len(storyboard['scenes'])} shots, {total:.1f}s total")
 
@@ -591,21 +623,30 @@ def run_build():
     if done("storyboard"):
         return 0
 
-    log("\n[5/7] render")
+    log("\n[5/8] render")
     video = stage_render(project, storyboard, force=should("render"))
     if done("render"):
         return 0
 
-    log("\n[6/7] audio")
+    log("\n[6/8] audio")
     track = stage_audio(project, pieces, total)
     if done("audio"):
         return 0
 
-    log("\n[7/7] mux")
+    log("\n[7/8] mux")
     final = stage_mux(project, video, track)
+    if done("mux"):
+        return 0
+
+    log("\n[8/8] draft")
+    draft_path = None if args.no_draft else stage_draft(project)
     log("")
     report_usage()
     log(f"\nfinished: {final}")
+    if draft_path:
+        # The mp4 is the preview; this is what gets handed over, because it is
+        # the one a person can still fix.
+        log(f"editable draft: {draft_path}")
 
     # Verification runs by default. An operator who has to remember to check
     # their own output eventually will not, and the failures this catches -
@@ -632,12 +673,26 @@ def run_build():
 INPUT_ERRORS = (FileNotFoundError, ValueError, json.JSONDecodeError)
 
 
+class QualityError(Exception):
+    """An output the pipeline built does not match what it should have built.
+
+    Deliberately not a ValueError: those are classified as the user's input
+    being wrong, and a draft that disagrees with the render is the pipeline's
+    fault, not theirs. Telling someone to go fix their script when the bug is
+    here wastes their time and hides the bug.
+    """
+
+
 def main():
     try:
         return run_build()
     except KeyboardInterrupt:
         log("\ninterrupted - nothing was corrupted; re-run to carry on from the last finished stage")
         return 130
+    except QualityError as exc:
+        log(f"\nstopped: {exc}")
+        log("this is a fault in the pipeline, not in your input.")
+        return 1
     except INPUT_ERRORS as exc:
         log(f"\nstopped: {exc}")
         log("this is a problem with the project, the script or the cast - not with the pipeline.")

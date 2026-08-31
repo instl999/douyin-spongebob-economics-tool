@@ -15,3 +15,6 @@ casts/*/raw/
 *.pyc
 __pycache__/
 .venv/
+
+# scratch from re-matting experiments
+scripts/_rematte/

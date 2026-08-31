@@ -25,6 +25,7 @@ description: "把一段口播文案自动做成『海绵宝宝原版2D手绘风�
 | 6 | 字幕白字黑边，中心线在画面高 90.3%，字号 0.032×宽 | 1080p 下 62px @ y=975 |
 | 7 | **旁白文字 = 用户原文，一个字都不能改** | 见下面「绝不要做」第 1 条 |
 | 8 | **动手前先问画风/横竖屏/时长/音色** | 生图和配音要花钱，问一轮比返工便宜 |
+| 9 | **交的是剪映工程，MP4 只是预览** | 自动排版没有人眼好，留一步人工微调 |
 
 ---
 
@@ -111,7 +112,10 @@ python scripts/build.py projects/my_video.json --preview
 python scripts/build.py projects/my_video.json
 ```
 
-七个阶段跑完后**自动跑一遍 verify**，打印 12 项检查。全 PASS 才算完。
+八个阶段跑完后**自动跑一遍 verify**，打印 12 项检查。全 PASS 才算完。
+
+最后一个阶段（draft）会导出**剪映可编辑工程**，并当场跟渲染结果逐镜比对；
+对不上会直接报错，不会把一个错位的工程丢给用户。
 
 ### Step 5 — 有 FAIL 就查对照表修，然后重跑
 
@@ -123,7 +127,24 @@ python scripts/build.py projects/my_video.json --from storyboard
 
 ### Step 6 — 交付
 
-把 `out/my_video/my_video.mp4` 和 `.srt` 交给用户，并说明时长和分辨率。
+**主交付物是剪映工程，不是 MP4。**
+
+```bash
+python scripts/draft.py out/my_video --install
+```
+
+`--install` 会直接写进剪映的草稿目录，用户打开剪映就能看到。没装剪映或找不到
+目录时，工程在 `out/my_video/jianying/`，让用户自己拷过去。
+
+交付时要说清三件事：
+
+1. 时长、分辨率，以及 `out/my_video/my_video.mp4` 是**预览**，不是最终稿；
+2. 工程里轨道是分开的（`背景` / `图层N` / `配音` / `字幕`），可以逐个调；
+3. **每个元素是整画布大小的透明图层**，所以选中框比人物大一圈——拖动和缩放都
+   正常，只是手柄在画布边上。这是为了绕开剪映 `scale` 语义没有文档这件事，
+   见 `scripts/draft.py` 开头。
+
+素材是**绝对路径**引用的：工程文件夹和它的 `materials/` 要一起移动，否则重导。
 
 ### 退出码（可以直接用来卡流程）
 
@@ -247,6 +268,8 @@ python scripts/build.py projects/my_video.json --from storyboard
 | 改了 plan 后重出片 | `python scripts/build.py <proj> --from storyboard` |
 | 只建素材库 | `python scripts/build.py <proj> --stop-after assets` |
 | 单张抠图 | `python scripts/matting.py in.jpg out.png` |
+| 导出剪映工程（**交付物**） | `python scripts/draft.py out/<name> --install` |
+| 单独校验剪映工程 | `python scripts/check_draft.py out/<name>` |
 | 老 plan 套用新规则（不调模型） | `python scripts/migrate_plan.py out/<name>/plan.json casts/<cast>.json` |
 | 新画风：一次性生成整套素材 | `python scripts/build_library.py casts/<cast>.json --plates` |
 

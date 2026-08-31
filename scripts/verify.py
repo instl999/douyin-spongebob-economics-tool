@@ -260,11 +260,12 @@ def check_plan_carried(report, storyboard, plan_path):
                + (f"; plan has {counts[0]}" if counts[0] != counts[1] else ""))
 
 
-def check_layout(report, storyboard, project_dir, lay):
+def check_layout(report, storyboard, project_dir, lay, cast=None):
     import checks as checks_mod
     import render as render_mod
     assets = render_mod.Assets(project_dir)
-    findings = checks_mod.inspect(storyboard, assets, lay, repair=False)
+    findings = checks_mod.inspect(storyboard, assets, lay, repair=False,
+                                  cast=cast)
     report.add(not findings, "shot layout",
                "no collisions or overflow" if not findings
                else f"{len(findings)} issue(s): {findings[0]}")
@@ -293,7 +294,8 @@ def run(project, verbose=False):
     check_subtitles(report, project.out / f"{project.name}.srt", duration)
     check_sprites(report, project.cast.dir)
     check_plan_carried(report, storyboard, project.out / "plan.json")
-    findings = check_layout(report, storyboard, project.out, project.layout)
+    findings = check_layout(report, storyboard, project.out, project.layout,
+                            cast=project.cast)
 
     code = report.render()
     if findings and verbose:

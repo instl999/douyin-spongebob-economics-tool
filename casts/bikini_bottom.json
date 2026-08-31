@@ -131,5 +131,14 @@
     196,
     205
   ],
-  "_panel_color_note": "Default colour for `panel` slabs: pale blue-grey, as the references use over the teal plate."
+  "_panel_color_note": "Default colour for `panel` slabs: pale blue-grey, as the references use over the teal plate.",
+  "writable": [
+    "calendar",
+    "down_chart",
+    "queue_sign",
+    "sea_map",
+    "up_chart",
+    "whiteboard"
+  ],
+  "_writable_note": "Props that exist to be written on - blank boards, cards, signs. Text is allowed to sit on these and is snapped to their centre. Text over anything else, especially a character, is a defect and gets moved."
 }

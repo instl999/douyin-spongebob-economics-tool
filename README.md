@@ -38,19 +38,51 @@ file.
 
 ## What it produces
 
-A finished MP4 plus an SRT sidecar:
+**An editable Jianying (剪映) project, plus a finished MP4 as the preview.**
+
+The MP4 is what the pipeline thinks the video should be. The draft is the same
+timeline with everything still separable — background, each character, each
+prop, each label, the narration, the subtitles — so the shot where the caption
+crowds a character is a drag rather than another full run.
 
 | | |
 |---|---|
+| Draft | `out/<name>/jianying/<name>/`, opens in Jianying with every layer intact |
 | Resolution | 1920×1080 landscape or 1080×1920 portrait |
 | Frame rate | 30 fps |
 | Video | H.264, CRF 20 by default |
 | Audio | AAC 192 kbps — narration over a music bed |
 | Structure | title card → shots → closing card |
-| Subtitles | burned in, plus a separate `.srt` |
+| Subtitles | burned into the MP4; a real editable subtitle track in the draft; `.srt` either way |
 
 Six videos were produced during development: two art styles, both orientations,
 10 seconds to 2 minutes 44.
+
+### The Jianying draft
+
+Tracks come out named and in order: `背景` (the plate and the two cards),
+`图层1…图层N` (one per simultaneous element, stacked in the renderer's own depth
+order), `配音` (narration, one clip per shot), `字幕` (subtitles, imported so
+they carry Jianying's native styling).
+
+```bash
+python scripts/draft.py out/<name> --install
+```
+
+`--install` writes into Jianying's own drafts folder so the project simply
+appears in the app. Without it the draft lands under `out/<name>/jianying/` and
+can be moved there by hand. Media is referenced by absolute path, so move the
+draft folder and its `materials/` together, or re-export.
+
+One thing to know before editing: **each element is a full-canvas transparent
+frame, not a cropped sprite.** Dragging and scaling behave normally — the
+artwork sits at the centre of its own frame — but the selection handles sit at
+the canvas edge rather than around the character. That is deliberate.
+Jianying's `scale` is undocumented, and "fit the material to the canvas" and
+"fill the canvas with it" disagree for any material that is not canvas-shaped;
+a canvas-shaped material makes the two identical, so placement is exact without
+having to guess which one Jianying means. `scripts/check_draft.py` asserts that
+property rather than trusting it.
 
 ---
 
@@ -79,7 +111,7 @@ every threshold in the quality checks traces back to it.
 ## Install
 
 ```bash
-pip install pillow numpy scipy
+pip install pillow numpy scipy pyJianYingDraft
 cp .env.example .env        # then fill in ARK_API_KEY
 python scripts/build.py --check
 python scripts/selftest.py
@@ -100,9 +132,9 @@ Two checks confirm the install:
 
 - **`build.py --check`** — one line per capability: ffmpeg, ffprobe, API key,
   narration, every cast file, Python packages.
-- **`selftest.py`** — 15 offline checks that spend nothing. They exercise script
-  splitting, the duration model, matting, layout repair, rendering, mixing and
-  verification, building a real MP4 from synthetic assets. Run it after any
+- **`selftest.py`** — 17 offline checks that spend nothing. They exercise script
+  splitting, the duration model, matting, layout repair, rendering, mixing,
+  draft export and verification, building a real MP4 from synthetic assets. Run it after any
   edit, and whenever a build fails and it is not obvious whether the pipeline or
   the API is at fault.
 
@@ -332,10 +364,12 @@ Tall scenery framing the picture makes every character look small and lost.
 | Generate a cast's whole library | `python scripts/build_library.py casts/<cast>.json --plates` |
 | Apply new validation rules to an old plan | `python scripts/migrate_plan.py out/<name>/plan.json casts/<cast>.json` |
 | Cut out a single image by hand | `python scripts/matting.py in.jpg out.png` |
+| Export the editable Jianying project | `python scripts/draft.py out/<name> --install` |
+| Check an exported draft | `python scripts/check_draft.py out/<name>` |
 
 ### Stages
 
-`plan → assets → voice → storyboard → render → audio → mux`
+`plan → assets → voice → storyboard → render → audio → mux → draft`
 
 Each writes its result and skips itself if that result is current.
 `--from <stage>` redoes one stage and clears the cached outputs that depend on
@@ -376,6 +410,23 @@ loop. It runs automatically at the end of every build.
 The background check is the important one: it is the property the whole format
 rests on, and it is measured the same way the references were.
 
+`check_draft.py` covers the deliverable separately, and runs inline the moment
+a draft is written. It reads `draft_content.json` back with no knowledge of how
+it was produced, rebuilds every shot from that file's materials and transforms
+alone, and compares against the renderer's own plate — **mean difference must
+stay under 2/255**, and in practice comes out at 0.00. It also asserts the
+property the export depends on (every video material shares the canvas aspect
+ratio, so `scale` cannot be ambiguous), that no segment sets a scale, that every
+referenced file exists, and that each narration clip starts on its own shot.
+
+It earns its place. It has already caught a stale draft left behind by
+re-matted sprites, and a one-pixel slip in a portrait build caused by deriving
+the transform from element centres, where an odd-width sprite rounds against
+the frame's own floor-divided paste.
+
+A build refuses to finish if the draft disagrees with the render, and reports it
+as a fault in the pipeline rather than in your input — because it is.
+
 ---
 
 ## How it works
@@ -393,8 +444,10 @@ rests on, and it is measured the same way the references were.
 | `timing.py` | Duration prediction and target fitting |
 | `ark.py` / `tts.py` | The two APIs, with retries |
 | `audio.py` | Narration track, music bed, SRT |
+| `draft.py` | Exports the editable Jianying project - the deliverable |
+| `check_draft.py` | Rebuilds the draft's frames from its own JSON and compares them to the render |
 | `verify.py` | The twelve checks |
-| `selftest.py` | Fifteen offline checks; needs no credentials |
+| `selftest.py` | Seventeen offline checks; needs no credentials |
 | `preview.py` | Contact sheet |
 | `new_project.py` | Settings in, project file out, with a cost and length estimate |
 | `build_library.py` | Generate a cast's whole sprite catalogue in one go |
@@ -436,6 +489,37 @@ A half-transparent pixel generated over the key still holds the key colour, and
 composited over the plate it reads as a pale fringe around everything. Solving
 `observed = a·F + (1−a)·key` for `F` removes it. **This is the single largest
 visible difference in a finished frame.**
+
+That equation assumes the edge really is a blend of subject and key, and a JPEG
+edge is not: compression ringing paints colours there that no alpha value
+explains, and it survives. Measured across 85 sprites, edge pixels still
+carried **6.7% key colour on average and 16% at worst** — the visible purple
+fringe. Three further passes take that to **0.59%**:
+
+1. **Choke.** The matte is pulled in about a pixel before anything else, which
+   discards the outermost contaminated ring. Cartoon art has a thick black
+   outline just inside it, so this costs 0.5% of the ink and nothing that reads.
+2. **Borrow.** Partial pixels take their colour from the nearest solid one.
+   Unmixing amplifies noise as alpha falls — dividing by 0.05 makes an artefact
+   twenty times worse — and the interior colour a pixel away is what the edge
+   should have been.
+3. **Rim suppression.** What is left is compared against the artwork a few
+   pixels further in, and only the *excess* key tint is removed.
+
+That last step is fussier than it sounds, and the reason is worth stating,
+because the obvious version is wrong. "Red and blue above green" describes
+magenta spill — and equally describes SpongeBob's tie, Sandy's flower and every
+brown, pink and purple in the cast. A first attempt suppressed it everywhere,
+scored a perfect 0.0% contamination, and turned all of them grey. What
+separates spill from paint is not colour and not alpha, but position and
+context: spill sits within a few pixels of the cut, and it is more key-tinted
+than the artwork just inside it. Beside a black outline the excess is the whole
+halo; inside Patrick, whose own pink reads as spill by colour alone, the
+reference is just as pink and the excess is nothing.
+
+`selftest.py` checks both directions — that the key comes off, *and* that a red
+circle on magenta stays red. A contamination score on its own is a metric the
+code can satisfy by destroying the picture.
 
 ### Text is drawn, never generated
 
@@ -497,6 +581,18 @@ former plus the measured narration lengths.
 - **One background per video.** Locations are built with `panel` slabs over the
   fixed plate, which is what the references do. Swapping the plate mid-video is
   deliberately not supported.
+- **The draft has never been opened in Jianying by this code.** Jianying is
+  Windows/macOS desktop software and was not installed on the machine this was
+  built on, so `check_draft.py` verifies the draft against the renderer rather
+  than against the app. Every number it writes is either documented
+  (`transform`, microsecond timings) or made moot by construction (`scale`, via
+  canvas-shaped materials), but the first person to open one should still expect
+  to confirm that.
+- **Element layers select as full-canvas boxes**, not tight around the artwork.
+  See [The Jianying draft](#the-jianying-draft).
+- **Labels and balloons are pictures in the draft, not text objects.** They can
+  be moved, scaled and deleted, but not retyped — the styling is drawn by PIL
+  and Jianying has no equivalent. Subtitles *are* real text.
 
 ---
 
@@ -519,6 +615,7 @@ references/
   api-notes.md            verified endpoint behaviour, and the errors that mislead
 assets/                   default music bed and sound effects
 out/                      generated; not tracked
+  <name>/jianying/<name>/ the editable Jianying project - the deliverable
 ```
 
 `SKILL.md` is a [Claude Code](https://claude.com/claude-code) skill definition —

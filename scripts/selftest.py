@@ -148,6 +148,17 @@ def main():
                 mode == "chroma" and 0.4 < (alpha > 128).mean() < 0.95,
                 f"{mode}, {(alpha > 128).mean():.2f} opaque")
 
+    # Removing the key must not take the artwork's own warm colours with it.
+    # A spill suppression that ran over every pixel scored perfectly on "no
+    # magenta left" and turned SpongeBob's red tie olive, so the contamination
+    # measure is useless unless it is paired with this one.
+    warm = Image.new("RGB", (200, 200), (255, 0, 255))
+    ImageDraw.Draw(warm).ellipse([40, 40, 160, 160], fill=(205, 35, 45))
+    kept = np.asarray(assets_mod.matting.auto_cutout(warm)[0])[90:110, 90:110]
+    r, g, b = (kept[..., i].mean() for i in range(3))
+    suite.check("matting leaves the artwork's own warm colours alone",
+                r > 175 and g < 75, f"the red circle stayed {r:.0f},{g:.0f},{b:.0f}")
+
     # --- a real render, end to end ----------------------------------------
     with tempfile.TemporaryDirectory() as tmp:
         work = Path(tmp)
@@ -191,6 +202,22 @@ def main():
         final = work / "final.mp4"
         audio_mod.mux(video, track, final)
         suite.check("muxes audio", final.exists())
+
+        # The draft is written blind - Jianying is not installed on most
+        # machines that build one - so the only thing that can be checked is
+        # that its own numbers rebuild the frames the renderer drew.
+        import check_draft
+        import draft as draft_mod
+        (work / "storyboard.json").write_text(
+            json.dumps(storyboard, ensure_ascii=False), encoding="utf-8")
+        draft_dir, _, layers = draft_mod.DraftBuilder(
+            work, name="selftest").build(work / "jianying")
+        diffs = check_draft.compare(work, draft_dir) or []
+        worst = max((d for _, d in diffs), default=99.0)
+        suite.check("the Jianying draft rebuilds the same frames",
+                    diffs and worst <= check_draft.MAX_MEAN_DIFF,
+                    f"{len(diffs)} shots over {layers} layers, "
+                    f"worst {worst:.2f}/255")
 
         report = verify_mod.Report()
         duration = verify_mod.check_container(report, final, storyboard)
