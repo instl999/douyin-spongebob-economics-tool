@@ -1,0 +1,74 @@
+{
+  "name": "flat_office",
+  "description": "A modern flat-vector office cast for business and economics explainers. The boss sets the target, the worker absorbs it, the analyst explains what actually happened.",
+  "style": "modern flat vector infographic illustration, bold simple geometric shapes, thick uniform charcoal outlines of even weight, completely flat fills with no gradients and no shading, restrained palette of deep teal, coral red, mustard yellow, warm cream and charcoal grey, clean corporate editorial look",
+  "background": {
+    "prompt": "An empty modern open-plan office interior seen straight on. Low horizon two thirds down the frame. Upper two thirds: a plain warm cream wall with a wide band of pale teal along the top, three simple tall windows evenly spaced showing flat pale blue sky, no view. Lower third: a flat charcoal-grey floor stretching the full width with a single clean horizon line where it meets the wall. A low potted plant at the extreme left edge and a tall narrow one at the extreme right edge, no taller than a quarter of the image. Wide open empty middle with nothing in it."
+  },
+  "characters": {
+    "boss": {
+      "role": "sets the target and signs the cheque - the one who wants the number to move",
+      "look": "a flat vector businesswoman, short dark bob haircut, charcoal blazer over a coral shirt, straight charcoal trousers, simple dot eyes and a single line mouth, no nose, thick even outlines, flat colours",
+      "relative_height": 1.0,
+      "poses": {
+        "stand": "standing upright facing the viewer, arms at her sides, neutral expression",
+        "point": "standing and pointing forward with one straight arm, explaining a decision",
+        "arms_crossed": "standing with arms folded across her chest, unimpressed, one eyebrow line raised",
+        "present": "standing with one arm raised and open palm turned upward, presenting something to the side",
+        "worried": "standing with one hand raised to her cheek, mouth a small flat oval, concerned"
+      }
+    },
+    "worker": {
+      "role": "does the actual work and absorbs whatever the decision costs",
+      "look": "a flat vector office worker, short mustard-yellow hair, teal crew-neck jumper, cream trousers, simple dot eyes and a small line mouth, no nose, thick even outlines, flat colours",
+      "relative_height": 0.96,
+      "poses": {
+        "stand": "standing upright facing the viewer, arms at his sides, small neutral expression",
+        "typing": "standing and holding a flat laptop open in both hands in front of him, looking down at it",
+        "tired": "standing with shoulders dropped and arms hanging limp, eyes drawn as two short flat dashes",
+        "happy": "standing with both arms raised in a small celebration, eyes drawn as two upward curves",
+        "carry": "standing and carrying a tall stack of flat document folders in both arms"
+      }
+    },
+    "analyst": {
+      "role": "explains the mechanism - what the numbers actually mean",
+      "look": "a flat vector analyst, round charcoal-rimmed glasses, tightly curled dark hair, cream shirt with rolled sleeves, teal trousers, simple dot eyes behind the glasses and a line mouth, no nose, thick even outlines, flat colours",
+      "relative_height": 1.02,
+      "poses": {
+        "stand": "standing upright facing the viewer, hands in trouser pockets, calm expression",
+        "explain": "standing and gesturing with one open hand turned upward, mid-explanation",
+        "point_up": "standing and pointing straight upward with one index finger, making a single point",
+        "think": "standing with one hand at the chin, head tilted slightly, considering",
+        "chart": "standing and holding up a flat rectangular chart card in both hands, showing it to the viewer"
+      }
+    }
+  },
+  "props": {
+    "desk": "a flat vector office desk seen straight on, plain charcoal top on two simple legs, nothing on it",
+    "laptop": "a flat vector open laptop seen straight on, charcoal body, blank pale screen",
+    "chart_up": "a flat vector chart card, cream rectangle with four teal bars rising left to right and a coral arrow above them pointing up",
+    "chart_down": "a flat vector chart card, cream rectangle with four charcoal bars falling left to right and a coral arrow above them pointing down",
+    "whiteboard": "a flat vector whiteboard on two legs, blank cream writing surface in a charcoal frame",
+    "money_stack": "a flat vector stack of banknotes seen straight on, mustard rectangles with simple charcoal bands, no writing",
+    "clock": "a flat vector round wall clock, cream face, charcoal rim, two simple charcoal hands, no numbers",
+    "meeting_table": "a flat vector long meeting table seen straight on, plain cream top on charcoal legs",
+    "door": "a flat vector office door in a plain charcoal frame, cream panel, small round handle",
+    "coffee": "a flat vector takeaway coffee cup, cream body with a coral band, charcoal lid"
+  },
+  "hanging": [
+    "chart_up",
+    "chart_down",
+    "whiteboard",
+    "clock"
+  ],
+  "foreground": [
+    "desk",
+    "meeting_table"
+  ],
+  "panel_color": [
+    188,
+    180,
+    164
+  ],
+  "_panel_color_note": "Default colour for panel slabs: a warm grey clearly darker than the cream wall. Too close in value and the slab does not read as a room at all - it just tints the wall."
+}

@@ -1,0 +1,17 @@
+# credentials - never commit
+.env
+
+# generated output
+out/
+**/_build/
+**/frames/
+**/_narration_parts/
+*.partial.*
+
+# pre-matte source images: large, and regenerable from the sprites' prompts
+casts/*/raw/
+
+# python
+*.pyc
+__pycache__/
+.venv/

@@ -1,0 +1,12 @@
+{
+  "name": "office_portrait",
+  "title": "什么是沉没成本",
+  "script": "examples\\sunk_cost_office.txt",
+  "cast": "casts\\flat_office.json",
+  "orientation": "portrait",
+  "shot_seconds": 5.0,
+  "voice": {
+    "speaker": "zh_female_gaolengyujie_uranus_bigtts",
+    "speed": 1.0
+  }
+}

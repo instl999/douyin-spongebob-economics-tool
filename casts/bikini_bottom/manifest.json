@@ -1,0 +1,755 @@
+{
+  "krabs_greedy.png": {
+    "fingerprint": "321068adf58db535",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, Mr. Krabs the crab, rounded red crab body, two long light-green eye stalks with small black eyes on top, large red claws for hands, light blue short-sleeved shirt with a jagged hem, brown trousers with a black belt and gold buckle, short red legs, standing with both claws clasped together, wide delighted grin, eyes gleaming, full body, complete figure, centred, nothing cropped, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.4605,
+    "pixels": [
+      1127,
+      1521
+    ],
+    "built": "2026-08-29 22:10:27"
+  },
+  "krabs_point.png": {
+    "fingerprint": "f1b2b1191420d153",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, Mr. Krabs the crab, rounded red crab body, two long light-green eye stalks with small black eyes on top, large red claws for hands, light blue short-sleeved shirt with a jagged hem, brown trousers with a black belt and gold buckle, short red legs, standing and pointing forward with one raised claw, explaining something, mouth open, full body, complete figure, centred, nothing cropped, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.3473,
+    "pixels": [
+      1565,
+      1497
+    ],
+    "built": "2026-08-28 21:42:48"
+  },
+  "krabs_stand.png": {
+    "fingerprint": "902b369bb2238dde",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, Mr. Krabs the crab, rounded red crab body, two long light-green eye stalks with small black eyes on top, large red claws for hands, light blue short-sleeved shirt with a jagged hem, brown trousers with a black belt and gold buckle, short red legs, standing upright facing the viewer, both claws resting on his hips, pleased expression, full body, complete figure, centred, nothing cropped, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.3948,
+    "pixels": [
+      1168,
+      1528
+    ],
+    "built": "2026-08-29 22:10:56"
+  },
+  "krabs_think.png": {
+    "fingerprint": "14f6a2f83247a00e",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, Mr. Krabs the crab, rounded red crab body, two long light-green eye stalks with small black eyes on top, large red claws for hands, light blue short-sleeved shirt with a jagged hem, brown trousers with a black belt and gold buckle, short red legs, standing with one claw under his chin, brow furrowed, thinking hard, full body, complete figure, centred, nothing cropped, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.403,
+    "pixels": [
+      1248,
+      1517
+    ],
+    "built": "2026-08-29 22:11:24"
+  },
+  "krabs_worried.png": {
+    "fingerprint": "f04365b2023e6edd",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, Mr. Krabs the crab, rounded red crab body, two long light-green eye stalks with small black eyes on top, large red claws for hands, light blue short-sleeved shirt with a jagged hem, brown trousers with a black belt and gold buckle, short red legs, standing with claws raised near his face, worried anxious expression, full body, complete figure, centred, nothing cropped, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.4685,
+    "pixels": [
+      1284,
+      1523
+    ],
+    "built": "2026-08-29 22:11:51"
+  },
+  "patrick_lazy.png": {
+    "fingerprint": "b98f0c114870bdd0",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, Patrick Star the starfish, thick pink five-pointed star body, small close-set eyes with thick eyebrows, wide mouth, green swim shorts with purple flower pattern, standing with arms hanging limp, half-closed eyes, thoroughly unbothered, full body, complete figure, centred, nothing cropped, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.5685,
+    "pixels": [
+      746,
+      1456
+    ],
+    "built": "2026-08-29 22:12:13"
+  },
+  "patrick_stand.png": {
+    "fingerprint": "6c3e0ca7db1664d4",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, Patrick Star the starfish, thick pink five-pointed star body, small close-set eyes with thick eyebrows, wide mouth, green swim shorts with purple flower pattern, standing upright facing the viewer, arms at his sides, blank cheerful expression, full body, complete figure, centred, nothing cropped, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.4934,
+    "pixels": [
+      1050,
+      1478
+    ],
+    "built": "2026-08-29 22:12:34"
+  },
+  "prop_coins.png": {
+    "fingerprint": "40bb870bffaf06c3",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, a heap of shiny gold coins piled up, a single inanimate object on its own, no characters, no people, no creatures, no hands, no arms, nothing else in the picture, centred, complete, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.6851,
+    "pixels": [
+      1470,
+      833
+    ],
+    "built": "2026-08-28 21:46:21"
+  },
+  "prop_down_chart.png": {
+    "fingerprint": "3203d83aa83133d8",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, a simple bar chart on a white card, four bars falling left to right, a red downward arrow above them, a single inanimate object on its own, no characters, no people, no creatures, no hands, no arms, nothing else in the picture, centred, complete, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.4946,
+    "pixels": [
+      1575,
+      1447
+    ],
+    "built": "2026-08-28 21:46:42"
+  },
+  "prop_krusty_krab.png": {
+    "fingerprint": "2a55bebb66dee48e",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, the Krusty Krab restaurant building, wooden shack shaped like a lobster trap, big anchor-style entrance sign, portholes, small and complete, a single inanimate object on its own, no characters, no people, no creatures, no hands, no arms, nothing else in the picture, centred, complete, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.3049,
+    "pixels": [
+      1468,
+      1448
+    ],
+    "built": "2026-08-28 21:47:25"
+  },
+  "prop_money_bag.png": {
+    "fingerprint": "6e7f8da75bb45861",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, a plump beige cloth money bag tied at the neck with rope, a single inanimate object on its own, no characters, no people, no creatures, no hands, no arms, nothing else in the picture, centred, complete, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.6684,
+    "pixels": [
+      918,
+      1127
+    ],
+    "built": "2026-08-28 21:47:44"
+  },
+  "prop_oven.png": {
+    "fingerprint": "01a2ab313b61260e",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, a stainless steel commercial kitchen oven with a dark front panel and control knobs, a single inanimate object on its own, no characters, no people, no creatures, no hands, no arms, nothing else in the picture, centred, complete, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.878,
+    "pixels": [
+      926,
+      830
+    ],
+    "built": "2026-08-28 21:48:11"
+  },
+  "prop_plates.png": {
+    "fingerprint": "ac9b189438f7295d",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, a tall neat stack of clean white plates, a single inanimate object on its own, no characters, no people, no creatures, no hands, no arms, nothing else in the picture, centred, complete, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.8732,
+    "pixels": [
+      990,
+      1381
+    ],
+    "built": "2026-08-28 21:48:33"
+  },
+  "prop_queue_sign.png": {
+    "fingerprint": "80af51b183dd51e1",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, a simple wooden signpost with a blank rectangular board on a single post, a single inanimate object on its own, no characters, no people, no creatures, no hands, no arms, nothing else in the picture, centred, complete, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.4544,
+    "pixels": [
+      797,
+      959
+    ],
+    "built": "2026-08-28 21:48:54"
+  },
+  "prop_sink.png": {
+    "fingerprint": "f6d0c58ce6925326",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, a stainless steel kitchen sink basin on legs, a tap, soapy water and plates inside, a single inanimate object on its own, no characters, no people, no creatures, no hands, no arms, nothing else in the picture, centred, complete, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.5511,
+    "pixels": [
+      1160,
+      974
+    ],
+    "built": "2026-08-28 21:55:46"
+  },
+  "prop_up_chart.png": {
+    "fingerprint": "a62df6880d876bd6",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, a simple bar chart on a white card, four bars rising left to right, a green upward arrow above them, a single inanimate object on its own, no characters, no people, no creatures, no hands, no arms, nothing else in the picture, centred, complete, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.9552,
+    "pixels": [
+      1315,
+      940
+    ],
+    "built": "2026-08-28 21:49:21"
+  },
+  "prop_arrow_right.png": {
+    "fingerprint": "28d0a49cc9bbda23",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, a thick bold cartoon arrow pointing to the right, solid dark grey, simple flat shape, a single inanimate object on its own, no characters, no people, no creatures, no hands, no arms, nothing else in the picture, centred, complete, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.1145,
+    "pixels": [
+      1920,
+      1920
+    ],
+    "built": "2026-08-29 22:13:04"
+  },
+  "prop_clock.png": {
+    "fingerprint": "31e721800378968a",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, a plain round wall clock with a white face and black hands, a single inanimate object on its own, no characters, no people, no creatures, no hands, no arms, nothing else in the picture, centred, complete, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.4452,
+    "pixels": [
+      1544,
+      1572
+    ],
+    "built": "2026-08-29 22:13:28"
+  },
+  "prop_kitchen_table.png": {
+    "fingerprint": "59dfb735faeb7f63",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, a long plain brown wooden work table seen from the front, a single inanimate object on its own, no characters, no people, no creatures, no hands, no arms, nothing else in the picture, centred, complete, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.1423,
+    "pixels": [
+      1920,
+      1920
+    ],
+    "built": "2026-08-28 21:47:02"
+  },
+  "sandy_explain.png": {
+    "fingerprint": "c256686056aa8ba8",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, Sandy Cheeks the squirrel, brown furry squirrel face inside a clear round glass diving helmet, white astronaut-style diving suit with a purple flower emblem on the chest, white boots and gloves, standing and gesturing with one open hand as if explaining a point, mouth open, full body, complete figure, centred, nothing cropped, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.4762,
+    "pixels": [
+      1322,
+      1609
+    ],
+    "built": "2026-08-28 21:50:11"
+  },
+  "sponge_happy.png": {
+    "fingerprint": "bcd173797d7ca578",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, SpongeBob SquarePants, bright yellow rectangular sponge body with round holes, large blue eyes with black pupils, buck teeth, white shirt with a red necktie, brown square trousers, thin black-shoed legs, standing with both arms raised in delight, huge open grin, eyes squeezed with joy, full body, complete figure, centred, nothing cropped, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.4657,
+    "pixels": [
+      1454,
+      1542
+    ],
+    "built": "2026-08-28 21:51:06"
+  },
+  "sponge_stand.png": {
+    "fingerprint": "664c28cee4e4975b",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, SpongeBob SquarePants, bright yellow rectangular sponge body with round holes, large blue eyes with black pupils, buck teeth, white shirt with a red necktie, brown square trousers, thin black-shoed legs, standing upright facing the viewer, arms at his sides, cheerful smile, full body, complete figure, centred, nothing cropped, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.6956,
+    "pixels": [
+      1015,
+      1307
+    ],
+    "built": "2026-08-28 21:56:10"
+  },
+  "sponge_tired.png": {
+    "fingerprint": "81aed6f49427fbc3",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, SpongeBob SquarePants, bright yellow rectangular sponge body with round holes, large blue eyes with black pupils, buck teeth, white shirt with a red necktie, brown square trousers, thin black-shoed legs, standing with slumped shoulders, drooping eyelids, exhausted expression, full body, complete figure, centred, nothing cropped, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.6948,
+    "pixels": [
+      982,
+      1281
+    ],
+    "built": "2026-08-28 21:51:27"
+  },
+  "squid_smug.png": {
+    "fingerprint": "38f1946b5be4581e",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, Squidward Tentacles the octopus, tall pale blue-green body, large bald head, long drooping nose, heavy-lidded half-closed eyes, brown short-sleeved shirt, four tentacle legs, standing with one tentacle hand raised, eyes narrowed, smug superior expression, full body, complete figure, centred, nothing cropped, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.4063,
+    "pixels": [
+      1021,
+      1510
+    ],
+    "built": "2026-08-28 21:52:21"
+  },
+  "patrick_confused.png": {
+    "fingerprint": "e3775ea5cab11f93",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, Patrick Star the starfish, thick pink five-pointed star body, small close-set eyes with thick eyebrows, wide mouth, green swim shorts with purple flower pattern, standing with a completely baffled expression, mouth slightly open, eyes crossed, full body, complete figure, centred, nothing cropped, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.512,
+    "pixels": [
+      998,
+      1441
+    ],
+    "built": "2026-08-28 21:44:48"
+  },
+  "sponge_confused.png": {
+    "fingerprint": "cfd26ad0df6ab59b",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, SpongeBob SquarePants, bright yellow rectangular sponge body with round holes, large blue eyes with black pupils, buck teeth, white shirt with a red necktie, brown square trousers, thin black-shoed legs, standing with a puzzled expression, one hand scratching the back of his head, full body, complete figure, centred, nothing cropped, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.6175,
+    "pixels": [
+      1171,
+      1392
+    ],
+    "built": "2026-08-28 21:50:34"
+  },
+  "sponge_work.png": {
+    "fingerprint": "3b824733d5893b59",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, SpongeBob SquarePants, bright yellow rectangular sponge body with round holes, large blue eyes with black pupils, buck teeth, white shirt with a red necktie, brown square trousers, thin black-shoed legs, standing and holding a plate in both hands, concentrating on the work, full body, complete figure, centred, nothing cropped, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.6234,
+    "pixels": [
+      784,
+      1078
+    ],
+    "built": "2026-08-28 21:51:55"
+  },
+  "prop_whiteboard.png": {
+    "fingerprint": "d614965fdf7ed62e",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, a plain white presentation board in a light grey frame, blank writing surface, standing upright, a single inanimate object on its own, no characters, no people, no creatures, no hands, no arms, nothing else in the picture, centred, complete, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.9594,
+    "pixels": [
+      1365,
+      1022
+    ],
+    "built": "2026-08-28 21:49:41"
+  },
+  "squid_stand.png": {
+    "fingerprint": "c3a18632263a1cd3",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, Squidward Tentacles the octopus, tall pale blue-green body, large bald head, long drooping nose, heavy-lidded half-closed eyes, brown short-sleeved shirt, four tentacle legs, standing upright facing the viewer, arms crossed, bored unimpressed expression, full body, complete figure, centred, nothing cropped, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.5168,
+    "pixels": [
+      602,
+      1504
+    ],
+    "built": "2026-08-28 21:52:43"
+  },
+  "prop_boxes.png": {
+    "fingerprint": "d4eae519309279de",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, a neat stack of brown cardboard shipping cartons of different sizes with taped seams, a single inanimate object on its own, no characters, no people, no creatures, no hands, no arms, nothing else in the picture, centred, complete, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.7103,
+    "pixels": [
+      1300,
+      1077
+    ],
+    "built": "2026-08-28 21:55:21"
+  },
+  "background::2560x1440": {
+    "fingerprint": "244cb651578720e6",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, Bikini Bottom undersea meadow seen straight on. Low horizon two thirds down the frame. Upper two thirds: calm teal water fading to pale cyan, decorated only with thin pale outlines of five-petal flower shapes, small and sparse. Lower third: an open bright green grass field stretching the full width, gently rolling, small white flowers. Small purple coral bushes hug the ground at the extreme left and right edges only. Wide open empty middle with nothing in it., wide establishing background plate, no characters, no people, no text, no watermark, nothing in the foreground, empty stage with clear space in the lower half",
+    "size": "2560x1440",
+    "built": "2026-08-29 22:10:04"
+  },
+  "background::1440x2560": {
+    "fingerprint": "a6b0e578842444d1",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, Bikini Bottom undersea meadow seen straight on. Low horizon two thirds down the frame. Upper two thirds: calm teal water fading to pale cyan, decorated only with thin pale outlines of five-petal flower shapes, small and sparse. Lower third: an open bright green grass field stretching the full width, gently rolling, small white flowers. Small purple coral bushes hug the ground at the extreme left and right edges only. Wide open empty middle with nothing in it., wide establishing background plate, no characters, no people, no text, no watermark, nothing in the foreground, empty stage with clear space in the lower half",
+    "size": "1440x2560",
+    "built": "2026-08-28 22:15:03"
+  },
+  "patrick_ask.png": {
+    "fingerprint": "6db1b0c676b8c822",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, Patrick Star the starfish, thick pink five-pointed star body, small close-set eyes with thick eyebrows, wide mouth, green swim shorts with purple flower pattern, standing with one arm raised as if asking a question, mouth open, curious look, full body, complete figure, centred, nothing cropped, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.484,
+    "pixels": [
+      1004,
+      1403
+    ],
+    "built": "2026-08-28 22:38:31"
+  },
+  "title::什么是效率工资::2560x1440": {
+    "fingerprint": "f60b10a40a3e734a",
+    "prompt": "中文书法艺术字『什么是效率工资』，狂草毛笔字，鲜红色字体带灰白色立体投影，笔画有飞白和枯笔质感，纯黑色背景，横向排列一行，字体清晰完整准确",
+    "size": "2560x1440",
+    "verified": "什么是效率工资",
+    "built": "2026-08-29 22:14:51"
+  },
+  "squid_annoyed.png": {
+    "fingerprint": "f44d1f7c40a2bb4b",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, Squidward Tentacles the octopus, tall pale blue-green body, large bald head, long drooping nose, heavy-lidded half-closed eyes, brown short-sleeved shirt, four tentacle legs, standing with both hands on his head, exasperated irritated expression, full body, complete figure, centred, nothing cropped, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.2473,
+    "pixels": [
+      1404,
+      1716
+    ],
+    "built": "2026-08-28 22:40:27"
+  },
+  "title::什么是效率工资::1440x2560": {
+    "fingerprint": "9f6db070beea77f1",
+    "prompt": "中文书法艺术字『什么是效率工资』，狂草毛笔字，鲜红色字体带灰白色立体投影，笔画有飞白和枯笔质感，纯黑色背景，横向排列一行，字体清晰完整准确",
+    "size": "1440x2560",
+    "verified": "什么是效率工资",
+    "built": "2026-08-29 22:17:07"
+  },
+  "krabs_angry.png": {
+    "fingerprint": "8d202b2f47fc6d51",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, Mr. Krabs the crab, rounded red crab body, two long light-green eye stalks with small black eyes on top, large red claws for hands, light blue short-sleeved shirt with a jagged hem, brown trousers with a black belt and gold buckle, short red legs, standing with both claws raised in fury, mouth wide open shouting, eyes narrowed, full body, complete figure, centred, nothing cropped, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.3801,
+    "pixels": [
+      1531,
+      1478
+    ],
+    "built": "2026-08-30 07:47:11"
+  },
+  "krabs_count.png": {
+    "fingerprint": "f6d1ef350ea9d133",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, Mr. Krabs the crab, rounded red crab body, two long light-green eye stalks with small black eyes on top, large red claws for hands, light blue short-sleeved shirt with a jagged hem, brown trousers with a black belt and gold buckle, short red legs, standing holding a stack of gold coins in one claw, counting them with a delighted greedy expression, full body, complete figure, centred, nothing cropped, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.3734,
+    "pixels": [
+      1341,
+      1404
+    ],
+    "built": "2026-08-30 07:47:37"
+  },
+  "krabs_desk.png": {
+    "fingerprint": "942d3df90562bd31",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, Mr. Krabs the crab, rounded red crab body, two long light-green eye stalks with small black eyes on top, large red claws for hands, light blue short-sleeved shirt with a jagged hem, brown trousers with a black belt and gold buckle, short red legs, sitting behind a dark wooden desk covered with papers and a ledger, leaning over the paperwork, full body, complete figure, centred, nothing cropped, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.3913,
+    "pixels": [
+      1546,
+      1517
+    ],
+    "built": "2026-08-30 07:48:07"
+  },
+  "krabs_sit.png": {
+    "fingerprint": "7ff41a08d622624c",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, Mr. Krabs the crab, rounded red crab body, two long light-green eye stalks with small black eyes on top, large red claws for hands, light blue short-sleeved shirt with a jagged hem, brown trousers with a black belt and gold buckle, short red legs, sitting on a plain wooden stool, leaning forward with one claw on his knee, listening, full body, complete figure, centred, nothing cropped, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.4458,
+    "pixels": [
+      1189,
+      1612
+    ],
+    "built": "2026-08-30 07:48:38"
+  },
+  "patrick_eat.png": {
+    "fingerprint": "23fb80cbb440f17d",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, Patrick Star the starfish, thick pink five-pointed star body, small close-set eyes with thick eyebrows, wide mouth, green swim shorts with purple flower pattern, standing holding a burger up to his open mouth, about to take a bite, happy, full body, complete figure, centred, nothing cropped, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.5278,
+    "pixels": [
+      893,
+      1301
+    ],
+    "built": "2026-08-30 07:49:10"
+  },
+  "patrick_shrug.png": {
+    "fingerprint": "83352150f10ad9d3",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, Patrick Star the starfish, thick pink five-pointed star body, small close-set eyes with thick eyebrows, wide mouth, green swim shorts with purple flower pattern, standing with both arms out to the sides and palms up, shrugging, blank expression, full body, complete figure, centred, nothing cropped, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.2901,
+    "pixels": [
+      1501,
+      1626
+    ],
+    "built": "2026-08-30 07:49:33"
+  },
+  "patrick_think.png": {
+    "fingerprint": "ef632174efe1f289",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, Patrick Star the starfish, thick pink five-pointed star body, small close-set eyes with thick eyebrows, wide mouth, green swim shorts with purple flower pattern, standing with one finger raised beside his head as if an idea arrived, eyes wide, full body, complete figure, centred, nothing cropped, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.5085,
+    "pixels": [
+      1065,
+      1387
+    ],
+    "built": "2026-08-30 07:50:01"
+  },
+  "prop_balance_scale.png": {
+    "fingerprint": "920394cab66c40f5",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, an old fashioned two-pan balance scale, empty pans, dark metal, a single inanimate object on its own, no characters, no people, no creatures, no hands, no arms, nothing else in the picture, centred, complete, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.1586,
+    "pixels": [
+      1602,
+      1372
+    ],
+    "built": "2026-08-30 07:50:26"
+  },
+  "prop_calendar.png": {
+    "fingerprint": "871eea24a9496e10",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, a wall calendar with a blank grid of squares, hanging, a single inanimate object on its own, no characters, no people, no creatures, no hands, no arms, nothing else in the picture, centred, complete, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.8376,
+    "pixels": [
+      1017,
+      1027
+    ],
+    "built": "2026-08-30 07:50:50"
+  },
+  "prop_cargo_ship.png": {
+    "fingerprint": "3d11eeb2f2443c8f",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, a small cartoon cargo ship seen from the side, dark hull, stacked shipping crates on deck, a crane arm, a single inanimate object on its own, no characters, no people, no creatures, no hands, no arms, nothing else in the picture, centred, complete, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.5725,
+    "pixels": [
+      1092,
+      473
+    ],
+    "built": "2026-08-30 07:51:14"
+  },
+  "prop_clipboard.png": {
+    "fingerprint": "6ee11a2bbdf8cba4",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, a wooden clipboard with a blank white sheet clipped to it, a single inanimate object on its own, no characters, no people, no creatures, no hands, no arms, nothing else in the picture, centred, complete, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.8491,
+    "pixels": [
+      732,
+      1044
+    ],
+    "built": "2026-08-30 07:51:32"
+  },
+  "prop_crowd_queue.png": {
+    "fingerprint": "49ff98997be9bf7f",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, a row of five small simple cartoon fish customers standing in a line side by side, seen from the front, a single inanimate object on its own, no characters, no people, no creatures, no hands, no arms, nothing else in the picture, centred, complete, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.0714,
+    "pixels": [
+      1920,
+      1920
+    ],
+    "built": "2026-08-30 07:52:02"
+  },
+  "prop_delivery_truck.png": {
+    "fingerprint": "de6fd27cbff2ba12",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, a small cartoon delivery van seen from the side, plain white box body, no writing, a single inanimate object on its own, no characters, no people, no creatures, no hands, no arms, nothing else in the picture, centred, complete, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.7772,
+    "pixels": [
+      1128,
+      651
+    ],
+    "built": "2026-08-30 07:52:22"
+  },
+  "prop_desk.png": {
+    "fingerprint": "7af61a8340bf0df3",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, a plain dark wooden office desk seen from the front, papers and a small lamp on top, a single inanimate object on its own, no characters, no people, no creatures, no hands, no arms, nothing else in the picture, centred, complete, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.4764,
+    "pixels": [
+      1130,
+      788
+    ],
+    "built": "2026-08-30 07:52:47"
+  },
+  "prop_factory.png": {
+    "fingerprint": "edcdef3fdc833a91",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, a small simple cartoon factory building with two chimneys, seen from the front, a single inanimate object on its own, no characters, no people, no creatures, no hands, no arms, nothing else in the picture, centred, complete, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.2971,
+    "pixels": [
+      1472,
+      1308
+    ],
+    "built": "2026-08-30 07:53:07"
+  },
+  "prop_kitchen_counter.png": {
+    "fingerprint": "e46548957c6781e3",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, a long stainless steel commercial kitchen counter seen from the front, flat empty worktop, a shelf underneath, a single inanimate object on its own, no characters, no people, no creatures, no hands, no arms, nothing else in the picture, centred, complete, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.6916,
+    "pixels": [
+      1756,
+      568
+    ],
+    "built": "2026-08-30 07:53:32"
+  },
+  "prop_office_desk_set.png": {
+    "fingerprint": "77e29511248e19a8",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, a plain office desk seen from the front with a boxy computer monitor, a keyboard and a stack of papers on it, a single inanimate object on its own, no characters, no people, no creatures, no hands, no arms, nothing else in the picture, centred, complete, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.3301,
+    "pixels": [
+      1622,
+      1328
+    ],
+    "built": "2026-08-30 07:53:56"
+  },
+  "prop_sea_map.png": {
+    "fingerprint": "b672a4e5a0e493c7",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, a nautical chart on a light cream sheet in a thin frame, pale blue landmasses and a compass rose, no readable writing, a single inanimate object on its own, no characters, no people, no creatures, no hands, no arms, nothing else in the picture, centred, complete, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.753,
+    "pixels": [
+      1108,
+      849
+    ],
+    "built": "2026-08-30 07:54:17"
+  },
+  "prop_shop_counter.png": {
+    "fingerprint": "714ff86e37c79575",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, a wooden shop service counter seen from the front with an old cash register on top, a single inanimate object on its own, no characters, no people, no creatures, no hands, no arms, nothing else in the picture, centred, complete, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.6772,
+    "pixels": [
+      1141,
+      767
+    ],
+    "built": "2026-08-30 07:54:41"
+  },
+  "sandy_point.png": {
+    "fingerprint": "21584d16be24f998",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, Sandy Cheeks the squirrel, brown furry squirrel face inside a clear round glass diving helmet, white astronaut-style diving suit with a purple flower emblem on the chest, white boots and gloves, standing and pointing upward with one gloved finger, making a point, confident, full body, complete figure, centred, nothing cropped, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.6517,
+    "pixels": [
+      788,
+      1430
+    ],
+    "built": "2026-08-30 07:55:13"
+  },
+  "sandy_stand.png": {
+    "fingerprint": "a95a70556d41765e",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, Sandy Cheeks the squirrel, brown furry squirrel face inside a clear round glass diving helmet, white astronaut-style diving suit with a purple flower emblem on the chest, white boots and gloves, standing upright facing the viewer, hands on hips, confident expression, full body, complete figure, centred, nothing cropped, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.5754,
+    "pixels": [
+      835,
+      1451
+    ],
+    "built": "2026-08-30 07:55:42"
+  },
+  "sandy_think.png": {
+    "fingerprint": "c5e5a64937731b10",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, Sandy Cheeks the squirrel, brown furry squirrel face inside a clear round glass diving helmet, white astronaut-style diving suit with a purple flower emblem on the chest, white boots and gloves, standing with arms folded and one hand on her chin, considering something, full body, complete figure, centred, nothing cropped, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.6575,
+    "pixels": [
+      764,
+      1485
+    ],
+    "built": "2026-08-30 07:56:07"
+  },
+  "sponge_run.png": {
+    "fingerprint": "a4ae91606962272a",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, SpongeBob SquarePants, bright yellow rectangular sponge body with round holes, large blue eyes with black pupils, buck teeth, white shirt with a red necktie, brown square trousers, thin black-shoed legs, running to the right at full speed, arms pumping, legs a blur, determined expression, full body, complete figure, centred, nothing cropped, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.529,
+    "pixels": [
+      1254,
+      1094
+    ],
+    "built": "2026-08-30 07:56:27"
+  },
+  "sponge_sad.png": {
+    "fingerprint": "d2008ed17b6ad9ab",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, SpongeBob SquarePants, bright yellow rectangular sponge body with round holes, large blue eyes with black pupils, buck teeth, white shirt with a red necktie, brown square trousers, thin black-shoed legs, standing with shoulders drooping and head lowered, downturned mouth, glum, full body, complete figure, centred, nothing cropped, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.68,
+    "pixels": [
+      1108,
+      1465
+    ],
+    "built": "2026-08-30 07:56:53"
+  },
+  "sponge_serve.png": {
+    "fingerprint": "ef253fc4490358a9",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, SpongeBob SquarePants, bright yellow rectangular sponge body with round holes, large blue eyes with black pupils, buck teeth, white shirt with a red necktie, brown square trousers, thin black-shoed legs, standing holding up a round burger on a plate in both hands, proud grin, full body, complete figure, centred, nothing cropped, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.5528,
+    "pixels": [
+      1178,
+      1390
+    ],
+    "built": "2026-08-30 07:57:13"
+  },
+  "sponge_think.png": {
+    "fingerprint": "db15fbe863bba29f",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, SpongeBob SquarePants, bright yellow rectangular sponge body with round holes, large blue eyes with black pupils, buck teeth, white shirt with a red necktie, brown square trousers, thin black-shoed legs, standing with one gloved hand on his chin, eyes looking upward, thinking, full body, complete figure, centred, nothing cropped, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.5953,
+    "pixels": [
+      1001,
+      1372
+    ],
+    "built": "2026-08-30 07:57:40"
+  },
+  "squid_play.png": {
+    "fingerprint": "5f17e97afe14cdb4",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, Squidward Tentacles the octopus, tall pale blue-green body, large bald head, long drooping nose, heavy-lidded half-closed eyes, brown short-sleeved shirt, four tentacle legs, standing playing a black clarinet held in both tentacle hands, eyes closed, pleased with himself, full body, complete figure, centred, nothing cropped, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.378,
+    "pixels": [
+      950,
+      1449
+    ],
+    "built": "2026-08-30 07:58:03"
+  },
+  "squid_sigh.png": {
+    "fingerprint": "9c51cf6d62b8b4d1",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, Squidward Tentacles the octopus, tall pale blue-green body, large bald head, long drooping nose, heavy-lidded half-closed eyes, brown short-sleeved shirt, four tentacle legs, standing with one tentacle hand over his eyes, head tilted back, exasperated sigh, full body, complete figure, centred, nothing cropped, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.2087,
+    "pixels": [
+      1325,
+      1648
+    ],
+    "built": "2026-08-30 07:58:26"
+  },
+  "title::什么是价格歧视::2560x1440": {
+    "fingerprint": "364827f913187ad9",
+    "prompt": "中文书法艺术字『什么是价格歧视』，狂草毛笔字，鲜红色字体带灰白色立体投影，笔画有飞白和枯笔质感，纯黑色背景，横向排列一行，字体清晰完整准确",
+    "size": "2560x1440",
+    "verified": "什么是价格歧视",
+    "built": "2026-08-30 18:14:11"
+  }
+}

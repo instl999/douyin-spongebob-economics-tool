@@ -1,0 +1,16 @@
+{
+  "name": "efficiency_wage",
+  "title": "什么是效率工资",
+  "script": "examples/efficiency_wage.txt",
+  "cast": "casts/bikini_bottom.json",
+  "orientation": "landscape",
+  "shot_seconds": 5.0,
+  "dissolve": 0.5,
+  "tail_pad": 0.35,
+  "voice": {
+    "speaker": "zh_male_yuanboxiaoshu_uranus_bigtts",
+    "speed": 1.0
+  },
+  "bgm": "assets/bgm_default.wav",
+  "bgm_volume": 0.1
+}

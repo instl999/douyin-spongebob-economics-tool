@@ -1,0 +1,213 @@
+"""Prove the installation works, without touching the network.
+
+    python scripts/selftest.py
+
+Every stage that does not need an API is exercised on synthetic assets: the
+script splitter, the duration model, matting, the layout checks, the renderer,
+the audio mix and the verifier. It builds a real four-second MP4 in a temp
+directory and runs the full check suite against it.
+
+This is the thing to run after installing, after editing anything, or when a
+build fails and it is not obvious whether the pipeline or the API is at fault.
+It spends nothing, so it can be run freely.
+"""
+import json
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import numpy as np
+from PIL import Image, ImageDraw
+
+ROOT = Path(__file__).resolve().parent.parent
+
+PASS, FAIL = "[ok]  ", "[FAIL]"
+
+
+class Suite:
+    def __init__(self):
+        self.failures = 0
+
+    def check(self, name, condition, detail=""):
+        ok = bool(condition)
+        if not ok:
+            self.failures += 1
+        print(f"  {PASS if ok else FAIL} {name}{('  ' + detail) if detail else ''}")
+        return ok
+
+
+def synthetic_assets(directory):
+    """A plate and three sprites, one with an enclosed hole to matte."""
+    W, H = 1920, 1080
+    plate = Image.new("RGB", (W, H))
+    draw = ImageDraw.Draw(plate)
+    for y in range(H):
+        k = y / H
+        draw.line([(0, y), (W, y)], fill=(int(70 + 60 * k), int(200 - 20 * k),
+                                          int(205 - 25 * k)))
+    draw.rectangle([0, int(H * 0.70), W, H], fill=(120, 205, 70))
+    plate.save(directory / "background.png")
+
+    for name, colour, size in (("a.png", (230, 60, 60), (420, 520)),
+                               ("b.png", (250, 220, 60), (380, 470)),
+                               ("prop_c.png", (150, 150, 160), (300, 260))):
+        w, h = size
+        sprite = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+        d = ImageDraw.Draw(sprite)
+        d.ellipse([4, 4, w - 4, h - 4], fill=colour + (255,),
+                  outline=(20, 20, 20, 255), width=8)
+        d.ellipse([w * 0.3, h * 0.25, w * 0.45, h * 0.4], fill=(255, 255, 255, 255))
+        sprite.save(directory / name)
+
+
+def main():
+    print("cartoon-econ-video self-test (offline)\n")
+    suite = Suite()
+
+    # --- imports -----------------------------------------------------------
+    try:
+        import assets as assets_mod
+        import audio as audio_mod
+        import checks as checks_mod
+        import matting
+        import plan as plan_mod
+        import render as render_mod
+        import textkit
+        import timing
+        import verify as verify_mod
+        from layout import Layout
+        suite.check("every module imports", True)
+    except Exception as exc:
+        suite.check("every module imports", False, str(exc))
+        return 1
+
+    # --- casts -------------------------------------------------------------
+    for cast_file in sorted(f for f in (ROOT / "casts").glob("*.json")
+                            if not f.name.startswith("_")):
+        issues = assets_mod.Cast.load(cast_file, root=ROOT / "casts").problems()
+        suite.check(f"cast {cast_file.name}", not issues,
+                    issues[0] if issues else "")
+
+    # --- a parameter accepted and then dropped ----------------------------
+    # `panel_color` was threaded from the cast into compose_plate and never
+    # passed on to the function that uses it. Nothing failed; panels just kept
+    # the old colour, and the same silent-edit mistake had already happened
+    # twice. A parameter a function accepts and never mentions again is almost
+    # always a half-finished edit.
+    import ast
+    dropped = []
+    for module in ("render.py", "checks.py", "plan.py", "assets.py",
+                   "textkit.py", "build.py", "verify.py"):
+        tree = ast.parse((Path(__file__).parent / module).read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.FunctionDef):
+                continue
+            # Dunder signatures are fixed by the language - __exit__ must take
+            # exc and tb whether or not it looks at them - so they cannot be
+            # evidence of a half-finished edit.
+            if node.name.startswith("__") and node.name.endswith("__"):
+                continue
+            declared = {a.arg for a in node.args.args} | {
+                a.arg for a in node.args.kwonlyargs}
+            used = {n.id for n in ast.walk(node) if isinstance(n, ast.Name)}
+            for arg in sorted(declared - used - {"self", "cls"}):
+                dropped.append(f"{module}:{node.name}() takes {arg!r} unused")
+    suite.check("no parameter is accepted and then ignored", not dropped,
+                dropped[0] if dropped else "")
+
+    # --- pure logic --------------------------------------------------------
+    beats = plan_mod.split_script("一二三四五六七八九十。" * 6, shot_seconds=5.0)
+    joined = "".join(beats)
+    suite.check("splitting preserves the script",
+                joined == "一二三四五六七八九十。" * 6,
+                f"{len(beats)} beats, {len(joined)} chars")
+
+    predicted = timing.clip_seconds("一二三四五六七八九十", 1.0)
+    suite.check("duration model is sane", 1.5 < predicted < 3.0,
+                f"10 chars -> {predicted:.2f}s")
+    fit = timing.fit_to_target("一二三四五六七八九十。" * 20, 9999)
+    suite.check("unreachable targets are reported", not fit["ok"])
+
+    lay = Layout("landscape")
+    suite.check("caption sits where the reference has it",
+                abs(lay.subtitle_center_y / lay.height - 0.903) < 0.001,
+                f"y={lay.subtitle_center_y}")
+    suite.check("wrapping handles newlines",
+                textkit.wrap("上\n下", 60, 900) == ["上", "下"])
+
+    # --- matting -----------------------------------------------------------
+    probe = Image.new("RGB", (200, 200), (255, 0, 255))
+    ImageDraw.Draw(probe).ellipse([50, 50, 150, 150], fill=(20, 120, 220))
+    cut, mode = assets_mod.matting.auto_cutout(probe)
+    alpha = np.asarray(cut)[:, :, 3]
+    suite.check("chroma matting keeps the subject and drops the key",
+                mode == "chroma" and 0.4 < (alpha > 128).mean() < 0.95,
+                f"{mode}, {(alpha > 128).mean():.2f} opaque")
+
+    # --- a real render, end to end ----------------------------------------
+    with tempfile.TemporaryDirectory() as tmp:
+        work = Path(tmp)
+        synthetic_assets(work)
+        storyboard = {
+            "video": {"orientation": "landscape", "width": 1920, "height": 1080,
+                      "fps": 30, "background": "background.png", "dissolve": 0.4,
+                      "crf": 26, "preset": "ultrafast"},
+            "title_card": {"text": "自检", "duration": 1.0, "style": "title"},
+            "scenes": [
+                {"id": 1, "duration": 1.6, "framing": "medium",
+                 "subtitle": "第一镜的字幕。",
+                 "elements": [{"asset": "a.png", "x": 0.3, "y": 0.97, "h": 0.45},
+                              {"asset": "b.png", "x": 0.7, "y": 0.97, "h": 0.45}]},
+                {"id": 2, "duration": 1.6, "framing": "close",
+                 "subtitle": "第二镜的字幕。",
+                 "elements": [{"asset": "prop_c.png", "x": 0.5, "y": 0.97, "h": 0.4},
+                              {"type": "label", "text": "标签", "x": 0.5, "y": 0.35}]},
+            ],
+            "ending_card": {"text": "结束", "duration": 1.0, "highlight": "束"},
+        }
+        sprites = render_mod.Assets(work)
+        findings = checks_mod.inspect(storyboard, sprites, lay, repair=True)
+        residual = checks_mod.inspect(storyboard, sprites, lay, repair=False)
+        suite.check("layout repair converges", not residual,
+                    f"{len(findings)} repaired, {len(residual)} left")
+
+        video = work / "selftest.mp4"
+        renderer = render_mod.Renderer(storyboard, work)
+        total, frames = renderer.render(
+            video, [s["duration"] for s in storyboard["scenes"]])
+        suite.check("renders frames", video.exists() and frames > 100,
+                    f"{frames} frames / {total:.1f}s")
+        suite.check("held frames are reused, not recomputed",
+                    len(renderer._frame_cache) < frames / 4,
+                    f"{len(renderer._frame_cache)} unique of {frames}")
+
+        track = audio_mod.mix(
+            audio_mod.build_narration([(None, total)], work / "n.wav"),
+            work / "a.wav", total)
+        final = work / "final.mp4"
+        audio_mod.mux(video, track, final)
+        suite.check("muxes audio", final.exists())
+
+        report = verify_mod.Report()
+        duration = verify_mod.check_container(report, final, storyboard)
+        verify_mod.check_background(report, final, duration)
+        verify_mod.check_layout(report, storyboard, work, lay)
+        bad = report.failures()
+        suite.check("the verifier passes its own render", not bad,
+                    "; ".join(n for _, n, _ in bad))
+
+    print()
+    if suite.failures:
+        print(f"{suite.failures} check(s) failed - the installation is not healthy")
+    else:
+        print("all checks passed - the pipeline works offline; "
+              "run build.py --check for the API side")
+    return 1 if suite.failures else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

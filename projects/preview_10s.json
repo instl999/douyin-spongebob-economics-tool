@@ -1,0 +1,18 @@
+{
+  "name": "preview_10s",
+  "title": "什么是效率工资",
+  "script": "examples/preview_10s.txt",
+  "cast": "casts/bikini_bottom.json",
+  "orientation": "landscape",
+  "shot_seconds": 5.0,
+  "title_seconds": 1.3,
+  "ending_seconds": 1.8,
+  "dissolve": 0.45,
+  "crf": 19,
+  "preset": "slow",
+  "voice": {
+    "speaker": "zh_male_yuanboxiaoshu_uranus_bigtts",
+    "speed": 1.0
+  },
+  "tail_pad": 0.25
+}

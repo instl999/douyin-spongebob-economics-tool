@@ -1,0 +1,135 @@
+{
+  "name": "bikini_bottom",
+  "description": "SpongeBob-style economics explainer. Mr. Krabs is capital, SpongeBob is the worker, Patrick asks the naive question, Squidward is the cynic, Sandy is the analyst.",
+  "style": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series",
+  "background": {
+    "prompt": "Bikini Bottom undersea meadow seen straight on. Low horizon two thirds down the frame. Upper two thirds: calm teal water fading to pale cyan, decorated only with thin pale outlines of five-petal flower shapes, small and sparse. Lower third: an open bright green grass field stretching the full width, gently rolling, small white flowers. Small purple coral bushes hug the ground at the extreme left and right edges only. Wide open empty middle with nothing in it."
+  },
+  "characters": {
+    "krabs": {
+      "look": "Mr. Krabs the crab, rounded red crab body, two long light-green eye stalks with small black eyes on top, large red claws for hands, light blue short-sleeved shirt with a jagged hem, brown trousers with a black belt and gold buckle, short red legs",
+      "poses": {
+        "stand": "standing upright facing the viewer, both claws resting on his hips, pleased expression",
+        "point": "standing and pointing forward with one raised claw, explaining something, mouth open",
+        "think": "standing with one claw under his chin, brow furrowed, thinking hard",
+        "greedy": "standing with both claws clasped together, wide delighted grin, eyes gleaming",
+        "worried": "standing with claws raised near his face, worried anxious expression",
+        "desk": "sitting behind a dark wooden desk covered with papers and a ledger, leaning over the paperwork",
+        "angry": "standing with both claws raised in fury, mouth wide open shouting, eyes narrowed",
+        "count": "standing holding a stack of gold coins in one claw, counting them with a delighted greedy expression",
+        "sit": "sitting on a plain wooden stool, leaning forward with one claw on his knee, listening"
+      },
+      "relative_height": 0.95,
+      "role": "the boss and the capital - wants output, hates paying for it"
+    },
+    "sponge": {
+      "look": "SpongeBob SquarePants, bright yellow rectangular sponge body with round holes, large blue eyes with black pupils, buck teeth, white shirt with a red necktie, brown square trousers, thin black-shoed legs",
+      "poses": {
+        "stand": "standing upright facing the viewer, arms at his sides, cheerful smile",
+        "happy": "standing with both arms raised in delight, huge open grin, eyes squeezed with joy",
+        "tired": "standing with slumped shoulders, drooping eyelids, exhausted expression",
+        "work": "standing and holding a plate in both hands, concentrating on the work",
+        "confused": "standing with a puzzled expression, one hand scratching the back of his head",
+        "run": "running to the right at full speed, arms pumping, legs a blur, determined expression",
+        "think": "standing with one gloved hand on his chin, eyes looking upward, thinking",
+        "serve": "standing holding up a round burger on a plate in both hands, proud grin",
+        "sad": "standing with shoulders drooping and head lowered, downturned mouth, glum"
+      },
+      "relative_height": 1.0,
+      "role": "the worker who actually does the task"
+    },
+    "patrick": {
+      "look": "Patrick Star the starfish, thick pink five-pointed star body, small close-set eyes with thick eyebrows, wide mouth, green swim shorts with purple flower pattern",
+      "poses": {
+        "stand": "standing upright facing the viewer, arms at his sides, blank cheerful expression",
+        "ask": "standing with one arm raised as if asking a question, mouth open, curious look",
+        "confused": "standing with a completely baffled expression, mouth slightly open, eyes crossed",
+        "lazy": "standing with arms hanging limp, half-closed eyes, thoroughly unbothered",
+        "eat": "standing holding a burger up to his open mouth, about to take a bite, happy",
+        "think": "standing with one finger raised beside his head as if an idea arrived, eyes wide",
+        "shrug": "standing with both arms out to the sides and palms up, shrugging, blank expression"
+      },
+      "relative_height": 1.15,
+      "role": "asks the naive question the audience is thinking"
+    },
+    "squid": {
+      "look": "Squidward Tentacles the octopus, tall pale blue-green body, large bald head, long drooping nose, heavy-lidded half-closed eyes, brown short-sleeved shirt, four tentacle legs",
+      "poses": {
+        "stand": "standing upright facing the viewer, arms crossed, bored unimpressed expression",
+        "smug": "standing with one tentacle hand raised, eyes narrowed, smug superior expression",
+        "annoyed": "standing with both hands on his head, exasperated irritated expression",
+        "play": "standing playing a black clarinet held in both tentacle hands, eyes closed, pleased with himself",
+        "sigh": "standing with one tentacle hand over his eyes, head tilted back, exasperated sigh"
+      },
+      "relative_height": 1.45,
+      "role": "the cynic who says the uncomfortable part out loud"
+    },
+    "sandy": {
+      "look": "Sandy Cheeks the squirrel, brown furry squirrel face inside a clear round glass diving helmet, white astronaut-style diving suit with a purple flower emblem on the chest, white boots and gloves",
+      "poses": {
+        "stand": "standing upright facing the viewer, hands on hips, confident expression",
+        "explain": "standing and gesturing with one open hand as if explaining a point, mouth open",
+        "point": "standing and pointing upward with one gloved finger, making a point, confident",
+        "think": "standing with arms folded and one hand on her chin, considering something"
+      },
+      "relative_height": 1.1,
+      "role": "the analyst who explains the mechanism"
+    }
+  },
+  "props": {
+    "krusty_krab": "the Krusty Krab restaurant building, wooden shack shaped like a lobster trap, big anchor-style entrance sign, portholes, small and complete",
+    "cargo_ship": "a small cartoon cargo ship seen from the side, dark hull, stacked shipping crates on deck, a crane arm",
+    "boxes": "a neat stack of brown cardboard shipping cartons of different sizes with taped seams",
+    "whiteboard": "a plain white presentation board in a light grey frame, blank writing surface, standing upright",
+    "sea_map": "a nautical chart on a light cream sheet in a thin frame, pale blue landmasses and a compass rose, no readable writing",
+    "desk": "a plain dark wooden office desk seen from the front, papers and a small lamp on top",
+    "coins": "a heap of shiny gold coins piled up",
+    "money_bag": "a plump beige cloth money bag tied at the neck with rope",
+    "oven": "a stainless steel commercial kitchen oven with a dark front panel and control knobs",
+    "sink": "a stainless steel kitchen sink basin on legs, a tap, soapy water and plates inside",
+    "kitchen_table": "a long plain brown wooden work table seen from the front",
+    "plates": "a tall neat stack of clean white plates",
+    "queue_sign": "a simple wooden signpost with a blank rectangular board on a single post",
+    "clock": "a plain round wall clock with a white face and black hands",
+    "arrow_right": "a thick bold cartoon arrow pointing to the right, solid dark grey, simple flat shape",
+    "up_chart": "a simple bar chart on a white card, four bars rising left to right, a green upward arrow above them",
+    "down_chart": "a simple bar chart on a white card, four bars falling left to right, a red downward arrow above them",
+    "kitchen_counter": "a long stainless steel commercial kitchen counter seen from the front, flat empty worktop, a shelf underneath",
+    "office_desk_set": "a plain office desk seen from the front with a boxy computer monitor, a keyboard and a stack of papers on it",
+    "shop_counter": "a wooden shop service counter seen from the front with an old cash register on top",
+    "crowd_queue": "a row of five small simple cartoon fish customers standing in a line side by side, seen from the front",
+    "balance_scale": "an old fashioned two-pan balance scale, empty pans, dark metal",
+    "clipboard": "a wooden clipboard with a blank white sheet clipped to it",
+    "delivery_truck": "a small cartoon delivery van seen from the side, plain white box body, no writing",
+    "factory": "a small simple cartoon factory building with two chimneys, seen from the front",
+    "calendar": "a wall calendar with a blank grid of squares, hanging"
+  },
+  "hanging": [
+    "arrow_right",
+    "calendar",
+    "clock",
+    "down_chart",
+    "sea_map",
+    "up_chart",
+    "whiteboard"
+  ],
+  "_hanging_note": "Props that hang at eye level - boards, charts, maps, signage. Everything not listed stands on the ground, whatever anchor the director asks for.",
+  "_relative_height_note": "Height relative to SpongeBob. The director sets one h per shot and cannot keep the cast in proportion across shots, so this multiplies it: Squidward is always taller than Patrick whatever the director asked for.",
+  "foreground": [
+    "boxes",
+    "desk",
+    "kitchen_counter",
+    "kitchen_table",
+    "office_desk_set",
+    "oven",
+    "shop_counter",
+    "sink"
+  ],
+  "_foreground_note": "Props a character stands or works behind. These are drawn last so they overlap the character's legs, which is what makes a shot read as a scene rather than as cut-outs side by side on a lawn.",
+  "panel_color": [
+    176,
+    196,
+    205
+  ],
+  "_panel_color_note": "Default colour for `panel` slabs: pale blue-grey, as the references use over the teal plate."
+}
