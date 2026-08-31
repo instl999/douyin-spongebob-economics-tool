@@ -24,7 +24,7 @@ import styles as styles_mod
 
 def migrate(plan_path, cast_path):
     plan_path = Path(plan_path)
-    original = json.loads(plan_path.read_text(encoding="utf-8"))
+    original = json.loads(plan_path.read_text(encoding="utf-8-sig"))
     _, cast_file = styles_mod.resolve(cast_path)
     cast = assets_mod.Cast.load(cast_file)
 

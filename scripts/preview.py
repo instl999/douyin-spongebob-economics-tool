@@ -79,7 +79,7 @@ def main():
     ap.add_argument("out", nargs="?", default="preview.jpg")
     ap.add_argument("--columns", type=int, default=4)
     args = ap.parse_args()
-    sb = json.loads(Path(args.storyboard).read_text(encoding="utf-8"))
+    sb = json.loads(Path(args.storyboard).read_text(encoding="utf-8-sig"))
     print(contact_sheet(sb, args.workdir, args.out, columns=args.columns))
 
 

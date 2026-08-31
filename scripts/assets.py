@@ -73,7 +73,7 @@ class Cast:
     @classmethod
     def load(cls, path, root=None):
         path = Path(path)
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
         return cls(data, root or path.parent)
 
     # --- prompt construction ---------------------------------------------
@@ -225,7 +225,7 @@ class Library:
         self.raw = cast.dir / "raw"
         self.raw.mkdir(parents=True, exist_ok=True)
         self.manifest_path = cast.dir / "manifest.json"
-        self.manifest = (json.loads(self.manifest_path.read_text(encoding="utf-8"))
+        self.manifest = (json.loads(self.manifest_path.read_text(encoding="utf-8-sig"))
                          if self.manifest_path.exists() else {})
 
     def _save_manifest(self):

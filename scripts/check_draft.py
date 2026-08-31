@@ -87,7 +87,7 @@ def compare(project, draft_dir):
     relying on anyone to check afterwards.
     """
     project, draft_dir = Path(project).resolve(), Path(draft_dir).resolve()
-    sb = json.loads((project / "storyboard.json").read_text(encoding="utf-8"))
+    sb = json.loads((project / "storyboard.json").read_text(encoding="utf-8-sig"))
     video = sb.get("video", {})
     W, H = int(video.get("width", 1920)), int(video.get("height", 1080))
     lay = Layout(video.get("orientation", "landscape"))
@@ -134,7 +134,7 @@ def main():
             raise SystemExit("no draft found - run scripts/draft.py first")
         draft_dir = candidates[-1].parent
 
-    sb = json.loads((project / "storyboard.json").read_text(encoding="utf-8"))
+    sb = json.loads((project / "storyboard.json").read_text(encoding="utf-8-sig"))
     video = sb.get("video", {})
     W, H = int(video.get("width", 1920)), int(video.get("height", 1080))
     content = json.loads((draft_dir / "draft_content.json").read_text(

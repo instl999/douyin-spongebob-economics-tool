@@ -73,7 +73,7 @@ def build(args):
     script_path = resolve(args.script)
     if not script_path.exists():
         raise SystemExit(f"no script at {script_path}")
-    script = script_path.read_text(encoding="utf-8")
+    script = script_path.read_text(encoding="utf-8-sig")
     if not script.strip():
         raise SystemExit(f"{script_path} is empty")
 

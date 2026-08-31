@@ -75,7 +75,7 @@ def _free_name(root, name):
     stamp, content = target / STAMP, target / "draft_content.json"
     if not content.exists():
         return target
-    if stamp.exists() and stamp.read_text(encoding="utf-8").strip() == _digest(content):
+    if stamp.exists() and stamp.read_text(encoding="utf-8-sig").strip() == _digest(content):
         return target
     for n in range(2, 100):
         candidate = root / f"{name}_v{n}"
@@ -92,7 +92,7 @@ class DraftBuilder:
         storyboard = self.project / "storyboard.json"
         if not storyboard.exists():
             raise SystemExit(f"no storyboard.json in {self.project} - build it first")
-        self.sb = json.loads(storyboard.read_text(encoding="utf-8"))
+        self.sb = json.loads(storyboard.read_text(encoding="utf-8-sig"))
         self.name = name or self.project.name
         self.dissolve = dissolve
 
@@ -238,7 +238,7 @@ class DraftBuilder:
         index_path = self.project / "voice" / "index.json"
         if not index_path.exists():
             return
-        index = json.loads(index_path.read_text(encoding="utf-8"))
+        index = json.loads(index_path.read_text(encoding="utf-8-sig"))
         for seg in segments:
             if seg.kind != "scene":
                 continue
@@ -277,7 +277,7 @@ class DraftBuilder:
     def _write_meta(self):
         """Jianying needs a meta file beside the content to list the draft."""
         template = Path(jy.__file__).parent / "assets" / "draft_meta_info.json"
-        meta = json.loads(template.read_text(encoding="utf-8"))
+        meta = json.loads(template.read_text(encoding="utf-8-sig"))
         meta["draft_name"] = self.name
         meta["draft_fold_path"] = str(self.dir)
         meta["draft_root_path"] = str(self.dir.parent)

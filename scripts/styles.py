@@ -29,7 +29,7 @@ def registry():
     if not REGISTRY_PATH.exists():
         return {}
     try:
-        data = json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
+        data = json.loads(REGISTRY_PATH.read_text(encoding="utf-8-sig"))
     except (json.JSONDecodeError, OSError):
         return {}
     return data if isinstance(data, dict) else {}
@@ -136,7 +136,7 @@ def problems():
     if not REGISTRY_PATH.exists():
         return issues            # no registry is legal: discovery still works
     try:
-        data = json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
+        data = json.loads(REGISTRY_PATH.read_text(encoding="utf-8-sig"))
     except (json.JSONDecodeError, OSError) as exc:
         return [f"casts/styles.json could not be read: {exc}"]
     if not isinstance(data, dict):

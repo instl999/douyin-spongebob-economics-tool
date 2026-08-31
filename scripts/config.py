@@ -18,7 +18,7 @@ def _load_dotenv():
     for candidate in (ROOT / ".env", Path.cwd() / ".env"):
         if not candidate.exists():
             continue
-        for line in candidate.read_text(encoding="utf-8").splitlines():
+        for line in candidate.read_text(encoding="utf-8-sig").splitlines():
             line = line.strip()
             if not line or line.startswith("#") or "=" not in line:
                 continue

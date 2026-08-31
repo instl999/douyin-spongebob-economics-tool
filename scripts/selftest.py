@@ -112,7 +112,7 @@ def main():
     dropped = []
     for module in ("render.py", "checks.py", "plan.py", "assets.py",
                    "textkit.py", "build.py", "verify.py", "styles.py"):
-        tree = ast.parse((Path(__file__).parent / module).read_text(encoding="utf-8"))
+        tree = ast.parse((Path(__file__).parent / module).read_text(encoding="utf-8-sig"))
         for node in ast.walk(tree):
             if not isinstance(node, ast.FunctionDef):
                 continue

@@ -173,7 +173,7 @@ def check_subtitles(report, srt_path, duration):
     if not Path(srt_path).exists():
         report.add(False, "subtitles", "no .srt was written")
         return
-    blocks = [b for b in Path(srt_path).read_text(encoding="utf-8").strip().split("\n\n") if b]
+    blocks = [b for b in Path(srt_path).read_text(encoding="utf-8-sig").strip().split("\n\n") if b]
 
     def seconds(stamp):
         hh, mm, rest = stamp.split(":")
@@ -210,7 +210,7 @@ def check_sprites(report, cast_dir):
     if not manifest.exists():
         report.add(True, "sprite cutouts", "no manifest to check")
         return
-    data = json.loads(manifest.read_text(encoding="utf-8"))
+    data = json.loads(manifest.read_text(encoding="utf-8-sig"))
     bad = []
     for name, entry in data.items():
         coverage, pixels, size = (entry.get("coverage"), entry.get("pixels"),
@@ -247,7 +247,7 @@ def check_plan_carried(report, storyboard, plan_path):
     if not Path(plan_path).exists():
         report.add(True, "plan carried through", "no plan to compare")
         return
-    plan = json.loads(Path(plan_path).read_text(encoding="utf-8"))
+    plan = json.loads(Path(plan_path).read_text(encoding="utf-8-sig"))
     scenes = storyboard.get("scenes", [])
     missing = []
     for field in ("framing",):
@@ -284,7 +284,7 @@ def run(project, verbose=False):
         print(f"no video at {video} - has this project been built?")
         return 1
 
-    storyboard = json.loads(storyboard_path.read_text(encoding="utf-8"))
+    storyboard = json.loads(storyboard_path.read_text(encoding="utf-8-sig"))
     report = Report()
     print(f"[{project.name}] verifying {video.name}\n")
 

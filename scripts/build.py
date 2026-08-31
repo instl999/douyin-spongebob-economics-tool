@@ -45,7 +45,12 @@ def log(message=""):
 class Project:
     def __init__(self, path, out_override=None):
         self.path = Path(path).resolve()
-        self.data = json.loads(self.path.read_text(encoding="utf-8"))
+        # utf-8-sig, not utf-8, everywhere a file a person may have edited is
+        # read. Windows editors write a BOM by default, and json.loads on a
+        # BOM'd file fails with "Unexpected UTF-8 BOM ... line 1 column 1",
+        # which the build then blames on the project file being malformed. It
+        # is not; it is fine, and utf-8-sig reads plain UTF-8 identically.
+        self.data = json.loads(self.path.read_text(encoding="utf-8-sig"))
         self.name = self.data.get("name") or self.path.stem
         self.out = Path(out_override or self.data.get("out")
                         or (ROOT / "out" / self.name)).resolve()
@@ -63,7 +68,7 @@ class Project:
         p = Path(ref)
         if not p.is_absolute():
             p = (self.path.parent / ref) if (self.path.parent / ref).exists() else ROOT / ref
-        return p.read_text(encoding="utf-8")
+        return p.read_text(encoding="utf-8-sig")
 
     @property
     def cast(self):
@@ -137,7 +142,7 @@ def stage_plan(project, force=False):
     target = project.out / "plan.json"
     if target.exists() and not force:
         log("  plan.json already present - reusing")
-        return json.loads(target.read_text(encoding="utf-8"))
+        return json.loads(target.read_text(encoding="utf-8-sig"))
 
     cast = project.cast
     shot_seconds = float(project.get("shot_seconds", 5.0))
@@ -190,7 +195,7 @@ def stage_voice(project, plan, force=False, speed=None):
     speaker = voice.get("speaker")
     speed = float(speed if speed is not None else voice.get("speed", 1.0))
     index_path = project.out / "voice" / "index.json"
-    index = (json.loads(index_path.read_text(encoding="utf-8"))
+    index = (json.loads(index_path.read_text(encoding="utf-8-sig"))
              if index_path.exists() and not force else {})
 
     degraded = 0
