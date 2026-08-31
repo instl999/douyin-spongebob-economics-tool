@@ -1,6 +1,28 @@
-# cartoon-econ-video
+# 抖音「海绵宝宝经济学」同款视频制作工具 · SpongeBob Economics Explainer Video Tool
+
+复刻抖音「海绵宝宝经济学」的同款科普视频：一段口播文案，一条命令出成片 —— AI 分镜、固定背景板 + AI 生成素材分层合成、逐镜演绎、AI 配音、字幕、标题卡、混音、编码、质检全自动。
+
+**自带火山方舟 Agent Plan API 支持**：导演、生图、配音共用一把 `ARK_API_KEY`，全部走 Agent Plan 套餐 —— **生图不额外计费**。
+
+画风在哪里改（详见下文 [Changing the look](#changing-the-look)）：
+
+| 想怎么改 | 改哪里 |
+| --- | --- |
+| 用内置画风 | 项目 JSON 的 `cast` 字段：`casts/bikini_bottom.json`（海绵宝宝/比奇堡）或 `casts/flat_office.json`（扁平办公室） |
+| 改某套画风的整体美术方向 | 对应 `casts/<画风>.json` 顶部的 `"style"` 字段（如 `casts/bikini_bottom.json` 第 4 行） |
+| 换全片背景板 | 同文件 `"background"` → `"prompt"` |
+| 全新画风 | 复制 `casts/_template.json`，按 `_hint_*` 注释填写，再 `python scripts/build.py --check` 校验 |
+
+---
+
+English documentation follows.
 
 Turn a narration script into a finished explainer video.
+
+> **Ships with Volcengine Ark Agent Plan API support** — the director, image
+> generation and narration share one `ARK_API_KEY`, all routed through the
+> Agent Plan (`/api/plan/v3`). Under an Agent Plan subscription, **image
+> generation costs nothing extra**.
 
 ```bash
 python scripts/build.py projects/efficiency_wage.json
@@ -112,7 +134,9 @@ Two checks confirm the install:
 
 **One key does everything.** `ARK_API_KEY` from
 [console.volcengine.com/ark](https://console.volcengine.com/ark) covers the
-director, image generation and narration.
+director, image generation and narration. The tool ships with Volcengine Ark
+**Agent Plan** API support out of the box — under an Agent Plan subscription,
+image generation costs nothing extra.
 
 Two things about the Volcengine API are easy to get wrong, and **both report
 something other than the real problem**:
@@ -267,6 +291,15 @@ says so rather than producing something a third too long.
 
 Everything about who is in the video and what it looks like lives in the cast
 file. **No module needs touching.**
+
+Where exactly the art direction lives:
+
+| What you want to change | Where |
+|---|---|
+| Use a built-in style | the project JSON's `cast` field: `casts/bikini_bottom.json` (SpongeBob / Bikini Bottom) or `casts/flat_office.json` (flat office) |
+| Change a style's overall art direction | the `"style"` field at the top of that `casts/<style>.json` (e.g. `casts/bikini_bottom.json` line 4) |
+| Change the background plate every shot sits on | `"background"` → `"prompt"` in the same file |
+| Create a brand-new style | copy `casts/_template.json`, fill it in following the `_hint_*` comments, validate with `python scripts/build.py --check`, then generate the library with `python scripts/build_library.py casts/<new>.json --plates` |
 
 Two casts ship:
 
