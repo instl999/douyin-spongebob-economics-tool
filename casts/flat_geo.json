@@ -1,0 +1,78 @@
+{
+  "name": "flat_geo",
+  "description": "A minimalist flat-vector corporate cast on a geometric plaza. The boss is a suit, the worker is a badge, the analyst is a chart. People are silhouettes; the numbers carry the faces.",
+  "style": "minimalist flat vector corporate illustration, pure flat colour fields with no outlines, no gradients and no texture, geometric architecture in large clean blocks of bright blue, lime green, deep violet and white, featureless silhouette people in flat navy with one accent colour each, long crisp diagonal shadows, modern tech-editorial look",
+  "background": {
+    "prompt": "A minimalist corporate plaza seen straight on. Horizon halfway down the frame. Upper half: large flat geometric building façades filling the whole top band in clean rectangular blocks of bright blue, white, lime green and deep violet, separated by straight vertical edges, a few plain window strips. Lower half: a pale tiled plaza floor with long clean diagonal shadows cast from the upper left. Wide open empty plaza middle with nothing and no one in it."
+  },
+  "characters": {
+    "boss": {
+      "role": "sets the target - the silhouette that owns the number",
+      "look": "a featureless flat silhouette figure in deep violet with a small lime-green briefcase accent, no face, clean geometric body, crisp edges",
+      "relative_height": 1.0,
+      "poses": {
+        "stand": "standing upright facing the viewer, arms straight at the sides, static and formal",
+        "point": "standing and pointing forward with one straight arm, giving a direction",
+        "arms_crossed": "standing with arms folded across the chest, blocking",
+        "present": "standing with one arm raised and the open palm turned upward, presenting a number",
+        "worried": "standing with one hand raised to where a face would be, recoiling slightly"
+      }
+    },
+    "worker": {
+      "role": "does the work inside the target - the silhouette the arrows land on",
+      "look": "a featureless flat silhouette figure in navy blue with a lime-green laptop-bag accent on one shoulder, no face, slightly rounder body, crisp edges",
+      "relative_height": 0.95,
+      "poses": {
+        "stand": "standing upright facing the viewer, arms at the sides, neutral",
+        "carry": "walking to the right carrying a flat rectangular box with both arms",
+        "typing": "standing holding a flat open laptop on one bent arm, other hand flat on the keys",
+        "tired": "standing with dropped shoulders and head tilted forward, flat and spent",
+        "happy": "standing with both arms raised in a small crisp celebration"
+      }
+    },
+    "analyst": {
+      "role": "explains what the numbers did - holds the chart",
+      "look": "a featureless flat silhouette figure in charcoal grey with a thin lime-green glasses line across where the eyes would be, no other face, upright geometric body, crisp edges",
+      "relative_height": 0.98,
+      "poses": {
+        "stand": "standing upright facing the viewer, hands folded in front, calm",
+        "explain": "standing and gesturing with one open hand turned upward, mid-explanation",
+        "chart": "standing holding up a flat rectangular chart card with both hands, showing it to the viewer",
+        "point_up": "standing and pointing straight upward with one index finger, making a point",
+        "think": "standing with one hand raised to the chin line, head tilted"
+      }
+    }
+  },
+  "props": {
+    "tower_block": "a flat geometric tower block in a single solid colour with plain window strips, seen straight on",
+    "laptop": "a flat open laptop seen straight on, dark body, blank pale screen",
+    "whiteboard": "a flat presentation board on two simple legs, blank white surface in a charcoal frame",
+    "chart_up": "a flat chart card, white rectangle with four lime bars rising left to right and a violet arrow above them pointing up",
+    "chart_down": "a flat chart card, white rectangle with four violet bars falling left to right and a blue arrow above them pointing down",
+    "wall_clock": "a flat round wall clock, white face, charcoal rim, two simple hands, no numbers",
+    "coin_discs": "a neat stack of flat lime-green coin discs with one leaning against the stack",
+    "money_stack": "a flat stack of banknotes seen straight on, plain rectangles with thin charcoal bands, no writing",
+    "desk": "a long flat office desk seen straight on, plain charcoal top on two simple legs, nothing on it",
+    "meeting_table": "a long flat meeting table seen straight on, plain white top on violet legs",
+    "kiosk": "a small flat service kiosk booth seen straight on, violet body with a lime awning strip and an open window",
+    "doorway": "a flat geometric doorway in a charcoal frame, plain white panel, small round handle",
+    "potted_plant": "a simple potted plant with flat blade leaves in a cylindrical charcoal pot"
+  },
+  "hanging": [
+    "chart_down",
+    "chart_up",
+    "wall_clock",
+    "whiteboard"
+  ],
+  "foreground": [
+    "desk",
+    "kiosk",
+    "meeting_table"
+  ],
+  "panel_color": [
+    208,
+    206,
+    226
+  ],
+  "_panel_color_note": "Pale lavender-grey, clearly distinct from both the white plaza and the vivid façade blocks, so a panel reads as an interior wall in the same flat language."
+}

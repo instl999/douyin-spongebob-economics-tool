@@ -8,10 +8,58 @@
 
 | 想怎么改 | 改哪里 |
 | --- | --- |
-| 用内置画风 | 项目 JSON 的 `cast` 字段：`casts/bikini_bottom.json`（海绵宝宝/比奇堡）或 `casts/flat_office.json`（扁平办公室） |
+| 换默认画风 / 改画风中文名 / 加、藏一个画风 | `casts/styles.json` —— 画风的专门配置文件，只改这一个 |
+| 用某套画风 | 项目 JSON 的 `cast` 字段写画风 key（如 `"clay"`），或直接写 cast 文件路径 |
 | 改某套画风的整体美术方向 | 对应 `casts/<画风>.json` 顶部的 `"style"` 字段（如 `casts/bikini_bottom.json` 第 4 行） |
 | 换全片背景板 | 同文件 `"background"` → `"prompt"` |
 | 全新画风 | 复制 `casts/_template.json`，按 `_hint_*` 注释填写，再 `python scripts/build.py --check` 校验 |
+
+### 内置画风（7 套）
+
+| 画风 key | 中文名 | 适用 | 规模 |
+|---|---|---|---|
+| `bikini_bottom` | 比奇堡 | 卡通经济学科普（**默认画风**，自带素材库） | 5 角色 26 道具 60 素材 |
+| `watercolor_anime` | 水彩动漫 | 手绘水彩动画电影质感，暖阳海边小镇 | 3 角色 14 道具 |
+| `clay` | 黏土定格 | 橡皮泥定格动画质感，雪夜森林小屋 | 3 角色 14 道具 |
+| `neon_cyberpunk` | 赛博霓虹 | 霓虹雨夜都市，赛博朋克动漫 | 3 角色 14 道具 |
+| `retro_editorial` | 复古欧式插画 | 雨夜街角咖啡馆，中古编辑插画质感 | 3 角色 14 道具 |
+| `retro_pulp` | 复古公路海报 | 70 年代丝网印刷海报，沙漠日落公路 | 3 角色 15 道具 |
+| `flat_geo` | 极简几何商务 | 扁平几何色块，剪影人物，科技商务风 | 3 角色 13 道具 |
+
+除比奇堡自带素材库外，其余画风首次使用先生成素材库（约 20 秒/张，一次生成、永久复用）：
+
+```bash
+python scripts/build_library.py clay --plates
+```
+
+### 画风总配置 casts/styles.json
+
+哪些画风可用、默认用哪个、每个画风叫什么，都由这一个文件管理：
+
+```json
+{
+  "default": "bikini_bottom",
+  "styles": {
+    "bikini_bottom": { "label": "比奇堡", "note": "海绵宝宝 2D 手绘卡通" },
+    "clay":          { "label": "黏土定格", "note": "橡皮泥定格动画质感" }
+  }
+}
+```
+
+- `default` —— 项目没写 `cast` 字段时用的画风
+- `styles` —— 每个画风一条：`label` / `note` 只影响展示；`file` 可选（默认 `casts/<key>.json`）；`"hidden": true` 让画风不再出现在列表里，但项目里写它的 key 仍可用
+- **注册不是必须的** —— 丢进 `casts/` 的 cast 文件会被自动发现，注册只是为了加中文名和说明
+- 改完跑 `python scripts/build.py --check` 校验；`python scripts/new_project.py --list-styles` 查看全部画风
+
+### 画风相关命令
+
+```bash
+python scripts/new_project.py --list-styles                     # 列出全部画风
+python scripts/new_project.py --name demo --title "标题" \
+    --script examples/sunk_cost.txt --cast clay                  # 用指定画风建项目
+python scripts/build_library.py clay --plates                   # 一次性生成某画风的全部素材
+python scripts/build.py --check                                 # 校验画风配置与全部 cast 文件
+```
 
 ---
 
@@ -122,7 +170,7 @@ Two checks confirm the install:
 
 - **`build.py --check`** — one line per capability: ffmpeg, ffprobe, API key,
   narration, every cast file, Python packages.
-- **`selftest.py`** — 15 offline checks that spend nothing. They exercise script
+- **`selftest.py`** — offline checks that spend nothing. They exercise script
   splitting, the duration model, matting, layout repair, rendering, mixing and
   verification, building a real MP4 from synthetic assets. Run it after any
   edit, and whenever a build fails and it is not obvious whether the pipeline or
@@ -290,34 +338,66 @@ says so rather than producing something a third too long.
 ## Changing the look
 
 Everything about who is in the video and what it looks like lives in the cast
-file. **No module needs touching.**
+file. **No module needs touching.** Which casts exist, what each is called and
+which one is the default live in one more file: **`casts/styles.json`, the
+art-style registry.** That registry is the file to edit when you want to switch
+or manage styles; a cast file is where you edit a style's actual art direction.
 
 Where exactly the art direction lives:
 
 | What you want to change | Where |
 |---|---|
-| Use a built-in style | the project JSON's `cast` field: `casts/bikini_bottom.json` (SpongeBob / Bikini Bottom) or `casts/flat_office.json` (flat office) |
+| Switch the default style, rename one, add or hide one | `casts/styles.json` |
+| Use a style | the project JSON's `cast` field: the style key (`"clay"`) or the path to its cast file |
 | Change a style's overall art direction | the `"style"` field at the top of that `casts/<style>.json` (e.g. `casts/bikini_bottom.json` line 4) |
 | Change the background plate every shot sits on | `"background"` → `"prompt"` in the same file |
-| Create a brand-new style | copy `casts/_template.json`, fill it in following the `_hint_*` comments, validate with `python scripts/build.py --check`, then generate the library with `python scripts/build_library.py casts/<new>.json --plates` |
+| Create a brand-new style | copy `casts/_template.json` to `casts/<key>.json`, fill it in following the `_hint_*` comments, validate with `python scripts/build.py --check`, then generate the library with `python scripts/build_library.py <key> --plates` |
 
-Two casts ship:
+### The style registry
 
-| Cast | For | Size |
-|---|---|---|
-| `bikini_bottom` | cartoon economics explainers | 5 characters, 26 props, 60 sprites |
-| `flat_office` | flat-vector business explainers | 3 characters, 10 props, 25 sprites |
+`casts/styles.json` is small on purpose:
 
-`flat_office` exists partly as proof: a completely different visual world is one
-JSON file and one command, with no code changed.
+```json
+{
+  "default": "bikini_bottom",
+  "styles": {
+    "bikini_bottom": { "label": "比奇堡", "note": "..." },
+    "clay":          { "label": "黏土定格", "note": "..." }
+  }
+}
+```
+
+- `default` — the style used when a project does not name one
+- `styles` — one entry per style: `label` and `note` are display-only, `file`
+  is optional (it defaults to `casts/<key>.json`), `hidden: true` keeps a style
+  out of the listings while projects can still name it
+- **Registering a cast is optional.** A cast file dropped into `casts/` is
+  discovered automatically; the registry entry only adds its Chinese label and
+  note. `new_project.py --list-styles` prints the whole table.
+
+Seven casts ship:
+
+| Cast | Label | For | Size |
+|---|---|---|---|
+| `bikini_bottom` | 比奇堡 | cartoon economics explainers (the default) | 5 characters, 26 props, 60 sprites |
+| `watercolor_anime` | 水彩动漫 | hand-painted watercolour anime film look, seaside town | 3 characters, 14 props |
+| `clay` | 黏土定格 | plasticine stop-motion feel, snowy storybook forest | 3 characters, 14 props |
+| `neon_cyberpunk` | 赛博霓虹 | neon-lit rain-soaked cyberpunk night city | 3 characters, 14 props |
+| `retro_editorial` | 复古欧式插画 | mid-century editorial illustration, rainy café corner | 3 characters, 14 props |
+| `retro_pulp` | 复古公路海报 | 1970s screen-print road-trip poster, desert highway | 3 characters, 15 props |
+| `flat_geo` | 极简几何商务 | flat geometric corporate look, silhouette figures | 3 characters, 13 props |
+
+All of them follow the same shape as `bikini_bottom`: a completely different
+visual world is one JSON file and one command, with no code changed.
+Its sprite library is generated once (see below) and reused by every video.
 
 ### Starting a new style
 
 ```bash
 cp casts/_template.json casts/my_style.json
 # fill it in — the _hint_* keys explain every field and its traps
-python scripts/build.py --check                       # validates every cast
-python scripts/build_library.py casts/my_style.json --plates
+python scripts/build.py --check                       # validates the registry and every cast
+python scripts/build_library.py my_style --plates     # optionally register it in casts/styles.json first
 ```
 
 Budget about 20 seconds per image; a 50–60 sprite cast takes roughly 20 minutes
@@ -357,13 +437,14 @@ Tall scenery framing the picture makes every character look small and lost.
 |---|---|
 | Check the API side | `python scripts/build.py --check` |
 | Check the pipeline, offline and free | `python scripts/selftest.py` |
-| Create a project and see its cost | `python scripts/new_project.py --name … --title … --script … --orientation …` |
+| List every available style | `python scripts/new_project.py --list-styles` |
+| Create a project and see its cost | `python scripts/new_project.py --name … --title … --script … --cast <style key> --orientation …` |
 | Contact sheet of the shots | `python scripts/build.py <project> --preview` |
 | Build (checks the result automatically) | `python scripts/build.py <project>` |
 | Check a finished video on its own | `python scripts/verify.py <project> --verbose` |
 | Re-run after editing the plan | `python scripts/build.py <project> --from storyboard` |
-| Generate a cast's whole library | `python scripts/build_library.py casts/<cast>.json --plates` |
-| Apply new validation rules to an old plan | `python scripts/migrate_plan.py out/<name>/plan.json casts/<cast>.json` |
+| Generate a cast's whole library | `python scripts/build_library.py <style key or cast path> --plates` |
+| Apply new validation rules to an old plan | `python scripts/migrate_plan.py out/<name>/plan.json <style key or cast path>` |
 | Cut out a single image by hand | `python scripts/matting.py in.jpg out.png` |
 
 ### Stages
@@ -427,10 +508,11 @@ rests on, and it is measured the same way the references were.
 | `ark.py` / `tts.py` | The two APIs, with retries |
 | `audio.py` | Narration track, music bed, SRT |
 | `verify.py` | The twelve checks |
-| `selftest.py` | Fifteen offline checks; needs no credentials |
+| `selftest.py` | Offline checks (incl. the style registry); needs no credentials |
 | `preview.py` | Contact sheet |
 | `new_project.py` | Settings in, project file out, with a cost and length estimate |
 | `build_library.py` | Generate a cast's whole sprite catalogue in one go |
+| `styles.py` | The art-style registry: which styles exist, which is default |
 | `migrate_plan.py` | Replay an old plan through the current validator |
 | `config.py` | Credentials, endpoints, model ids |
 | `gen_sfx.py` | Procedural sound effects |
@@ -540,9 +622,15 @@ SKILL.md                  operator playbook (Chinese) - rules, workflow, failure
 README.md                 this file
 .env.example              credentials template
 casts/
+  styles.json             the art-style registry - default style, labels, notes
   _template.json          annotated template for a new art style
-  bikini_bottom.json      cartoon cast: 5 characters, 26 props
-  flat_office.json        flat-vector cast: 3 characters, 10 props
+  bikini_bottom.json      cartoon cast: 5 characters, 26 props (the default)
+  watercolor_anime.json   watercolour anime cast: seaside town
+  clay.json               claymation cast: snowy storybook forest
+  neon_cyberpunk.json     cyberpunk cast: neon night city
+  retro_editorial.json    editorial cast: rainy café corner
+  retro_pulp.json         pulp-poster cast: desert highway
+  flat_geo.json           flat-vector cast: geometric corporate plaza
 projects/*.json           one file per video
 examples/*.txt            narration scripts
 scripts/                  see "How it works"
@@ -567,5 +655,5 @@ The sprite libraries are AI-generated in the style of existing animated
 properties. That is one thing for private use and study and another for
 publication, so **check your own position before publishing videos made with the
 `bikini_bottom` cast commercially, or before making a repository containing
-those assets public**. The `flat_office` cast raises no such question, and the
+those assets public**. The six other casts raise no such question, and the
 pipeline itself is style-agnostic — a cast file is all that ties it to any look.

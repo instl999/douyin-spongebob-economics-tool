@@ -86,11 +86,21 @@ def main():
         return 1
 
     # --- casts -------------------------------------------------------------
-    for cast_file in sorted(f for f in (ROOT / "casts").glob("*.json")
-                            if not f.name.startswith("_")):
-        issues = assets_mod.Cast.load(cast_file, root=ROOT / "casts").problems()
-        suite.check(f"cast {cast_file.name}", not issues,
+    import styles as styles_mod
+    reg_issues = styles_mod.problems()
+    suite.check("style registry casts/styles.json", not reg_issues,
+                reg_issues[0] if reg_issues else "")
+    suite.check("registry has a usable default",
+                styles_mod.default_key() is not None,
+                f"default: {styles_mod.default_key()}")
+    for key, entry in sorted(styles_mod.available().items()):
+        issues = assets_mod.Cast.load(entry["file"],
+                                      root=ROOT / "casts").problems()
+        suite.check(f"cast {key}", not issues,
                     issues[0] if issues else "")
+        if entry["registered"]:
+            suite.check(f"cast {key} file exists", entry["file"].exists(),
+                        str(entry["file"]))
 
     # --- a parameter accepted and then dropped ----------------------------
     # `panel_color` was threaded from the cast into compose_plate and never
@@ -101,7 +111,7 @@ def main():
     import ast
     dropped = []
     for module in ("render.py", "checks.py", "plan.py", "assets.py",
-                   "textkit.py", "build.py", "verify.py"):
+                   "textkit.py", "build.py", "verify.py", "styles.py"):
         tree = ast.parse((Path(__file__).parent / module).read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if not isinstance(node, ast.FunctionDef):

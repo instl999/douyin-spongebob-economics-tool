@@ -20,6 +20,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import assets as assets_mod
+import styles as styles_mod
 import timing
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -36,8 +37,29 @@ def resolve(path):
     return p if p.is_absolute() or p.exists() else ROOT / path
 
 
+def list_styles():
+    """Print every style the registry offers, default first-marked."""
+    avail = styles_mod.visible()
+    default = styles_mod.default_key()
+    if not avail:
+        print("no styles found - drop a cast file into casts/ or check "
+              "casts/styles.json")
+        return
+    print("available styles (casts/styles.json):\n")
+    width = max(len(k) for k in avail)
+    for key, entry in avail.items():
+        marker = "  [default]" if key == default else ""
+        note = f"  {entry['note']}" if entry["note"] else ""
+        print(f"  {key:<{width}}  {entry['label']}{note}{marker}")
+    print("\nuse one with --cast <key>, or edit casts/styles.json to add, "
+          "rename or hide styles")
+
+
 def build(args):
-    cast_path = resolve(args.cast)
+    try:
+        cast_key, cast_path = styles_mod.resolve(args.cast)
+    except ValueError as exc:
+        raise SystemExit(str(exc))
     if not cast_path.exists():
         raise SystemExit(f"no cast at {cast_path}")
     cast = assets_mod.Cast.load(cast_path, root=ROOT / "casts")
@@ -56,13 +78,18 @@ def build(args):
         raise SystemExit(f"{script_path} is empty")
 
     voice = VOICES.get(args.voice, args.voice)
+    if cast_key:
+        cast_ref = cast_key
+    elif ROOT in cast_path.parents:
+        cast_ref = str(cast_path.relative_to(ROOT)).replace("\\", "/")
+    else:
+        cast_ref = str(cast_path)
     project = {
         "name": args.name,
         "title": args.title,
         "script": str(script_path.relative_to(ROOT)).replace("\\", "/")
                   if ROOT in script_path.parents else str(script_path),
-        "cast": str(cast_path.relative_to(ROOT)).replace("\\", "/")
-                if ROOT in cast_path.parents else str(cast_path),
+        "cast": cast_ref,
         "orientation": args.orientation,
         "shot_seconds": args.shot_seconds,
         "voice": {"speaker": voice, "speed": 1.0},
@@ -88,7 +115,8 @@ def build(args):
     print(f"wrote {out.relative_to(ROOT)}\n")
     print("settings")
     print(f"  title       {args.title}")
-    print(f"  style       {cast.name}  ({len(cast.data.get('characters') or {})} characters, "
+    print(f"  style       {cast.name}  {styles_mod.describe(cast_key)}"
+          f"  ({len(cast.data.get('characters') or {})} characters, "
           f"{len(cast.data.get('props') or {})} props)")
     print(f"  orientation {args.orientation}"
           f"  {'1080x1920' if args.orientation == 'portrait' else '1920x1080'}")
@@ -114,10 +142,14 @@ def build(args):
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--name", required=True, help="short slug; names the output folder")
-    ap.add_argument("--title", required=True, help="the on-screen opening title")
-    ap.add_argument("--script", required=True, help="path to the narration txt")
-    ap.add_argument("--cast", default="casts/bikini_bottom.json")
+    ap.add_argument("--name", help="short slug; names the output folder")
+    ap.add_argument("--title", help="the on-screen opening title")
+    ap.add_argument("--script", help="path to the narration txt")
+    ap.add_argument("--cast", default=None,
+                    help="style key from casts/styles.json, or a path to a "
+                         "cast file (default: the registry's default style)")
+    ap.add_argument("--list-styles", action="store_true",
+                    help="list every available style and exit")
     ap.add_argument("--orientation", default="landscape",
                     choices=["landscape", "portrait"])
     ap.add_argument("--target", type=float, default=None,
@@ -126,7 +158,15 @@ def main():
                     help="male / female / female-brisk, or a full speaker id")
     ap.add_argument("--shot-seconds", type=float, default=5.0,
                     help="how much narration one shot carries")
-    return build(ap.parse_args())
+    args = ap.parse_args()
+
+    if args.list_styles:
+        return list_styles() or 0
+    missing = [name for name in ("name", "title", "script") if not getattr(args, name)]
+    if missing:
+        ap.error(", ".join(f"--{m}" for m in missing) + " is required"
+                 " (or use --list-styles to see the available styles)")
+    return build(args)
 
 
 if __name__ == "__main__":

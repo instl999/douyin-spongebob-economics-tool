@@ -1,0 +1,77 @@
+{
+  "name": "clay",
+  "description": "A plasticine claymation cast in a snowy storybook forest. The boss runs the workshop, the worker hauls everything on the sled, the analyst keeps the accounts straight.",
+  "style": "handmade plasticine claymation in the style of a stop-motion film, soft rounded clay sculptures with visible fingerprint and tooling texture, matte surfaces, gentle warm studio lighting, cosy winter-storybook palette of warm browns, cream snow, deep pine green and knitted red, everything looks sculpted from modelling clay",
+  "background": {
+    "prompt": "A snowy forest clearing at dusk seen straight on, sculpted entirely from clay. Low horizon two thirds down the frame. Upper third: a deep dusk-blue forest of snow-dusted pine trees fading into soft darkness, the trees tall only at the extreme left and right edges. A small log cabin with a snow-covered roof and warm glowing windows sits against the extreme right edge, no taller than a quarter of the image. Lower third: a rolling cream snow field stretching the full width with tiny clay footprints and snow lumps. Wide open empty snow middle with nothing in it."
+  },
+  "characters": {
+    "boss": {
+      "role": "owns the workshop and the capital - wants the sleds loaded and the bills paid",
+      "look": "a plump clay figure with a round body, bushy sculpted eyebrows, a brown clay waistcoat over a cream shirt, a small red necktie, stubby legs, chunky rounded hands",
+      "relative_height": 1.0,
+      "poses": {
+        "stand": "standing upright facing the viewer, hands resting on his round belly, pleased expression",
+        "point": "standing and pointing forward with one hand, mouth open, giving an order",
+        "greedy": "standing with both hands clasped together, wide delighted grin, eyes closed happily",
+        "worried": "standing with both hands raised near his face, brows pinched together",
+        "think": "standing with one hand under his chin, brow furrowed, thinking hard"
+      }
+    },
+    "worker": {
+      "role": "does the hauling - the one the snow actually falls on",
+      "look": "a small round clay figure in a chunky knit mustard hat with a pompom, a thick red knitted scarf, a warm brown clay coat and boots, rosy cheeks, a small round nose",
+      "relative_height": 0.9,
+      "poses": {
+        "stand": "standing upright facing the viewer, arms at the sides, soft content smile",
+        "pull": "leaning forward gripping an invisible rope with both hands behind the shoulders, hauling hard, cheeks puffed",
+        "tired": "standing with drooping shoulders and half-closed eyes, scarf hanging loose",
+        "happy": "standing with both short arms raised in delight, wide smile",
+        "confused": "standing with one hand scratching the side of the knit hat, puzzled"
+      }
+    },
+    "analyst": {
+      "role": "keeps the ledger and explains what the numbers mean",
+      "look": "a tidy clay figure with round wire glasses, a mustard knitted bobble hat, a cream clay sweater with a knitted diamond pattern, a small green scarf, holding nothing",
+      "relative_height": 0.95,
+      "poses": {
+        "stand": "standing upright facing the viewer, hands folded in front, calm expression",
+        "explain": "standing and gesturing with one open hand turned upward, mid-explanation",
+        "point_up": "standing and pointing straight upward with one index finger, making a point",
+        "think": "standing with one hand at the chin, head tilted, considering"
+      }
+    }
+  },
+  "props": {
+    "log_cabin": "a small clay log cabin with a snow-covered roof, warm glowing windows and a smoking chimney, complete and self-contained",
+    "wooden_sled": "a small clay wooden sled with curved runners and rope handles, seen from the side",
+    "pine_tree": "a single small snow-dusted clay pine tree in a rounded shape",
+    "lantern": "a clay storm lantern with a warm glowing candle inside",
+    "oven": "a chunky clay wood-fired stove with a small arched fire door and a kettle on top",
+    "whiteboard": "a clay-framed whiteboard on stubby legs, blank cream writing surface dusted lightly with snow",
+    "chart_up": "a bar chart pressed from clay on a cream card, four bars rising left to right, a green clay arrow above them",
+    "chart_down": "a bar chart pressed from clay on a cream card, four bars falling left to right, a red clay arrow above them",
+    "clock": "a round clay wall clock with a cream face and stubby sculpted hands",
+    "coins": "a small pile of gold clay nuggets pressed shiny",
+    "money_bag": "a plump beige clay money bag tied at the neck with real-looking sculpted rope",
+    "wooden_table": "a long clay plank table seen from the front, worn sculpted surface",
+    "workbench": "a low clay workbench with tool marks and a small vice at one end, seen from the front",
+    "mug_of_cocoa": "a round clay mug of steaming cocoa with a marshmallow, oversized and cute"
+  },
+  "hanging": [
+    "chart_down",
+    "chart_up",
+    "clock",
+    "whiteboard"
+  ],
+  "foreground": [
+    "workbench",
+    "wooden_table"
+  ],
+  "panel_color": [
+    214,
+    226,
+    235
+  ],
+  "_panel_color_note": "Cold snow-shadow blue-grey, clearly darker than the cream snow so a panel reads as a sculpted interior wall."
+}

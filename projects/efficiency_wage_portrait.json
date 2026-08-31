@@ -1,8 +1,8 @@
-{
+﻿{
   "name": "efficiency_wage_portrait",
   "title": "什么是效率工资",
   "script": "examples/efficiency_wage.txt",
-  "cast": "casts/bikini_bottom.json",
+  "cast": "bikini_bottom",
   "orientation": "portrait",
   "shot_seconds": 4.0,
   "dissolve": 0.5,

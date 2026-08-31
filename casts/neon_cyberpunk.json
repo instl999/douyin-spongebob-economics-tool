@@ -1,0 +1,78 @@
+{
+  "name": "neon_cyberpunk",
+  "description": "A neon-soaked cyberpunk cast on a rain-slick night expressway. The boss is corporate, the worker rides for the platform, the analyst reads the data off the grid.",
+  "style": "neon-soaked cyberpunk anime illustration, night city just after rain, vivid magenta and cyan neon glow against deep purple and navy darkness, glossy wet surfaces with long light reflections, dramatic rim lighting, crisp anime rendering with bold contrast and a few glowing accents per figure",
+  "background": {
+    "prompt": "An elevated rain-soaked city expressway at night seen straight on. Low horizon two thirds down the frame. Upper third: a towering neon skyline of glowing signs and skyscrapers in magenta, cyan and violet, fading into purple haze, kept entirely behind the horizon line. A concrete overpass support sweeps down at the extreme right edge only. Lower third: dark wet asphalt with long neon reflections, metal guardrails hugging the extreme left and right edges. Wide open empty reflective middle with nothing in it."
+  },
+  "characters": {
+    "boss": {
+      "role": "the corporate side - owns the platform, sets the fares, signs nothing",
+      "look": "a sharp corporate executive in a fitted dark suit with thin glowing cyan trim along the lapels, slicked-back hair, a faint holographic badge on the chest, polished shoes",
+      "relative_height": 1.0,
+      "poses": {
+        "stand": "standing upright facing the viewer, one hand in a trouser pocket, cold confident expression",
+        "point": "standing and pointing forward with one arm, jaw set, giving a directive",
+        "smug": "standing with arms crossed and chin slightly raised, thin superior smile",
+        "worried": "standing with one hand flat against his temple, eyes narrowed at bad news",
+        "think": "standing with one hand at his chin, lit from below by neon, calculating"
+      }
+    },
+    "worker": {
+      "role": "rides for the platform - absorbs every change in the rate",
+      "look": "a young courier in a hooded jacket with a magenta glowing stripe, dark cargo trousers, chunky boots, a small headset around the neck, a delivery pack on the back",
+      "relative_height": 0.95,
+      "poses": {
+        "stand": "standing upright facing the viewer, hands loose at the sides, guarded neutral expression",
+        "ride": "crouched forward gripping invisible handlebars, riding fast to the right, jacket hood fluttering",
+        "tired": "standing with slumped shoulders under the hood, dim eyes, exhausted",
+        "happy": "standing with a fist raised in small triumph, a rare grin",
+        "confused": "standing with head tilted, one hand scratching above the ear, puzzled by the pay statement"
+      }
+    },
+    "analyst": {
+      "role": "reads the data and explains the mechanism",
+      "look": "a data analyst with an angular bob haircut, a translucent amber AR visor across the eyes, a black high-collar jacket with thin cyan circuit lines, white cable loops at the collar",
+      "relative_height": 0.98,
+      "poses": {
+        "stand": "standing upright facing the viewer, arms folded, calm appraising look",
+        "explain": "standing and gesturing with one open hand turned upward, mid-explanation",
+        "point_up": "standing and pointing straight upward with one index finger, making a point",
+        "think": "standing with one hand at the chin under the visor glow, considering"
+      }
+    }
+  },
+  "props": {
+    "hover_bike": "a futuristic motorcycle with glowing cyan wheel rings and a magenta tail light, parked on its stand, seen from the side, no rider",
+    "neon_signboard": "a blank rectangular neon sign panel in a dark frame, uniform soft magenta glow, no writing on it",
+    "holo_board": "a translucent glowing hologram presentation board on a slim stand, blank pale cyan surface",
+    "holo_chart_up": "a holographic bar chart card, four glowing bars rising left to right, a cyan upward arrow above them",
+    "holo_chart_down": "a holographic bar chart card, four glowing bars falling left to right, a magenta downward arrow above them",
+    "drone": "a small quad delivery drone with a tiny cargo box slung underneath, hovering, no characters",
+    "vending_machine": "a slim glowing vending machine seen from the front, dark body with rows of softly lit empty panels",
+    "noodle_counter": "a narrow neon-lit noodle-stand counter seen from the front, steam vent and stacked bowls, no characters",
+    "digital_clock": "a rectangular digital wall clock with softly glowing cyan digits on a dark panel",
+    "credit_chips": "a small stack of glowing hexagonal credit chips in a clear case",
+    "server_rack": "a dark server cabinet seen from the front with rows of tiny blinking lights",
+    "service_counter": "a sleek dark service counter seen from the front with a thin glowing edge strip, empty top",
+    "briefcase": "a slim black briefcase with a glowing cyan clasp line",
+    "rain_umbrella": "an open clear-domed umbrella with a thin magenta rim glow, seen from the side"
+  },
+  "hanging": [
+    "digital_clock",
+    "holo_board",
+    "holo_chart_down",
+    "holo_chart_up",
+    "neon_signboard"
+  ],
+  "foreground": [
+    "noodle_counter",
+    "service_counter"
+  ],
+  "panel_color": [
+    88,
+    72,
+    130
+  ],
+  "_panel_color_note": "Deep violet, between the sky and the asphalt in value, so a panel reads as an interior wall under neon light rather than a hole in the scene."
+}
