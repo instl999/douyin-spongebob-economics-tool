@@ -19,12 +19,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import assets as assets_mod
 import plan as plan_mod
+import styles as styles_mod
 
 
 def migrate(plan_path, cast_path):
     plan_path = Path(plan_path)
     original = json.loads(plan_path.read_text(encoding="utf-8"))
-    cast = assets_mod.Cast.load(cast_path)
+    _, cast_file = styles_mod.resolve(cast_path)
+    cast = assets_mod.Cast.load(cast_file)
 
     beats = [scene["narration"] for scene in original["scenes"]]
     data = {

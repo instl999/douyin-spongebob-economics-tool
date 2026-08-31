@@ -1,8 +1,8 @@
-{
+﻿{
   "name": "price_discrimination",
   "title": "什么是价格歧视",
   "script": "examples\\price_discrimination.txt",
-  "cast": "casts\\bikini_bottom.json",
+  "cast": "bikini_bottom",
   "orientation": "landscape",
   "shot_seconds": 5.0,
   "voice": {

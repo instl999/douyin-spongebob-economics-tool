@@ -5,12 +5,17 @@
     "touching. Delete the _README and _hint keys when you are done; anything",
     "starting with an underscore is ignored.",
     "",
-    "Then run:  python scripts/build_library.py casts/<yourfile>.json --plates",
+    "Then run:  python scripts/build_library.py <yourfile-stem> --plates",
     "That generates every sprite once. Later videos using this cast composite",
     "the same PNGs and generate nothing, which is what stops characters",
     "drifting from one video to the next.",
     "",
-    "Check it first:  python scripts/build.py --check  (validates every cast)"
+    "Optional: add an entry to casts/styles.json (the art-style registry) to",
+    "give this style a display label or make it the default. Registering is",
+    "not required - a cast file in casts/ is discovered on its own.",
+    "",
+    "Check it first:  python scripts/build.py --check  (validates the registry",
+    "and every cast)"
   ],
 
   "name": "my_cast",

@@ -1,6 +1,6 @@
----
+﻿---
 name: cartoon-econ-video
-description: "把一段口播文案自动做成『海绵宝宝原版2D手绘风』知识科普成片（MP4）。固定背景板 + AI生成的透明底角色/道具素材分层合成，逐镜演绎文案，镜头间溶解转场，底部白字黑边字幕，AI书法标题开场与金句收尾。用户只需给出文案、确认画风、选择横屏或竖屏，其余（分镜编排、素材生成与抠图、AI配音、渲染、混音、出片、质检）全自动完成。当用户说『把这段文案做成视频』『做个海绵宝宝讲XX的视频』『地瓜经济那种风格』『自动剪一条科普短视频』并附上文案时使用。只需一把 Volcengine Ark Agent Plan 的 API key（导演、生图、配音共用）。"
+description: "把一段口播文案自动做成知识科普成片（MP4）。内置多种画风（比奇堡海绵宝宝为默认，另有水彩动漫、黏土定格、赛博霓虹、复古欧式插画、复古公路海报、极简几何商务；画风名单与默认项由 casts/styles.json 统一配置）。固定背景板 + AI生成的透明底角色/道具素材分层合成，逐镜演绎文案，镜头间溶解转场，底部白字黑边字幕，AI书法标题开场与金句收尾。用户只需给出文案、确认画风、选择横屏或竖屏，其余（分镜编排、素材生成与抠图、AI配音、渲染、混音、出片、质检）全自动完成。当用户说『把这段文案做成视频』『做个海绵宝宝讲XX的视频』『地瓜经济那种风格』『自动剪一条科普短视频』并附上文案时使用。只需一把 Volcengine Ark Agent Plan 的 API key（导演、生图、配音共用）。"
 ---
 
 # 卡通科普视频自动制作
@@ -45,7 +45,7 @@ python scripts/build.py --check
 python scripts/selftest.py
 ```
 
-13 项离线检查，覆盖分句、时长模型、抠图、构图修复、渲染、混音、质检。跑不过就是装的有问题，不要往下走。构建失败但不确定是流水线的问题还是接口的问题时，也先跑这个。
+二十多项离线检查（含画风注册表与全部画风文件校验），覆盖分句、时长模型、抠图、构图修复、渲染、混音、质检。跑不过就是装的有问题，不要往下走。构建失败但不确定是流水线的问题还是接口的问题时，也先跑这个。
 
 ### Step 1 — 先问清楚，再动手（**不许跳过**）
 
@@ -56,7 +56,7 @@ python scripts/selftest.py
 
 | 问什么 | 选项 | 默认（放第一个，标 Recommended） |
 |---|---|---|
-| **画风 / 班底** | 「比奇堡（海绵宝宝，60 个素材）」/「扁平办公室（商务向，25 个素材）」/「新建一套画风」 | 比奇堡 |
+| **画风 / 班底** | 用 `python scripts/new_project.py --list-styles` 拿到全部画风（比奇堡 / 水彩动漫 / 黏土定格 / 赛博霓虹 / 复古欧式插画 / 复古公路海报 / 极简几何商务）/「新建一套画风」 | 比奇堡 |
 | **横屏还是竖屏** | 「横屏 1920×1080（B站/YouTube）」/「竖屏 1080×1920（抖音/小红书）」 | 看用户平时发哪里，不知道就横屏 |
 | **成片时长** | 「顺其自然（按文案长度）」/「目标 60s」/「目标 90s」/「目标 3 分钟」 | 顺其自然 |
 | **旁白音色** | 「温厚男声」/「知性女声」/「明快女声」 | 温厚男声 |
@@ -64,7 +64,8 @@ python scripts/selftest.py
 补充说明：
 
 - **时长不是随便定的。** 文案多长，视频就多长。选了目标时长，语速会在 0.85×–1.20× 之间自动拟合；超出这个范围就拟合不了，Step 2 会直接告诉你差多少字。**这时要回来问用户：是改文案，还是接受实际时长。不要自己删改文案。**
-- **画风选「新建一套」时**：复制 `casts/_template.json`（里面的 `_hint_*` 写清了每个字段该怎么填、坑在哪），填好后先 `python scripts/build.py --check` 验一遍，再 `python scripts/build_library.py casts/<新的>.json --plates` 一次性把素材生成好。**要提前告诉用户这一步的量**：每张图约 20 秒，一套 50-60 张就是 20 分钟左右。素材只生成这一次，之后所有视频复用。
+- **画风的名单和默认项由 `casts/styles.json` 统一管理**（画风总配置）。比奇堡自带素材库；其余画风第一次用要先建素材库（下一步说明）。**要提前告诉用户这一步的量。**
+- **画风选「新建一套」时**：复制 `casts/_template.json`（里面的 `_hint_*` 写清了每个字段该怎么填、坑在哪）成 `casts/<key>.json`，填好后先 `python scripts/build.py --check` 验一遍，再 `python scripts/build_library.py <key> --plates` 一次性把素材生成好。想要中文名就在 `casts/styles.json` 的 `styles` 里加一条 `{"<key>": {"label": "中文名", "note": "一句话"}}`。**要提前告诉用户这一步的量**：每张图约 20 秒，一套 30-60 张就是 10-20 分钟左右。素材只生成这一次，之后所有视频复用。
 - 用户已经明确说过的（比如「做成竖屏的」），就不用再问，但要在 Step 2 的确认摘要里复述一遍。
 
 ### Step 2 — 写 project 文件，把预估摆给用户看
@@ -190,6 +191,8 @@ python scripts/draft.py out/my_video --install
 
 | 想改什么 | 改哪里 |
 |---|---|
+| **画风总配置（名单 / 默认画风 / 中文名 / 隐藏）** | `casts/styles.json` —— 画风的专门配置文件，换默认画风只改这一个 |
+| project 用哪套画风 | project 的 `cast` 字段写画风 key（如 `"clay"`）或 cast 文件路径；不写就用 `styles.json` 的 `default` |
 | 谁出场、什么姿势、有什么道具 | `casts/<cast>.json` 的 `characters` / `props` |
 | 画风 | `casts/<cast>.json` 的 `style` |
 | 背景（**最影响观感**：地平线位置决定角色站得稳不稳） | `casts/<cast>.json` 的 `background.prompt`，说清地平线在哪、两边留空 |
@@ -261,7 +264,8 @@ python scripts/draft.py out/my_video --install
 |---|---|
 | 检查环境（接口侧） | `python scripts/build.py --check` |
 | 离线自检（装完/改完必跑） | `python scripts/selftest.py` |
-| 建 project + 看预估（**先做**） | `python scripts/new_project.py --name … --title … --script … --orientation …` |
+| 列出全部画风 | `python scripts/new_project.py --list-styles` |
+| 建 project + 看预估（**先做**） | `python scripts/new_project.py --name … --title … --script … --cast <画风key> --orientation …` |
 | 分镜预览（**必做**） | `python scripts/build.py <proj> --preview` |
 | 出片（含自动质检） | `python scripts/build.py <proj>` |
 | 单独质检 | `python scripts/verify.py <proj> --verbose` |
@@ -270,8 +274,8 @@ python scripts/draft.py out/my_video --install
 | 单张抠图 | `python scripts/matting.py in.jpg out.png` |
 | 导出剪映工程（**交付物**） | `python scripts/draft.py out/<name> --install` |
 | 单独校验剪映工程 | `python scripts/check_draft.py out/<name>` |
-| 老 plan 套用新规则（不调模型） | `python scripts/migrate_plan.py out/<name>/plan.json casts/<cast>.json` |
-| 新画风：一次性生成整套素材 | `python scripts/build_library.py casts/<cast>.json --plates` |
+| 老 plan 套用新规则（不调模型） | `python scripts/migrate_plan.py out/<name>/plan.json <画风key或cast路径>` |
+| 新画风：一次性生成整套素材 | `python scripts/build_library.py <画风key> --plates` |
 
 ## 文件
 
@@ -279,16 +283,24 @@ python scripts/draft.py out/my_video --install
 SKILL.md                     本文件
 README.md                    环境搭建与设计说明
 .env.example                 凭据模板（复制成 .env）
-casts/_template.json         新画风模板（_hint_* 里写了每个字段怎么填）
-casts/bikini_bottom.json     比奇堡：海绵宝宝风，5 角色 60 素材
-casts/flat_office.json       扁平办公室：商务向，3 角色 25 素材
+casts/
+  styles.json                画风总配置：默认画风、每个画风的中文名与说明
+  _template.json             新画风模板（_hint_* 里写了每个字段怎么填）
+  bikini_bottom.json         比奇堡：海绵宝宝风，5 角色 60 素材（默认画风）
+  watercolor_anime.json      水彩动漫：手绘水彩动画电影质感，3 角色
+  clay.json                  黏土定格：橡皮泥定格动画质感，3 角色
+  neon_cyberpunk.json        赛博霓虹：霓虹雨夜都市，3 角色
+  retro_editorial.json       复古欧式插画：雨夜街角咖啡馆，3 角色
+  retro_pulp.json            复古公路海报：70 年代丝网印刷海报，3 角色
+  flat_geo.json              极简几何商务：扁平几何色块剪影风，3 角色
 projects/*.json              一条视频一个文件
 examples/*.txt               口播文案
 scripts/
+  styles.py                  画风注册表：解析画风 key / 路径、默认画风、校验
   new_project.py             建 project 文件 + 校验画风 + 预估时长与用量（不联网）
   timing.py                  时长预估与目标时长拟合（拟合自 45 条真实配音）
   build.py                   主入口，七阶段编排，收尾自动质检
-  verify.py                  11 项自动质检，退出码可用来卡流程
+  verify.py                   12 项自动质检，退出码可用来卡流程
   plan.py                    分句（代码做）+ 导演选素材（模型做）+ 校验
   assets.py                  素材库：生成 → 抠图 → 缓存；标题书法字 + 视觉校验
   matting.py                 品红抠图 + 边缘去色 + 自动裁切
@@ -301,7 +313,7 @@ scripts/
   preview.py                 分镜联系表
   migrate_plan.py            把旧 plan 重新过一遍校验（新规则生效，不花钱）
   build_library.py           一次性生成某个 cast 的全部素材
-  selftest.py                13 项离线自检，不联网不花钱
+  selftest.py                 离线自检（含画风注册表校验），不联网不花钱
   checks.py                  构图碰撞/越界检测与自动修复
 references/
   reference-findings.md      参考片逐帧测量结果（铁律的出处）

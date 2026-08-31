@@ -1,0 +1,79 @@
+{
+  "name": "retro_pulp",
+  "description": "A 1970s screen-print road-trip cast on a desert highway at sunset. The boss runs the garage, the worker turns the wrenches, the analyst keeps the books in the diner.",
+  "style": "retro 1970s road-trip screen-print poster, bold black ink outlines of even weight, halftone dot shading, grainy textured flat colour, duotone-leaning sunset palette of burnt orange, dusty purple, warm cream and deep brown, vintage pulp comic poster look, no gradients",
+  "background": {
+    "prompt": "An endless desert highway at sunset seen straight on, printed like a vintage poster. Low horizon two thirds down the frame. Upper third: a huge low cream sun touching the horizon at the extreme left edge, a dusty purple mountain range running along the horizon behind it, a grainy orange-to-purple sky. Lower third: burnt-orange desert floor with scrub bushes only at the extreme left and right edges, the two-lane asphalt road running straight down the middle and vanishing at the horizon with a single dashed centre line. Wide open empty middle with nothing on the road."
+  },
+  "characters": {
+    "boss": {
+      "role": "owns the garage and the forecourt - watches every dollar at the pump",
+      "look": "a broad-shouldered garage owner in an open brown leather jacket over a cream shirt, a flat cap, dark trousers with a heavy belt, weathered confident face",
+      "relative_height": 1.0,
+      "poses": {
+        "stand": "standing upright facing the viewer, thumbs hooked in his belt, confident grin",
+        "point": "standing and pointing forward with one arm, mouth open, calling out",
+        "greedy": "standing rubbing both hands together, wide delighted grin",
+        "worried": "standing with both hands raised near his chest, brows knotted",
+        "think": "standing with one hand under the cap brim at his chin, squinting, thinking"
+      }
+    },
+    "worker": {
+      "role": "turns the wrenches - grease under the nails, paid by the job",
+      "look": "a young mechanic in stained brown overalls with one strap undone, a white singlet underneath, a backwards cap, heavy boots, a red shop rag hanging from the back pocket",
+      "relative_height": 0.96,
+      "poses": {
+        "stand": "standing upright facing the viewer, arms at the sides, easy tired smile",
+        "work": "leaning forward turning an invisible wrench with both hands, elbows out, concentrated",
+        "tired": "standing with slumped shoulders and drooping eyelids, rag hanging limp",
+        "happy": "standing with both arms raised, wrench-hand open, triumphant grin",
+        "confused": "standing with head tilted and one hand scratching under the cap, puzzled"
+      }
+    },
+    "analyst": {
+      "role": "keeps the books in the diner and explains the numbers",
+      "look": "a woman with a rolled brown hairdo and round sunglasses pushed up on her head, a cream blouse with short sleeves, a mustard vest, a high-waisted brown skirt, a pencil tucked behind one ear",
+      "relative_height": 0.97,
+      "poses": {
+        "stand": "standing upright facing the viewer, one hand on her hip, calm appraising look",
+        "explain": "standing and gesturing with one open hand turned upward, mid-explanation",
+        "point_up": "standing and pointing straight upward with one index finger, making a point",
+        "think": "standing with the pencil tapped against her chin, considering"
+      }
+    }
+  },
+  "props": {
+    "muscle_car": "a vintage 1970s orange muscle car with a black stripe, seen from the side in three-quarter rear view, chrome bumpers",
+    "gas_pump": "a vintage glass-topped petrol pump on a small island base, cream and red, blank round dial",
+    "route_signpost": "a shield-shaped blank road sign in white with a black border on a single galvanised post",
+    "diner_sign": "a tall blank rectangular diner sign on a pole with a thin neon edge, no writing",
+    "cactus": "a single saguaro cactus with two arms, printed in dusty green with black outline",
+    "whiteboard": "a plain presentation board in a thin brown frame, blank cream surface, standing upright",
+    "chart_up": "a bar chart printed on a cream card, four bars rising left to right, a bold orange upward arrow above them",
+    "chart_down": "a bar chart printed on a cream card, four bars falling left to right, a bold purple downward arrow above them",
+    "wall_clock": "a round diner wall clock with a cream face and bold black hands",
+    "coins": "a small pile of brass coins rendered with halftone shading",
+    "money_bag": "a plump beige cloth money bag tied at the neck with rope",
+    "diner_counter": "a long diner counter seen from the front with a chrome edge and a row of empty stools on the near side",
+    "garage_workbench": "a heavy wooden garage workbench seen from the front with a vice at one end and scattered tools",
+    "toolbox": "an open red metal toolbox with a few wrenches laid out beside it",
+    "tabletop_radio": "a vintage tabletop radio with a rounded cream case, a cloth speaker grille and two knobs"
+  },
+  "hanging": [
+    "chart_down",
+    "chart_up",
+    "diner_sign",
+    "wall_clock",
+    "whiteboard"
+  ],
+  "foreground": [
+    "diner_counter",
+    "garage_workbench"
+  ],
+  "panel_color": [
+    230,
+    206,
+    170
+  ],
+  "_panel_color_note": "Warm cream, the colour of a printed paper slab, so a panel reads as a diner interior pasted over the sunset plate instead of a hole in the desert."
+}

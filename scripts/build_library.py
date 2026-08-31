@@ -2,6 +2,9 @@
 
     python scripts/build_library.py casts/bikini_bottom.json
 
+The argument is a style key from casts/styles.json or a path to a cast file;
+with no argument it builds the registry's default style.
+
 A normal build only makes the sprites the storyboard actually asked for, which
 is right for one video and wrong for a new cast: the first few videos then pay
 a generation stall each, and the director is choosing from whatever happens to
@@ -18,6 +21,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import assets as assets_mod
+import styles as styles_mod
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -25,7 +29,9 @@ ROOT = Path(__file__).resolve().parent.parent
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cast", nargs="?", default="casts/bikini_bottom.json")
+    ap.add_argument("cast", nargs="?", default=None,
+                    help="style key or cast file path (default: the registry's "
+                         "default style)")
     ap.add_argument("--force", action="store_true",
                     help="regenerate even sprites whose prompt is unchanged")
     ap.add_argument("--workers", type=int, default=4,
@@ -34,9 +40,11 @@ def main():
                     help="also generate the background plate for both orientations")
     args = ap.parse_args()
 
-    cast_path = Path(args.cast)
-    if not cast_path.is_absolute() and not cast_path.exists():
-        cast_path = ROOT / args.cast
+    try:
+        _, cast_path = styles_mod.resolve(args.cast)
+    except ValueError as exc:
+        print(str(exc))
+        return 2
     cast = assets_mod.Cast.load(cast_path, root=ROOT / "casts")
 
     problems = cast.problems()

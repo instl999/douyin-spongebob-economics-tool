@@ -1,0 +1,77 @@
+{
+  "name": "retro_editorial",
+  "description": "A vintage European editorial cast on a rainy street corner by a café. The boss owns the café, the worker runs the counter, the analyst talks figures over coffee.",
+  "style": "vintage mid-century European editorial illustration, flat textured colour with subtle risograph paper grain, thin elegant ink outlines in dark navy, muted palette of night navy blue, burgundy red, mustard, warm cream and limestone beige, restrained storybook poster look, no gradients",
+  "background": {
+    "prompt": "A quiet European street corner on a rainy autumn evening seen straight on. Low horizon two thirds down the frame. Upper third: tall limestone façades with shuttered windows, dimmed and kept behind the horizon line, a strip of deep navy evening sky above. A corner café with a burgundy façade and a striped awning sits against the extreme right edge only, no taller than a third of the image. A glowing cast-iron street lamp stands at the extreme left edge only. Lower third: wet cobblestone pavement with soft lamp reflections and a few scattered fallen leaves. Wide open empty middle with nothing in it."
+  },
+  "characters": {
+    "boss": {
+      "role": "owns the café and the building - counts receipts and worries about rent",
+      "look": "a composed businessman in a long beige trench coat over a dark suit, a mustard scarf, neat dark hair, leather shoes, carrying nothing",
+      "relative_height": 1.0,
+      "poses": {
+        "stand": "standing upright facing the viewer, hands at his sides, reserved expression",
+        "point": "standing and pointing forward with one hand, mouth open, making a decision",
+        "arms_crossed": "standing with arms folded across the trench coat, unimpressed, one brow raised",
+        "worried": "standing with one hand raised to his cheek, mouth a small flat line, concerned",
+        "think": "standing with one hand in his coat pocket and the other at his chin, considering"
+      }
+    },
+    "worker": {
+      "role": "runs the counter - the one on their feet all evening",
+      "look": "a café waiter with a thin moustache, a white shirt with rolled sleeves under a small navy waistcoat, a burgundy apron tied at the waist, dark trousers and a folded white towel over one forearm",
+      "relative_height": 0.96,
+      "poses": {
+        "stand": "standing upright facing the viewer, towel over the forearm, polite small smile",
+        "carry": "walking to the right carrying a small round tray at shoulder height, careful expression",
+        "tired": "standing with shoulders dropped and head tilted, eyes half closed",
+        "happy": "standing with both arms slightly raised, delighted smile",
+        "confused": "standing with one hand scratching the back of the head, puzzled"
+      }
+    },
+    "analyst": {
+      "role": "explains the numbers over an untouched coffee",
+      "look": "a woman with a dark bob haircut and round thin-frame glasses, a cream roll-neck sweater under a long burgundy cardigan, a mustard pleated skirt, dark tights and flat shoes",
+      "relative_height": 0.98,
+      "poses": {
+        "stand": "standing upright facing the viewer, hands clasped in front, calm look",
+        "explain": "standing and gesturing with one open hand turned upward, mid-explanation",
+        "point_up": "standing and pointing straight upward with one index finger, making a point",
+        "think": "standing with one hand at the chin behind the glasses, considering"
+      }
+    }
+  },
+  "props": {
+    "cafe_facade": "a small corner café façade with a burgundy front, striped awning and two glowing windows, seen straight on, complete and self-contained",
+    "street_lamp": "a cast-iron street lamp with a warm glowing lantern head",
+    "bicycle": "a classic city bicycle with a rear rack and a small front light, seen from the side, painted deep navy",
+    "chalkboard_menu": "an A-frame chalkboard on the pavement, blank dark writing surface in a thin navy frame",
+    "cafe_table": "a small round marble café table with two simple metal chairs, seen from the front",
+    "shop_counter": "a wooden café counter seen from the front with an old brass cash register on top",
+    "coffee_cup": "a white coffee cup on a saucer with a gentle wisp of steam",
+    "paper_umbrella": "an open navy umbrella with a curved handle, seen from the side, dry and neatly furled spokes",
+    "whiteboard": "a plain presentation board in a thin dark navy frame, blank cream surface, standing upright",
+    "chart_up": "a bar chart drawn on a cream card, four navy bars rising left to right, a burgundy upward arrow above them",
+    "chart_down": "a bar chart drawn on a cream card, four navy bars falling left to right, a burgundy downward arrow above them",
+    "wall_clock": "a round wall clock with a cream face, thin navy hands and a dark rim",
+    "coins": "a neat stack of brass coins with a few loose beside it",
+    "money_bag": "a plump beige cloth money bag tied at the neck with rope"
+  },
+  "hanging": [
+    "chart_down",
+    "chart_up",
+    "wall_clock",
+    "whiteboard"
+  ],
+  "foreground": [
+    "cafe_table",
+    "shop_counter"
+  ],
+  "panel_color": [
+    228,
+    208,
+    178
+  ],
+  "_panel_color_note": "Lamplit warm beige, so a panel reads as a café interior lit from the street lamp rather than a flat slab on the rain-blue pavement."
+}

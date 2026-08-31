@@ -1,0 +1,77 @@
+{
+  "name": "watercolor_anime",
+  "description": "A watercolour anime-film cast set in a seaside town at golden hour. The boss runs the shop, the worker does the deliveries, the analyst explains what the numbers mean.",
+  "style": "Japanese animated-film background art painted in soft watercolour and gouache, visible brush strokes and paper grain, warm golden-hour light with gentle bloom, thin hand-drawn outlines in warm brown rather than black, nostalgic palette of peach orange, cream, soft teal and dusty blue, cinematic hand-painted anime look, no hard cel shading",
+  "background": {
+    "prompt": "A quiet seaside-town street at golden hour seen straight on, painted in soft watercolour. Low horizon two thirds down the frame. Upper third: a warm sunset sky with soft peach and cream clouds, a strip of glittering blue sea and a row of distant small tiled rooftops all staying behind the horizon line. Lower third: a sunlit asphalt road sloping gently toward the viewer, long warm shadows, a low white guardrail and small green hugging hedges only at the extreme left and right edges. Wide open empty sunlit middle with nothing in it."
+  },
+  "characters": {
+    "boss": {
+      "role": "owns the shop and the capital - watches the till and the tide",
+      "look": "a tanned middle-aged shopkeeper, short greying hair, rolled-up white sleeves, a navy apron over a cream shirt, a small towel slung over one shoulder, dark cropped trousers, sandals",
+      "relative_height": 1.0,
+      "poses": {
+        "stand": "standing upright facing the viewer, hands resting in his apron pockets, calm expression",
+        "point": "standing and pointing forward with one hand, mouth open, giving an instruction",
+        "count": "standing holding a small stack of coins in one palm, counting them with narrowed eyes",
+        "worried": "standing with one hand rubbing the back of his neck, brows drawn together",
+        "happy": "standing with both arms slightly raised, laughing with his eyes closed"
+      }
+    },
+    "worker": {
+      "role": "does the actual running around - deliveries, errands, the real work",
+      "look": "a bright young worker in a white short-sleeved uniform shirt with a small red neckerchief, navy shorts, white socks and brown loafers, short dark hair, a canvas shoulder bag",
+      "relative_height": 0.94,
+      "poses": {
+        "stand": "standing upright facing the viewer, arms at the sides, easy smile",
+        "run": "running to the right at full speed, arms pumping, scarf and bag swinging, determined expression",
+        "tired": "standing with slumped shoulders and drooping eyelids, out of breath",
+        "happy": "standing with both arms raised in celebration, wide smile, eyes squeezed with joy",
+        "confused": "standing with one hand scratching the back of the head, puzzled look"
+      }
+    },
+    "analyst": {
+      "role": "the analyst who explains the mechanism with the chart",
+      "look": "a composed young woman with a bob haircut and round thin-rimmed glasses, a cream linen shirt with rolled sleeves, olive cropped trousers, a brown leather satchel across one shoulder",
+      "relative_height": 0.98,
+      "poses": {
+        "stand": "standing upright facing the viewer, one hand holding the satchel strap, calm look",
+        "explain": "standing and gesturing with one open hand turned upward, mid-explanation",
+        "point_up": "standing and pointing upward with one index finger, making a single point",
+        "think": "standing with one hand at the chin, head slightly tilted, considering"
+      }
+    }
+  },
+  "props": {
+    "shop_front": "a small seaside shop front with a red-and-cream striped awning, wooden door and two windows, seen straight on, complete and small",
+    "bicycle": "a classic step-through bicycle with a wicker basket on the handlebars, seen from the side, painted in soft teal",
+    "street_lamp": "a slender cast-iron street lamp with a warm glowing lamp head",
+    "market_stall": "a small wooden market stall with a striped canopy and an empty counter, seen from the front",
+    "wooden_table": "a long plain wooden garden table seen from the front, weathered surface",
+    "chalkboard_menu": "an A-frame chalkboard standing on the ground, blank dark writing surface in a wooden frame",
+    "whiteboard": "a plain white presentation board in a light wooden frame, blank writing surface, standing upright",
+    "chart_up": "a simple bar chart painted on a cream card, four bars rising left to right, a soft green upward arrow above them",
+    "chart_down": "a simple bar chart painted on a cream card, four bars falling left to right, a soft red downward arrow above them",
+    "clock": "a plain round wall clock with a white face, black hands and a thin wooden rim",
+    "coins": "a small heap of warm gold coins with painted highlights",
+    "money_bag": "a plump beige cloth money bag tied at the neck with rope",
+    "delivery_van": "a small rounded delivery van seen from the side, cream body with a teal stripe, no writing",
+    "fish_crate": "an open wooden crate of fresh silver fish on a bed of ice"
+  },
+  "hanging": [
+    "chart_down",
+    "chart_up",
+    "clock",
+    "whiteboard"
+  ],
+  "foreground": [
+    "market_stall",
+    "wooden_table"
+  ],
+  "panel_color": [
+    233,
+    216,
+    190
+  ],
+  "_panel_color_note": "Warm cream, matching the gouache paper tone, so a panel reads as a sunlit interior wall rather than a sticker on the sunset plate."
+}

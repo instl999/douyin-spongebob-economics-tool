@@ -29,6 +29,7 @@ import assets as assets_mod
 import audio as audio_mod
 import config
 import plan as plan_mod
+import styles as styles_mod
 import tts as tts_mod
 from layout import Layout
 
@@ -66,10 +67,12 @@ class Project:
 
     @property
     def cast(self):
-        ref = self.data.get("cast", "casts/bikini_bottom.json")
-        p = Path(ref)
-        if not p.is_absolute():
-            p = (self.path.parent / ref) if (self.path.parent / ref).exists() else ROOT / ref
+        # A style key from casts/styles.json, or a path straight to a cast
+        # file; missing means the registry's default style.
+        ref = self.data.get("cast")
+        if ref is not None and not str(ref).strip():
+            ref = None
+        _, p = styles_mod.resolve(ref)
         return assets_mod.Cast.load(p, root=ROOT / "casts")
 
     @property
@@ -511,15 +514,20 @@ def check():
     for label, ready, note in config.describe():
         log(f"  [{'ok' if ready else 'MISS'}]   {label}  {note}")
         ok = ok and ready
-    # Files starting with an underscore are templates, not casts.
-    for cast_file in sorted(f for f in (ROOT / "casts").glob("*.json")
-                            if not f.name.startswith("_")):
+    # The style registry is the one config file users hand-edit; validate it,
+    # then every style it offers (plus any cast file dropped into casts/).
+    for issue in styles_mod.problems():
+        log(f"  [MISS] style registry  {issue}")
+        ok = False
+    for key, entry in styles_mod.visible().items():
         try:
-            import assets as assets_mod
-            issues = assets_mod.Cast.load(cast_file, root=ROOT / "casts").problems()
+            issues = assets_mod.Cast.load(entry["file"],
+                                          root=ROOT / "casts").problems()
         except Exception as exc:
             issues = [f"could not be read: {exc}"]
-        log(f"  [{'ok' if not issues else 'MISS'}]   cast {cast_file.name}"
+        label = entry["label"] if entry["label"] != key else ""
+        log(f"  [{'ok' if not issues else 'MISS'}]   cast {key}"
+            f"{'  ' + label if label else ''}"
             f"  {'valid' if not issues else issues[0]}")
         ok = ok and not issues
     try:

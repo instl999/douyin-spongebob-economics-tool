@@ -1,0 +1,60 @@
+{
+  "_README": [
+    "画风总配置 —— 想换画风、加画风、改画风名字，只改这一个文件。",
+    "",
+    "每个画风对应 casts/<key>.json 一个班底文件（画风本身的内容 - 美术风格、",
+    "背景板、角色、道具 - 都在那个文件里改，见 casts/_template.json 的说明）。",
+    "",
+    "常用改法：",
+    "  换默认画风        改下面的 default（project 没写 cast 字段时用它）",
+    "  给画风改中文名    改对应条目的 label / note，只影响展示，不影响生成",
+    "  加新画风          复制 casts/_template.json 成 casts/<key>.json，填好即可，",
+    "                    不注册也会被自动发现；想要中文名就在 styles 里加一条",
+    "                    {\"<key>\": {\"label\": \"中文名\", \"note\": \"一句话说明\"}}",
+    "  隐藏某个画风       条目里加 \"hidden\": true（不再出现在列表里，但项目里",
+    "                    写了它的 key 或路径就仍然可用）",
+    "",
+    "改完先跑 python scripts/build.py --check 验证一遍。",
+    "project 文件里 cast 字段可以直接写画风 key（如 \"clay\"），也可以写路径。",
+    "下划线开头的文件被当作模板跳过，不会被当成画风。"
+  ],
+
+  "default": "bikini_bottom",
+  "_hint_default": "project 没写 cast 字段、命令行也没指定 --cast 时，用这个画风。",
+
+  "styles": {
+    "bikini_bottom": {
+      "label": "比奇堡",
+      "note": "海绵宝宝 2D 手绘卡通，海底世界，自带素材库"
+    },
+    "watercolor_anime": {
+      "label": "水彩动漫",
+      "note": "手绘水彩动画电影质感，暖阳海边小镇"
+    },
+    "clay": {
+      "label": "黏土定格",
+      "note": "橡皮泥定格动画质感，雪夜森林小屋"
+    },
+    "neon_cyberpunk": {
+      "label": "赛博霓虹",
+      "note": "霓虹雨夜都市，赛博朋克动漫"
+    },
+    "retro_editorial": {
+      "label": "复古欧式插画",
+      "note": "雨夜街角咖啡馆，中古编辑插画质感"
+    },
+    "retro_pulp": {
+      "label": "复古公路海报",
+      "note": "70 年代丝网印刷海报，沙漠日落公路"
+    },
+    "flat_geo": {
+      "label": "极简几何商务",
+      "note": "扁平几何色块，剪影人物，科技商务风"
+    }
+  },
+  "_hint_styles": [
+    "key 必须和 casts/<key>.json 同名（或者用 file 字段指到别处）。",
+    "label 是展示用的中文名，note 是一句话说明，都会显示在 --list-styles 里。",
+    "完整条目字段：file（可选，默认 casts/<key>.json）、label、note、hidden（可选）。"
+  ]
+}
