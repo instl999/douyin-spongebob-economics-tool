@@ -15,6 +15,8 @@ of the same character or are dropped, coordinates are clamped, solid objects
 are put back on the ground, and a character cannot appear twice in one shot. A
 director that hallucinates should cost one element, not the run.
 """
+from pathlib import Path
+
 import ark
 import styles as styles_mod
 
@@ -46,182 +48,23 @@ invent a sprite; only the listed filenames exist.
 
 Return JSON only, no commentary."""
 
-TEMPLATE = """# Shots
+# The director's brief lives in references/director-brief.md rather than here.
+# It is 150 lines of prose that a person edits and reasons about far more often
+# than the code around it, and the same argument that moved the look settings
+# into casts/styles.json applies to it: tuning what the director is told should
+# not mean editing Python. `{...}` placeholders are filled by build_prompt.
+BRIEF_PATH = Path(__file__).resolve().parent.parent / "references" / "director-brief.md"
 
-The narration is already split. Do not change it, merge it, or add to it.
-Return exactly {count} shots, with these ids.
 
-{beats}
+def brief_template():
+    """The director's brief, read fresh so an edit takes effect immediately."""
+    try:
+        return BRIEF_PATH.read_text(encoding="utf-8-sig")
+    except OSError as exc:
+        raise ValueError(
+            f"the director's brief is missing or unreadable ({exc}). It should "
+            f"be at {BRIEF_PATH}") from exc
 
-# Sprites you may use
-
-Exact filenames; nothing else exists unless you ask for it (see below). The
-text after each name is what that sprite shows - choose on that, not on the
-name.
-
-{catalogue}
-
-# Casting
-
-{casting}
-
-# For each shot
-
-## First read the sentence, then cast it
-
-Before choosing anything, work out what the sentence actually depicts, and put
-it in the shot as "beat":
-
-{{"subject": "who it happens to",
-  "action": "what they physically do - a verb someone could perform",
-  "object": "the thing involved, or null",
-  "emotion": "how the subject feels about it, or null",
-  "relation": "who does it to whom, or null"}}
-
-Then choose {lo_elements}-{hi_elements} elements that **perform that action**.
-
-The test is whether someone watching with the sound off would describe the
-picture using the same verb as the sentence. A character standing next to the
-thing the sentence mentions does not pass: "拿到工资" is not a person and a bag
-of money in the same frame, it is a person **being handed** money and pleased
-about it. Cast the *action*, then let the object and the feeling follow from it.
-
-- **action** decides the pose. Pick the pose whose description contains that
-  verb, not merely the character the sentence is about
-- **emotion** decides which of the near-matching poses to use. The same beat
-  ends differently if the subject is pleased or dismayed, and that difference
-  is most of what the shot is for
-- **object** goes in the frame, positioned so it is being acted on: held,
-  handed over, pointed at, worked at - not parked beside someone
-- **relation** decides who else is on screen. "A pays B" needs both, facing
-  each other. A one-sided action needs one
-- Change who is on screen when the subject changes. One lone character with
-  nothing happening is a wasted shot
-
-## When no pose performs the action - ask for one
-
-The catalogue is mostly postures: standing, thinking, pleased, worried. Most
-scripts describe things nobody in it is doing. **This is the normal case, not
-an edge case, and asking is the normal response to it.**
-
-Run this test on every shot, before you cast it:
-
-> Read the pose descriptions for the character in `subject`. Does any of them
-> describe a body performing `action`? Not the right mood - the right *action*.
-
-If none does, ask for the pose:
-
-{{"asset": "sponge_take_pay.png",
-  "new_pose": "both hands out taking a pay envelope, beaming, delighted",
-  "x": 0.62, "y": 0.97, "h": 0.46}}
-
-"蟹老板把工资信封递过来，他双手接过" fails the test twice. No krabs pose
-describes handing something over, and no sponge pose describes taking something
-with both hands. `krabs_stand` plus `sponge_happy` plus a pile of coins is two
-people standing near money - it is the failure this whole section exists to
-prevent. Ask for `krabs_hand_over` and `sponge_take_pay` and the shot performs
-the sentence.
-
-- the filename must be `<character>_<pose>.png` for a character in the cast,
-  and `<pose>` must be new, lowercase, no spaces
-- `new_pose` describes the **body**: what the hands, arms, posture and face are
-  doing. Do not describe clothing, colour or art style - those come from the
-  cast. Do not name other characters; one figure only
-- Do **not** ask when the difference is only mood and a pose already performs
-  the action. `sponge_sad` covers any dejected standing
-- You have {pose_budget} requests for the whole video. A script about people
-  doing things should use most of them. Spend them on the shots where the
-  action *is* the point, and settle on the shots that are only commentary
-- Anything you ask for is drawn once and then belongs to this cast, so prefer
-  a pose that other scripts would also use ("take_pay") over one welded to this
-  sentence ("take_pay_from_krabs_on_friday")
-
-{orientation_note}
-
-## Framing
-
-Give every shot a "framing" of "wide", "medium" or "close". It scales the whole
-shot, and it is how you vary the picture without moving anything.
-
-- "close" for one character making a point, or a reaction
-- "medium" for two characters, or a character with the prop they are using
-- "wide" for three characters, or a big prop like a building
-
-**Vary it.** A run of identically framed shots reads as a slideshow. Never use
-the same value more than twice in a row, and aim for roughly a fifth of the
-video to be "close" - a video that never gets near a face reads flat.
-
-## Setting a shot somewhere else
-
-The background never changes. When the narration names a *place* - an office, a
-meeting, a shop, a warehouse, a dock, a kitchen - put a flat slab behind
-everyone and the shot reads as being there:
-
-{{"type": "panel", "x": 0.5, "y": 0.99, "w": 0.55, "ph": 0.34}}
-
-x,y is the bottom centre in stage coordinates; w and ph are fractions of the
-frame. Add the furniture that belongs there on top of it - a desk, a counter, a
-meeting table - and the place is built.
-
-**Look through the shot list for every sentence that names a location and give
-those shots a panel.** It is the only way this format can leave the default
-setting, so a video whose script mentions an office and never shows one has
-missed something. Do not put one on every shot; shots that are about an idea
-rather than a place do not need one.
-
-## Coordinates
-
-x and y are 0-1 across the stage. y is where the *bottom* of a sprite sits.
-
-- Characters on the ground: y 0.96-1.0, h 0.42-0.52.
-  y = 1.0 is the ground line, so 0.97 means "standing on it"
-- Props are usually smaller than the people using them: h 0.20-0.35 for a
-  hand-held or table-top object, 0.35-0.50 for furniture, 0.50-0.65 only for a
-  building. A stack of banknotes as tall as a person reads as a mistake
-- One character: x 0.5. Two: x 0.30 and x 0.70. Three: 0.22, 0.5, 0.78
-- A prop a character uses goes beside them, e.g. character x 0.34, prop x 0.64
-- Furniture a character works AT - a counter, a desk, a sink, a table - goes at
-  almost the same x as that character (within 0.06), not beside them. It is
-  drawn over their legs, so they read as standing behind it. Use this to build
-  a place: a counter plus an oven plus a character is a kitchen
-- Boards, charts and maps hang at eye level: "anchor": "center", y 0.34-0.46
-- Never leave a solid object floating in open water. Anything not hanging on a
-  wall stands on the ground like everyone else
-- Labels: "type": "label" with "text", "anchor": "center", just above or below
-  the thing they name, y 0.20-0.55. Two or three words - a figure, a name, a
-  before/after. Never a whole sentence. Add "tone": "good" when it names an
-  improvement, "bad" for a loss or a problem, "money" for a figure or a price,
-  and leave it off otherwise - it colours the label green, red or amber
-- Speech bubbles: "type": "bubble" with "text", "anchor": "center", y 0.18-0.34,
-  "tail": "left" or "right" leaning back toward the speaker. Under 15
-  characters, used sparingly, for a character's own line
-- Anything arriving part-way through a shot: "appear": seconds from shot start
-- Draw order is worked out for you: walls behind, then hanging boards, then
-  characters, then furniture over their legs. Only set "z" (a number, lower is
-  further back) when you need something the bands cannot express - a character
-  standing between two pieces of furniture
-
-Never put the same character on screen twice in one shot. Do not overlap two
-characters.
-
-# Output
-
-{{"title": "<= 10 characters, the question the video answers",
-  "ending": {{"text": "the closing line, may contain \\n", "highlight": "<= 4 characters from it"}},
-  "shots": [
-    {{"id": 1, "framing": "medium",
-      "beat": {{"subject": "sponge", "action": "is handed his pay packet",
-                "object": "pay envelope", "emotion": "delighted",
-                "relation": "krabs hands it to sponge"}},
-      "elements": [
-        {{"asset": "krabs_point.png", "x": 0.30, "y": 0.97, "h": 0.46}},
-        {{"asset": "sponge_take_pay.png",
-          "new_pose": "both hands out taking a pay envelope, beaming, delighted",
-          "x": 0.66, "y": 0.97, "h": 0.46}},
-        {{"type": "label", "text": "发工资", "tone": "money",
-          "x": 0.48, "y": 0.40, "anchor": "center"}}
-      ]}}
-  ]}}"""
 
 
 # --- splitting -------------------------------------------------------------
@@ -351,7 +194,7 @@ def build_prompt(beats, cast, orientation="landscape",
     catalogue = _catalogue_text(cast)
     listing = chr(10).join(f"{i}. {text}" for i, text in enumerate(beats, 1))
     portrait = orientation == "portrait"
-    return TEMPLATE.format(
+    return brief_template().format(
         count=len(beats), beats=listing, catalogue=catalogue,
         casting=_casting_notes(cast),
         pose_budget=pose_budget,
@@ -370,8 +213,10 @@ def direct(script, cast, shot_seconds=5.0, model=None, temperature=0.6,
         [{"role": "system", "content": SYSTEM},
          {"role": "user", "content": build_prompt(beats, cast, orientation)}],
         model=model, temperature=temperature, max_tokens=16000)
-    return validate(data, beats, cast,
+    plan = validate(data, beats, cast,
                     max_sprites=2 if orientation == "portrait" else None)
+    commit_poses(cast, plan)
+    return plan
 
 
 # --- validation ------------------------------------------------------------
@@ -485,7 +330,7 @@ def _elements(raw_elements, cast, known, shot_id, problems,
                          if requests is not None and budget > 0 else None)
                 if asked:
                     character, pose, description = asked
-                    asset = cast.learn_pose(character, pose, description)
+                    asset = f"{character}_{pose}.png"
                     known.add(asset)
                     requests.append({"asset": asset, "character": character,
                                      "pose": pose, "description": description,
@@ -530,6 +375,7 @@ def _elements(raw_elements, cast, known, shot_id, problems,
             seen.add(subject)
 
             item = {"asset": asset,
+                    "flip": bool(el.get("flip")),
                     "x": _clamp(el.get("x"), 0.03, 0.97, 0.5),
                     "y": y,
                     "h": _clamp(el.get("h"), 0.10, 0.85, 0.46),
@@ -667,6 +513,10 @@ def validate(data, beats, cast, max_sprites=None):
             scene["framing"] = "close"
             problems.append(f"shot {scene['id']}: framing raised to close for variety")
 
+    for scene in scenes:
+        _draw_together(scene, problems)
+    _vary_poses(scenes, cast, problems)
+
     ending = data.get("ending") or {}
     if isinstance(ending, str):
         ending = {"text": ending}
@@ -691,6 +541,130 @@ def validate(data, beats, cast, max_sprites=None):
         "new_poses": requests,
         "problems": problems,
     }
+
+
+# How close two interacting characters stand, before collision repair opens
+# whatever gap their actual widths need. Deliberately tighter than they will
+# end up: the repair only ever pushes apart, so asking for too little produces
+# the closest legal spacing, which is what an interaction wants.
+INTERACTION_SPAN = 0.18
+
+
+def _draw_together(scene, problems):
+    """Put characters who are doing something to each other within reach.
+
+    The director gets the casting right and the spacing wrong, because the
+    two-character default is x=0.30 and x=0.70 and it applies that to people
+    handing something over. Krabs held out a pay envelope, SpongeBob had both
+    hands open to take it, and they stood 40% of the frame apart with the
+    envelope nowhere near his hands - so it read as two characters, one of whom
+    happened to be holding an envelope.
+
+    `relation` already says who is acting on whom. This uses it.
+    """
+    relation = ((scene.get("beat") or {}).get("relation") or "").lower()
+    if not relation:
+        return
+    people = [el for el in scene["elements"]
+              if el.get("asset") and not el["asset"].startswith("prop_")]
+    named = [el for el in people
+             if el["asset"].rsplit(".", 1)[0].split("_", 1)[0] in relation]
+    if len(named) != 2:
+        return                     # not a two-party action; nothing to close up
+    left, right = sorted(named, key=lambda el: el.get("x", 0.5))
+    span = right.get("x", 0.5) - left.get("x", 0.5)
+    if span <= INTERACTION_SPAN:
+        return                     # already within reach
+    middle = (left.get("x", 0.5) + right.get("x", 0.5)) / 2
+    left["x"] = round(middle - INTERACTION_SPAN / 2, 4)
+    right["x"] = round(middle + INTERACTION_SPAN / 2, 4)
+    problems.append(
+        f"shot {scene['id']}: {relation} - closed the gap from "
+        f"{span:.2f} to {INTERACTION_SPAN:.2f} so the action reads")
+
+
+def _vary_poses(scenes, cast, problems):
+    """Stop one pose from carrying a whole video.
+
+    Measured on a finished 32-shot video: krabs_stand appeared seven times, so
+    22% of the shots were the same picture, and nothing anywhere noticed. The
+    director picks per shot and never sees the whole, which is exactly the kind
+    of thing a pass over the finished list can fix and a prompt cannot.
+
+    Only the surplus moves, and only onto a pose of the same character that the
+    video is leaning on least, so the swap costs nothing already generated and
+    the character stays who they are.
+    """
+    import math
+    if len(scenes) < 6:
+        return                     # too short for repetition to read as a tic
+    limit = max(2, math.ceil(len(scenes) / 8))
+
+    counts = {}
+    for scene in scenes:
+        for el in scene["elements"]:
+            asset = el.get("asset")
+            if asset and not asset.startswith("prop_"):
+                counts[asset] = counts.get(asset, 0) + 1
+
+    for asset, seen in sorted(counts.items(), key=lambda kv: -kv[1]):
+        if seen <= limit:
+            continue
+        character = asset.rsplit(".", 1)[0].split("_", 1)[0]
+        poses = ((cast.data.get("characters") or {})
+                 .get(character, {}).get("poses", {}))
+        # Learned poses are excluded as targets. They were drawn for one
+        # sentence - "holding out a pay envelope" - and are used once, which is
+        # exactly what makes a least-used rule reach for them. Spreading an
+        # action across unrelated shots is a worse error than the repetition.
+        siblings = [f"{character}_{pose}.png" for pose in poses
+                    if not cast.is_learned(f"{character}_{pose}.png")]
+        if len(siblings) < 2:
+            continue
+        original = poses.get(asset.rsplit(".", 1)[0].split("_", 1)[1], "")
+        # Later shots give way first: the first few uses established the
+        # character, the tail is where it turns into wallpaper.
+        surplus = [sc for sc in scenes
+                   if any(e.get("asset") == asset for e in sc["elements"])][limit:]
+        for scene in surplus:
+            here = {e.get("asset") for e in scene["elements"]}
+            options = [sib for sib in siblings
+                       if sib != asset and sib not in here]
+            if not options:
+                continue
+            # Least-used first, then whichever reads closest to the pose being
+            # replaced, so a standing shot becomes another standing shot rather
+            # than jumping to someone sitting behind a desk.
+            def fit(candidate):
+                other = poses.get(candidate.rsplit(".", 1)[0].split("_", 1)[1], "")
+                shared = len(set(original.split()) & set(other.split()))
+                return (counts.get(candidate, 0), -shared, candidate)
+
+            swap = min(options, key=fit)
+            for el in scene["elements"]:
+                if el.get("asset") == asset:
+                    el["asset"] = swap
+                    el["rel"] = cast.relative_height(swap)
+                    break
+            counts[asset] -= 1
+            counts[swap] = counts.get(swap, 0) + 1
+            problems.append(f"shot {scene['id']}: {asset} appeared {seen} times, "
+                            f"varied to {swap}")
+
+
+def commit_poses(cast, plan):
+    """Write the poses a plan asked for into the cast's sidecar.
+
+    Separate from `validate` on purpose. Validation is called from the build,
+    from migrate_plan, and from the tests, and it used to write to disk as a
+    side effect of being asked whether a plan was well-formed - so replaying an
+    old plan silently taught the cast new poses. The build calls this once, on
+    the plan it is actually going to make.
+    """
+    for request in plan.get("new_poses") or []:
+        cast.learn_pose(request["character"], request["pose"],
+                        request["description"])
+    return len(plan.get("new_poses") or [])
 
 
 def used_sprites(plan):

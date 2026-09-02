@@ -1,0 +1,14 @@
+{
+  "boss_stand.png": {
+    "fingerprint": "931973fe96220d6e",
+    "prompt": "Japanese animated-film background art painted in soft watercolour and gouache, visible brush strokes and paper grain, warm golden-hour light with gentle bloom, thin hand-drawn outlines in warm brown rather than black, nostalgic palette of peach orange, cream, soft teal and dusty blue, cinematic hand-painted anime look, no hard cel shading, a tanned middle-aged shopkeeper, short greying hair, rolled-up white sleeves, a navy apron over a cream shirt, a small towel slung over one shoulder, dark cropped trousers, sandals, standing upright facing the viewer, hands resting in his apron pockets, calm expression, full body, complete figure, centred, nothing cropped, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "coverage": 0.5581,
+    "pixels": [
+      561,
+      1536
+    ],
+    "built": "2026-09-01 19:19:58"
+  }
+}

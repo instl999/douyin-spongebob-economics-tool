@@ -1,0 +1,27 @@
+[project]
+name = "cartoon-econ-video"
+version = "0.5.0"
+description = "Narration script in, editable Jianying draft out: a compositing pipeline for cartoon explainer videos"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "pillow>=10.0",
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "pyJianYingDraft>=0.3.0",
+]
+
+[project.urls]
+Repository = "https://github.com/instl999/douyin-spongebob-economics-tool"
+
+# ffmpeg and ffprobe are required too, and are not Python packages. Install
+# them from your platform's package manager, or point FFMPEG_BIN / FFPROBE_BIN
+# at them in .env; `python scripts/build.py --check` reports which are missing.
+
+[tool.pyright]
+# The project runs on Pillow's long-standing module-level constants
+# (Image.LANCZOS) and on scipy.ndimage functions whose stubs return unions the
+# checker cannot narrow. Neither is a defect, and neither is worth rewriting to
+# satisfy a type checker that is not part of the build.
+reportAttributeAccessIssue = "none"
+reportGeneralTypeIssues = "none"

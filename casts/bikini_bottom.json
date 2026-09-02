@@ -134,6 +134,7 @@
   "_panel_color_note": "Default colour for `panel` slabs: pale blue-grey, as the references use over the teal plate.",
   "writable": [
     "calendar",
+    "clipboard",
     "down_chart",
     "queue_sign",
     "sea_map",

@@ -184,6 +184,7 @@ def main():
         suite.check("a described action becomes a new pose",
                     added == {"alice_take_pay.png"},
                     f"accepted {sorted(added)}")
+        plan_mod.commit_poses(probe, result)
         suite.check("the pose is recorded for later videos",
                     (probe.dir / "learned_poses.json").exists()
                     and "take_pay" in probe.data["characters"]["alice"]["poses"])
@@ -227,6 +228,47 @@ def main():
         suite.check("a stand-in never doubles a character",
                     [e["asset"] for e in clash["scenes"][0]["elements"]]
                     == ["alice_stand.png"])
+
+        # One pose must not carry a whole video. Measured on a real 32-shot
+        # build, krabs_stand appeared seven times - 22% of shots the same
+        # picture - and nothing noticed.
+        lib = assets_mod.Library(reloaded, log=lambda *a, **k: None)
+        suite.check("the anchor is the character's first pose",
+                    reloaded.anchor_pose("alice") == "stand"
+                    and lib._is_anchor("alice_stand.png")
+                    and not lib._is_anchor("alice_take_pay.png")
+                    and not lib._is_anchor("prop_desk.png"))
+        # Anchoring is a generation technique, not part of what a sprite is, so
+        # turning it on must not invalidate a library built without it.
+        fp = lib._fingerprint(reloaded.catalogue()["alice_stand.png"], "1920x1920")
+        suite.check("anchoring does not change the cache key",
+                    fp == lib._fingerprint(
+                        reloaded.catalogue()["alice_stand.png"], "1920x1920"))
+
+        for n in range(2, 8):
+            reloaded.data["characters"]["alice"]["poses"][f"p{n}"] = f"posture {n}"
+        crowded = [{"id": i, "narration": "句。", "framing": "medium",
+                    "elements": [{"asset": "alice_stand.png", "x": 0.5,
+                                  "y": 0.97, "h": 0.46, "rel": 1.0}]}
+                   for i in range(1, 17)]
+        notes = []
+        plan_mod._vary_poses(crowded, reloaded, notes)
+        used = [e["asset"] for s in crowded for e in s["elements"]]
+        top = max(used.count(a) for a in set(used))
+        # The target is one-in-eight, but a cast can simply not have enough
+        # poses to reach it: 16 shots over 7 usable poses cannot put fewer than
+        # 3 on the most-used one. Hold it to whichever bound is achievable, so
+        # the check stays honest if the cast grows or shrinks.
+        usable = [p for p in reloaded.data["characters"]["alice"]["poses"]
+                  if not reloaded.is_learned(f"alice_{p}.png")]
+        floor = max(-(-len(crowded) // len(usable)), 2, -(-len(crowded) // 8))
+        suite.check("no pose carries the whole video",
+                    top <= floor and len(set(used)) >= 5,
+                    f"16 identical shots became {len(set(used))} distinct poses, "
+                    f"most-used {top} (best possible {floor})")
+        suite.check("variety never reaches for a learned pose",
+                    not any(reloaded.is_learned(a) for a in used),
+                    "learned poses mean one specific action")
 
         # Budget: past the cap, requests fall back to the old snapping.
         many = [ask(f"bob_act{n}.png", f"doing thing number {n}", n)

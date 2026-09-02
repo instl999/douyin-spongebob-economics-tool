@@ -152,9 +152,15 @@ def build_element_image(el, assets, lay, framing=1.0, panel_color=None):
             size=lay.label_font_px(el.get("size", 0.82)),
             max_width=int(lay.width * el.get("max_width", 0.24)),
             tail=el.get("tail", "left"))
-    return assets.sized(
+    image = assets.sized(
         el["asset"],
         lay.sprite_height(el.get("h", 0.4) * framing * el.get("rel", 1.0)))
+    # A sprite faces whichever way it was drawn, and half the time that is away
+    # from whoever it is meant to be addressing: Mr. Krabs held out a pay
+    # envelope on his left while the character taking it stood on his right.
+    if el.get("flip"):
+        image = image.transpose(Image.FLIP_LEFT_RIGHT)
+    return image
 
 
 def compose_plate(scene, background, assets, lay, panel_color=None):

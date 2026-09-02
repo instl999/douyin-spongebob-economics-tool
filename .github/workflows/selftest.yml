@@ -1,0 +1,28 @@
+name: selftest
+
+# The offline suite spends nothing and touches no network, so it can run on
+# every push. It builds a real MP4 from synthetic assets and checks it, which
+# is most of what could break here; the API side needs a key and is not run.
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-noto-cjk
+
+      - name: Install dependencies
+        run: pip install pillow numpy scipy pyJianYingDraft
+
+      - name: Offline self-test
+        run: python scripts/selftest.py

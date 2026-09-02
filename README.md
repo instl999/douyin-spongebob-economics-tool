@@ -538,6 +538,7 @@ Tall scenery framing the picture makes every character look small and lost.
 | Generate a cast's whole library | `python scripts/build_library.py <style key or cast path> --plates` |
 | Apply new validation rules to an old plan | `python scripts/migrate_plan.py out/<name>/plan.json <style key or cast path>` |
 | Cut out a single image by hand | `python scripts/matting.py in.jpg out.png` |
+| Ask whether each shot acts out its line | `python scripts/critique.py out/<name>` |
 | Export the editable Jianying project | `python scripts/draft.py out/<name> --install` |
 | Check an exported draft | `python scripts/check_draft.py out/<name>` |
 

@@ -108,6 +108,24 @@ class Cast:
             for pose, description in poses.items():
                 char.setdefault("poses", {}).setdefault(pose, description)
 
+    def is_learned(self, filename):
+        """Whether this pose was requested for one beat rather than authored.
+
+        A learned pose means one specific thing - "holding out a pay envelope"
+        - so it belongs to the shot that asked for it and nowhere else. The
+        hand-written poses in a cast file are postures and moods, which are
+        interchangeable in a way that an action is not.
+        """
+        stem = filename[:-4] if filename.endswith(".png") else filename
+        character, _, pose = stem.partition("_")
+        if not self.learned_path.exists():
+            return False
+        try:
+            learned = json.loads(self.learned_path.read_text(encoding="utf-8-sig"))
+        except (json.JSONDecodeError, OSError):
+            return False
+        return pose in ((learned.get("poses") or {}).get(character) or {})
+
     def learn_pose(self, character, pose, description):
         """Record a new pose for this cast. Returns its sprite filename."""
         char = (self.data.get("characters") or {}).get(character)
@@ -257,6 +275,47 @@ class Cast:
                 "`hanging` wins, so the `foreground` entry does nothing")
         return issues
 
+    def anchor_pose(self, character):
+        """The pose that defines what this character looks like.
+
+        Every sprite is generated from a text prompt, independently, so the
+        same character drifts between poses - the description says "a stout
+        boss in a brown waistcoat" and the model settles a slightly different
+        face, build and palette each time. One pose is generated first and then
+        used as a reference image for the rest, which pins the design. The cast
+        may name it; otherwise the first pose listed is it, since cast files
+        put the neutral standing pose first by convention.
+        """
+        char = (self.data.get("characters") or {}).get(character) or {}
+        poses = char.get("poses") or {}
+        named = char.get("anchor")
+        if named in poses:
+            return named
+        return next(iter(poses), None)
+
+    def anchor_file(self, character):
+        """The raw generated image to condition on, if it has been made."""
+        pose = self.anchor_pose(character)
+        if not pose:
+            return None
+        raw = self.dir / "raw" / f"{character}_{pose}.jpg"
+        return raw if raw.exists() else None
+
+    def anchored_prompt(self, description):
+        """Prompt for a pose generated against the character's anchor.
+
+        The reference pins identity hard - palette match to the anchor goes
+        from 82% to 98% - but it also pulls the pose back toward the reference,
+        and a "pointing" sprite came back with the arm barely raised. So the
+        prompt has to say plainly which half is being copied and which half is
+        being replaced, and lead with the change.
+        """
+        return ", ".join(p for p in [
+            f"the same character as the reference image, now {description}",
+            "keep the face, colours, costume, proportions and art style of the "
+            "reference exactly as they are; change only the pose and expression",
+            SPRITE_RULES, CHROMA_PROMPT] if p)
+
     def brief(self):
         """What each sprite depicts, for the director to choose between.
 
@@ -298,6 +357,7 @@ class Library:
 
     def __init__(self, cast, log=print):
         self.cast = cast
+        self._anchor_cache = {}
         self.log = log
         self.sprites = cast.sprites
         self.sprites.mkdir(parents=True, exist_ok=True)
@@ -320,22 +380,34 @@ class Library:
         return (entry and entry.get("fingerprint") == self._fingerprint(prompt, size)
                 and (self.sprites / filename).exists())
 
-    def build_sprite(self, filename, prompt, size, force=False, lock=None):
+    def build_sprite(self, filename, prompt, size, force=False, lock=None,
+                     anchor=None):
         """Generate + matte one sprite unless the cache already has it.
 
         `lock` guards the shared manifest when several of these run at once.
         The manifest is written by the caller afterwards rather than on every
         sprite, so a parallel build does not have threads racing to rewrite the
         same file sixty times.
+
+        `anchor` is a reference image of this character in another pose. It is
+        a generation technique, not part of what the sprite is meant to be, so
+        the cache still keys on the plain prompt: turning anchoring on does not
+        invalidate a library that was built without it.
         """
         if not force and self.is_current(filename, prompt, size):
             return self.sprites / filename, False
         raw_path = self.raw / (Path(filename).stem + ".jpg")
-        ark.generate_image(prompt, raw_path, size=size)
+        if anchor:
+            ark.generate_image(self.cast.anchored_prompt(anchor["description"]),
+                               raw_path, size=size,
+                               reference_images=[anchor["uri"]])
+        else:
+            ark.generate_image(prompt, raw_path, size=size)
         info = matting.process_file(raw_path, self.sprites / filename)
         entry = {
             "fingerprint": self._fingerprint(prompt, size),
             "prompt": prompt, "size": size, "key": info["mode"],
+            "anchored": bool(anchor),
             "coverage": round(info["coverage"], 4),
             "pixels": list(info["size"]), "built": time.strftime("%Y-%m-%d %H:%M:%S"),
         }
@@ -451,7 +523,8 @@ class Library:
             filename, prompt = item
             try:
                 _, made = self.build_sprite(filename, prompt, size, force=force,
-                                            lock=lock)
+                                            lock=lock,
+                                            anchor=self._anchor_for(filename))
             except Exception as exc:            # keep going; report at the end
                 with lock:
                     counter["n"] += 1
@@ -468,14 +541,62 @@ class Library:
                 self.log(f"  [{counter['n']}/{total}] {filename}  "
                          f"{'generated' if made else 'cached'}{flag}")
 
-        if workers > 1 and total > 1:
-            with ThreadPoolExecutor(max_workers=workers) as pool:
-                list(pool.map(one, todo))
-        else:
-            for item in todo:
-                one(item)
+        # Anchors first, and alone. Every other pose of a character is drawn
+        # against its anchor, so the anchor has to exist before the rest go out
+        # - and if they all went out together, whichever won the race would be
+        # a different character from the others.
+        anchors = [t for t in todo if self._is_anchor(t[0])]
+        rest = [t for t in todo if not self._is_anchor(t[0])]
+
+        def run(batch):
+            if not batch:
+                return
+            if workers > 1 and len(batch) > 1:
+                with ThreadPoolExecutor(max_workers=workers) as pool:
+                    list(pool.map(one, batch))
+            else:
+                for item in batch:
+                    one(item)
+
+        run(anchors)
+        run(rest)
         self._save_manifest()
         return {"built": built, "cached": cached, "failed": failed}
+
+    def _is_anchor(self, filename):
+        """Whether this sprite is the one the character's others are drawn from."""
+        stem = filename[:-4] if filename.endswith(".png") else filename
+        if stem.startswith("prop_"):
+            return False           # a prop has no other poses to stay in step with
+        character, _, pose = stem.partition("_")
+        return pose and pose == self.cast.anchor_pose(character)
+
+    def _anchor_for(self, filename):
+        """The reference image for this sprite, or None to generate it plainly.
+
+        Returns None for props, for the anchor itself, and whenever the anchor
+        has not been drawn yet - a missing anchor makes a sprite slightly less
+        consistent, which is the old behaviour and much better than refusing to
+        draw it.
+        """
+        import base64
+        stem = filename[:-4] if filename.endswith(".png") else filename
+        if stem.startswith("prop_") or self._is_anchor(filename):
+            return None
+        character, _, pose = stem.partition("_")
+        source = self.cast.anchor_file(character)
+        if not source:
+            return None
+        description = ((self.cast.data.get("characters") or {})
+                       .get(character, {}).get("poses", {}).get(pose))
+        if not description:
+            return None
+        cached = self._anchor_cache.get(character)
+        if cached is None:
+            cached = ("data:image/jpeg;base64,"
+                      + base64.b64encode(source.read_bytes()).decode())
+            self._anchor_cache[character] = cached
+        return {"uri": cached, "description": description}
 
 
     def available(self):
