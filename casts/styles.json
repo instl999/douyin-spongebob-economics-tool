@@ -124,6 +124,54 @@
       ]
     },
 
+    "sound": {
+      "enabled": true,
+      "gain": 0.34,
+      "transition": "whoosh",
+      "label": "pop",
+      "money": "coin",
+      "board": "scribble",
+      "ending": "ding",
+      "max_per_shot": 2,
+      "_hint": [
+        "音效。素材在 assets/sfx/（pop / whoosh / ding / coin / scribble / splash），",
+        "由 scripts/gen_sfx.py 生成，改了那个脚本就重新生成一遍。",
+        "",
+        "每种音效什么时候响，是从分镜里推出来的，不用手写：",
+        "  transition  换镜时（第一镜不响）",
+        "  label       有标签/气泡出现时",
+        "  money       这一镜有钱相关的标签或道具",
+        "  board       这一镜有可写的板面（白板、图表）",
+        "  ending      金句卡",
+        "",
+        "把某一项设成 null 或空字符串就是关掉那一类；enabled 设 false 全关。",
+        "max_per_shot 是每镜最多几个音效 —— 音效比没有音效更容易做过头，",
+        "两个已经不少了。gain 是音量，相对旁白。"
+      ]
+    },
+
+    "text": {
+      "native_labels": true,
+      "animation": {
+        "money": "放大",
+        "good": "发光闪入",
+        "bad": "故障闪动",
+        "neutral": "弹入",
+        "bubble": "打字机_I"
+      },
+      "_hint": [
+        "画面里的标签/气泡在**剪映工程**里怎么出。",
+        "",
+        "native_labels = true：标签导出成剪映真正的文字，带入场动画，",
+        "  可以改字、改字体、换动画。MP4 预览里仍然是 PIL 画的静止版本。",
+        "native_labels = false：标签在工程里也是图片，和 MP4 一模一样，",
+        "  像素级一致但不能改字、不能动。",
+        "",
+        "animation 按标签的 tone 选入场动画，名字必须是剪映的中文动画名",
+        "（pyJianYingDraft 的 TextIntro，共 145 种）。设成 null 就是不加动画。"
+      ]
+    },
+
     "matting": {
       "chroma_lo": 40.0,
       "chroma_hi": 130.0,

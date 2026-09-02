@@ -76,6 +76,26 @@ LOOK_DEFAULTS = {
         "side_margin": 0.02,
         "max_passes": 3,
     },
+    "sound": {
+        "enabled": True,
+        "gain": 0.34,
+        "transition": "whoosh",
+        "label": "pop",
+        "money": "coin",
+        "board": "scribble",
+        "ending": "ding",
+        "max_per_shot": 2,
+    },
+    "text": {
+        "native_labels": True,
+        "animation": {
+            "money": "放大",
+            "good": "发光闪入",
+            "bad": "故障闪动",
+            "neutral": "弹入",
+            "bubble": "打字机_I",
+        },
+    },
     "matting": {
         "chroma_lo": 40.0,
         "chroma_hi": 130.0,

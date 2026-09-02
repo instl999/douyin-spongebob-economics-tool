@@ -40,10 +40,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from PIL import Image
 
 import render as render_mod
+import styles as styles_mod
 from layout import from_video as layout_from_video
 
 import pyJianYingDraft as jy
-from pyJianYingDraft import (AudioSegment, ClipSettings, ScriptFile, Timerange,
+from pyJianYingDraft import (AudioSegment, ClipSettings, ScriptFile, TextBorder,
+                             TextIntro, TextSegment, TextStyle, Timerange,
                              TrackSpec, TrackType, TransitionType, VideoMaterial,
                              VideoSegment)
 
@@ -103,7 +105,11 @@ class DraftBuilder:
         self.lay = layout_from_video(video)
         self.assets = render_mod.Assets(self.project)
         self.panel_color = self.sb.get("panel_color")
+        self.look = styles_mod.look(carried=video.get("look"))
+        self.text_config = self.look.get("text") or {}
         self._frames = {}
+        self._lanes = {}
+        self._warned = set()
 
     # --- materials --------------------------------------------------------
 
@@ -171,11 +177,15 @@ class DraftBuilder:
         script.append_track(TrackSpec(TrackType.video, "背景"))
         for i in range(layers):
             script.append_track(TrackSpec(TrackType.video, f"图层{i + 1}"))
+        # Above the picture, below the subtitles: emphasis text belongs over
+        # the characters and under the caption, which is where a person editing
+        # this would expect to find it.
         script.append_track(TrackSpec(TrackType.audio, "配音"))
 
         self._add_background(script, segments)
         self._add_elements(script, segments)
         self._add_voice(script, segments)
+        self._add_sfx(script)
         self._add_subtitles(script)
 
         content = self.dir / "draft_content.json"
@@ -213,6 +223,8 @@ class DraftBuilder:
                 continue
             framing = render_mod.FRAMING.get(seg.data.get("framing", "medium"), 1.0)
             for i, el in enumerate(seg.data.get("elements", [])):
+                if self._add_native_text(script, el, seg):
+                    continue
                 built = self._frame_for(el, framing)
                 if built is None:
                     continue
@@ -233,6 +245,86 @@ class DraftBuilder:
                     last[0].add_transition(TransitionType.叠化)
                 script.add_segment(segment, track)
                 previous[track] = (segment, seg.end)
+
+    def _add_native_text(self, script, el, seg):
+        """Export a label or balloon as real Jianying text. True if it did.
+
+        A drawn label is pixel-exact and completely inert: it cannot be
+        retyped, restyled, or made to arrive. As a TextSegment it can do all
+        three, and Jianying's own text animations are what "kinetic emphasis"
+        means here - 145 of them, chosen by what the label is *for* rather than
+        by picking one per label.
+
+        The MP4 keeps the drawn version either way, so the still render, its
+        measurements and its checks are untouched by this.
+        """
+        kind = el.get("type")
+        if kind not in ("label", "bubble") or not self.text_config.get(
+                "native_labels", True):
+            return False
+        text = (el.get("text") or "").strip()
+        if not text:
+            return False
+
+        tone = el.get("tone", "neutral")
+        colour = self.look["label_tones"].get(tone,
+                                              self.look["label_tones"]["neutral"])
+        # Jianying's own imported subtitles use size 5, which is the only fixed
+        # point available for this scale. A label is sized against the caption
+        # in pixels, so the same ratio carries over.
+        caption_px = max(1, self.lay.subtitle_font_px())
+        size = 5.0 * self.lay.label_font_px(el.get("size", 1.0)) / caption_px
+
+        image = render_mod.build_element_image(el, self.assets, self.lay)
+        left, top = render_mod.element_origin(el, image, self.lay)
+        dx = (left + image.width / 2) - self.W / 2
+        dy = (top + image.height / 2) - self.H / 2
+
+        segment = TextSegment(
+            text, Timerange(_us(seg.start), _us(seg.duration)),
+            style=TextStyle(size=size, align=1, bold=True,
+                            color=tuple(c / 255 for c in colour)),
+            border=TextBorder(color=(1.0, 1.0, 1.0), width=28.0),
+            clip_settings=ClipSettings(transform_x=dx / (self.W / 2),
+                                       transform_y=-dy / (self.H / 2)))
+        animation = (self.text_config.get("animation") or {}).get(
+            "bubble" if kind == "bubble" else tone)
+        if animation:
+            try:
+                segment.add_animation(getattr(TextIntro, animation))
+            except AttributeError:
+                # A name that is not one of Jianying's costs the animation,
+                # not the label. The config lists 145 valid ones; a typo in it
+                # should not lose the text.
+                self._warn(f"unknown text animation {animation!r}, "
+                           f"leaving {text!r} static")
+        script.add_segment(segment, self._lane(
+            script, TrackType.text, "文字", _us(seg.start), _us(seg.end)))
+        return True
+
+    def _lane(self, script, kind, base, start, end):
+        """First track of `base` where [start, end) is free, made if needed.
+
+        A Jianying track holds one segment at a time, and two things here
+        routinely want the same instant: a shot with two labels, both spanning
+        it, and two sound cues a quarter-second apart when the effect is longer
+        than that. Spreading them over parallel lanes is what an editor does;
+        the alternatives are dropping one or truncating it.
+        """
+        lanes = self._lanes.setdefault(base, [])
+        for name, free_at in lanes:
+            if free_at <= start:
+                lanes[lanes.index((name, free_at))] = (name, end)
+                return name
+        name = base if not lanes else f"{base}{len(lanes) + 1}"
+        script.append_track(TrackSpec(kind, name))
+        lanes.append((name, end))
+        return name
+
+    def _warn(self, message):
+        if message not in self._warned:
+            self._warned.add(message)
+            print(f"  ! {message}", flush=True)
 
     def _add_voice(self, script, segments):
         index_path = self.project / "voice" / "index.json"
@@ -261,6 +353,29 @@ class DraftBuilder:
                          material.duration)
             script.add_segment(
                 AudioSegment(material, Timerange(_us(seg.start), length)), "配音")
+
+    def _add_sfx(self, script):
+        """The same cues the mix uses, on their own track.
+
+        Separate from the narration so they can be muted, moved or replaced
+        without touching the voice - which is the first thing anyone wants to
+        do with someone else's sound design.
+        """
+        import sfx as sfx_mod
+        cues = sfx_mod.carried(self.sb)
+        gain = float((self.look.get("sound") or {}).get("gain", 0.34))
+        # Cues can land closer together than an effect is long - a whoosh on
+        # the cut and a coin a quarter-second later - and a Jianying track
+        # holds one segment at a time. Alternating lanes is what an editor
+        # does; the alternative is truncating the sound, which is audible.
+        for when, _name, path in cues:
+            material = jy.AudioMaterial(str(path))
+            start = _us(when)
+            script.add_segment(
+                AudioSegment(material, Timerange(start, material.duration),
+                             volume=gain),
+                self._lane(script, TrackType.audio, "音效",
+                           start, start + material.duration))
 
     def _add_subtitles(self, script):
         """Captions as a real subtitle track, not baked pixels.

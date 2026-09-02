@@ -287,6 +287,7 @@ python scripts/draft.py out/my_video --install
 | 只建素材库 | `python scripts/build.py <proj> --stop-after assets` |
 | 单张抠图 | `python scripts/matting.py in.jpg out.png` |
 | **查每一镜有没有演出文案**（花钱，每镜一次视觉调用） | `python scripts/critique.py out/<name>` |
+| 重新生成音效库 | `python scripts/gen_sfx.py` |
 | 导出剪映工程（**交付物**） | `python scripts/draft.py out/<name> --install` |
 | 单独校验剪映工程 | `python scripts/check_draft.py out/<name>` |
 | 老 plan 套用新规则（不调模型） | `python scripts/migrate_plan.py out/<name>/plan.json <画风key或cast路径>` |

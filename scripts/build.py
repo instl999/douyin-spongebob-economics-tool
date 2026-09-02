@@ -383,6 +383,17 @@ def stage_storyboard(project, plan, voice_index):
     for line in findings:
         log(f"  {line}")
 
+    # Cues are planned last, after both cards are attached and after the
+    # layout repair has moved things. Planned any earlier, build_timeline sees
+    # no title card, so every cue lands 2.6s early and the ending sting is
+    # never placed at all - which is precisely the kind of silent, plausible
+    # wrongness this pipeline is full of traps for.
+    import sfx as sfx_mod
+    storyboard["sound_cues"] = [
+        [round(when, 3), name] for when, name, _ in sfx_mod.plan(
+            storyboard, [s["duration"] for s in scenes],
+            cast=project.cast, look=look)]
+
     (project.out / "storyboard.json").write_text(
         json.dumps(storyboard, ensure_ascii=False, indent=2), encoding="utf-8")
     audio_mod.write_srt(srt, project.out / f"{project.name}.srt")
@@ -455,7 +466,7 @@ def stage_render(project, storyboard, force=False):
     return target
 
 
-def stage_audio(project, pieces, total):
+def stage_audio(project, pieces, total, storyboard=None):
     narration = audio_mod.build_narration(pieces, project.out / "narration.wav")
     bgm = project.get("bgm", "assets/bgm_default.wav")
     if bgm:
@@ -463,10 +474,20 @@ def stage_audio(project, pieces, total):
         if not bgm_path.is_absolute():
             bgm_path = ROOT / bgm
         bgm = bgm_path if bgm_path.exists() else None
+    cues = []
+    if storyboard is not None:
+        import sfx as sfx_mod
+        cues = sfx_mod.carried(storyboard)
+        if cues:
+            log(f"  {len(cues)} sound cue(s): {sfx_mod.describe(cues)}")
+
     track = project.out / "audio.wav"
     with Atomic(track) as partial:
         audio_mod.mix(narration, partial, total, bgm=bgm,
-                      bgm_volume=float(project.get("bgm_volume", 0.10)))
+                      bgm_volume=float(project.get("bgm_volume", 0.10)),
+                      cues=cues,
+                      cue_volume=float(project.get(
+                          "sfx_volume", project.look["sound"].get("gain", 0.34))))
     return track
 
 
@@ -715,7 +736,7 @@ def run_build():
         return 0
 
     log("\n[6/8] audio")
-    track = stage_audio(project, pieces, total)
+    track = stage_audio(project, pieces, total, storyboard)
     if done("audio"):
         return 0
 

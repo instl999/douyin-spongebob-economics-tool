@@ -64,19 +64,40 @@ def build_narration(pieces, out_path, rate=44100):
 
 
 def mix(narration, out_path, total, bgm=None, bgm_volume=0.10,
-        narration_volume=1.0, rate=44100):
-    """Narration plus optional looped music, limited, trimmed to `total`."""
+        narration_volume=1.0, rate=44100, cues=(), cue_volume=0.34):
+    """Narration, optional music, and any sound cues, limited and trimmed.
+
+    `cues` is [(seconds, name, path)] from sfx.plan. Each one becomes its own
+    ffmpeg input delayed to its moment, which keeps the mix a single pass -
+    the alternative, rendering a cue bed and overlaying it, means writing and
+    reading another full-length wav for what is usually under a second of audio.
+    """
     inputs = ["-i", str(narration)]
     chains = [f"[0:a]volume={narration_volume:.3f}[voice]"]
     labels = ["[voice]"]
+    # Counted, not derived from len(inputs): a looped input is four argv items
+    # and a plain one is two, so halving the list numbers every cue wrongly and
+    # ffmpeg rejects the whole graph with "Invalid file index".
+    count = 1
 
     if bgm and Path(bgm).exists():
         inputs += ["-stream_loop", "-1", "-i", str(bgm)]
+        count += 1
         fade_out_at = max(0.0, total - 2.0)
         chains.append(
             f"[1:a]volume={bgm_volume:.3f},atrim=0:{total:.3f},"
             f"afade=t=in:st=0:d=1.2,afade=t=out:st={fade_out_at:.3f}:d=2.0[bed]")
         labels.append("[bed]")
+
+    for when, _name, path in cues:
+        index = count
+        count += 1
+        inputs += ["-i", str(path)]
+        delay = max(0, int(round(float(when) * 1000)))
+        chains.append(
+            f"[{index}:a]volume={cue_volume:.3f},"
+            f"adelay={delay}|{delay}[sfx{index}]")
+        labels.append(f"[sfx{index}]")
 
     if len(labels) == 1:
         graph = f"{chains[0]};[voice]alimiter=limit=0.97[out]"

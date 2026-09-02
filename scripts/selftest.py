@@ -438,6 +438,53 @@ def main():
                     f"{len(diffs)} shots over {layers} layers, "
                     f"worst {worst:.2f}/255")
 
+        # Sound cues are derived from the storyboard, and the two outputs must
+        # derive them from the same list. Planned before the cards were
+        # attached, every cue landed a title-card early and the ending sting
+        # was never placed - silent, plausible, and invisible in every check.
+        import sfx as sfx_mod
+        durations = [s["duration"] for s in storyboard["scenes"]]
+        cues = sfx_mod.plan(storyboard, durations, cast=None)
+        title = float(storyboard["title_card"]["duration"])
+        suite.check("sound cues fall inside the video, after the title card",
+                    cues and all(title <= w <= total for w, _, _ in cues),
+                    f"{len(cues)} cues from {min(w for w,_,_ in cues):.1f}s "
+                    f"to {max(w for w,_,_ in cues):.1f}s of {total:.1f}s")
+        ending_at = [w for w, n, _ in cues if n == "ding"]
+        suite.check("the ending card gets its sting",
+                    ending_at and ending_at[-1] > total - 5.0,
+                    f"ding at {ending_at[-1]:.1f}s" if ending_at else "none")
+
+        # The build records the plan in the storyboard so the mix and the draft
+        # cannot each derive their own; the draft reads only that.
+        storyboard["sound_cues"] = [[round(w, 3), n] for w, n, _ in cues]
+        (work / "storyboard.json").write_text(
+            json.dumps(storyboard, ensure_ascii=False), encoding="utf-8")
+
+        draft_dir, _, layers = draft_mod.DraftBuilder(
+            work, name="selftest").build(work / "jianying")
+        content = json.loads((draft_dir / "draft_content.json").read_text(
+            encoding="utf-8-sig"))
+        by_kind = {}
+        for track in content["tracks"]:
+            name = str(track.get("name", ""))
+            key = ("text" if name.startswith("文字") else
+                   "sfx" if name.startswith("音效") else name)
+            by_kind[key] = by_kind.get(key, 0) + len(track["segments"])
+        wanted_labels = sum(1 for sc in storyboard["scenes"]
+                            for el in sc["elements"]
+                            if el.get("type") in ("label", "bubble"))
+        suite.check("labels export as editable text, not pictures",
+                    by_kind.get("text", 0) == wanted_labels,
+                    f"{by_kind.get('text', 0)} text segments for "
+                    f"{wanted_labels} label(s)")
+        # Two labels in one shot both span it, and two cues can land closer
+        # together than an effect is long. Jianying allows one segment per
+        # track at a time, so both need parallel lanes rather than a drop.
+        suite.check("overlapping text and cues get parallel lanes",
+                    by_kind.get("sfx", 0) == len(cues),
+                    f"{by_kind.get('sfx', 0)} cue segments")
+
         report = verify_mod.Report()
         duration = verify_mod.check_container(report, final, storyboard)
         verify_mod.check_background(report, final, duration)

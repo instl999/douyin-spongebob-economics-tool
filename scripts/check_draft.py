@@ -26,6 +26,7 @@ import numpy as np
 from PIL import Image
 
 import render as render_mod
+import styles as styles_mod
 from layout import from_video as layout_from_video
 
 SEC = 1_000_000
@@ -37,6 +38,13 @@ MAX_MEAN_DIFF = 2.0
 
 def _us(seconds):
     return int(round(float(seconds) * SEC))
+
+
+def duration_of(sb):
+    """Total seconds the storyboard describes, cards included."""
+    durations = [float(s.get("duration", 3.0)) for s in sb.get("scenes", [])]
+    _, total = render_mod.build_timeline(sb, durations)
+    return total
 
 
 def _covering(track, t_us):
@@ -100,6 +108,8 @@ def compare(project, draft_dir):
         encoding="utf-8"))
     materials = {m["id"]: m["path"] for m in content["materials"]["videos"]}
 
+    look = styles_mod.look(carried=video.get("look"))
+    native_labels = bool((look.get("text") or {}).get("native_labels", True))
     durations = [float(s.get("duration", 3.0)) for s in sb.get("scenes", [])]
     segments, _ = render_mod.build_timeline(sb, durations)
     diffs = []
@@ -108,7 +118,16 @@ def compare(project, draft_dir):
             continue
         mid = (seg.start + seg.end) / 2          # away from any dissolve
         got = rebuild(draft_dir, int(mid * SEC), materials, W, H)
-        want = render_mod.compose_plate(seg.data, background, assets, lay,
+        # Labels exported as real Jianying text are not on a video track, so
+        # the renderer's plate has to be composed without them or every shot
+        # with a label reads as a mismatch. This is the one place the two
+        # outputs deliberately differ.
+        scene = seg.data
+        if native_labels:
+            scene = dict(scene, elements=[
+                el for el in scene.get("elements", [])
+                if el.get("type") not in ("label", "bubble")])
+        want = render_mod.compose_plate(scene, background, assets, lay,
                                         sb.get("panel_color"))
         diffs.append((seg.data.get("id", seg.index + 1),
                       float(np.abs(got - np.asarray(want, dtype=np.int16)).mean())))
@@ -196,8 +215,12 @@ def main():
     durations = [float(s.get("duration", 3.0)) for s in sb.get("scenes", [])]
     shots, _ = render_mod.build_timeline(sb, durations)
     starts = [_us(s.start) for s in shots if s.kind == "scene"]
+    # The voice track by name, not every audio track: sound cues live on audio
+    # tracks too, and counting those as narration made a correct draft report
+    # seven clips 21 seconds out of place.
     audio = [seg["target_timerange"]["start"]
-             for tr in content["tracks"] if tr["type"] == "audio"
+             for tr in content["tracks"]
+             if tr["type"] == "audio" and tr.get("name") == "配音"
              for seg in tr["segments"]]
     drift = [abs(a - b) for a, b in zip(sorted(audio), starts)]
     late = [d for d in drift if d > SEC // 100]        # 10ms
@@ -208,7 +231,33 @@ def main():
           f"clips, aligned to their shots"
           f"{'' if audio else ' (none - voice stage not run)'}")
 
-    # 6. tracks that should exist
+    # 6. emphasis text and sound cues, where the config asks for them
+    look = styles_mod.look(carried=video.get("look"))
+    wants_text = bool((look.get("text") or {}).get("native_labels", True))
+    labels = sum(1 for sc in sb.get("scenes", [])
+                 for el in sc.get("elements", [])
+                 if el.get("type") in ("label", "bubble"))
+    exported = [seg for tr in content["tracks"]
+                if tr["type"] == "text" and str(tr.get("name", "")).startswith("文字")
+                for seg in tr["segments"]]
+    if wants_text and labels and len(exported) != labels:
+        failures.append(f"{labels} labels in the storyboard but {len(exported)} "
+                        "exported as text")
+    print(f"  {'ok ' if not (wants_text and labels and len(exported) != labels) else 'FAIL'}"
+          f" {len(exported)} of {labels} labels are editable text"
+          f"{'' if wants_text else ' (native labels off; drawn instead)'}")
+
+    cues = [seg for tr in content["tracks"]
+            if tr["type"] == "audio" and str(tr.get("name", "")).startswith("音效")
+            for seg in tr["segments"]]
+    late = [seg for seg in cues
+            if seg["target_timerange"]["start"] > _us(duration_of(sb))]
+    if late:
+        failures.append(f"{len(late)} sound cue(s) start after the video ends")
+    print(f"  {'ok ' if not late else 'FAIL'} {len(cues)} sound cue(s), "
+          f"all inside the video")
+
+    # 7. tracks that should exist
     names = {tr.get("name") for tr in content["tracks"]}
     for wanted, why in (("背景", "background"), ("配音", "narration"),
                         ("字幕", "subtitles")):
