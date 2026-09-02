@@ -44,7 +44,8 @@ import styles as styles_mod
 from layout import from_video as layout_from_video
 
 import pyJianYingDraft as jy
-from pyJianYingDraft import (AudioSegment, ClipSettings, ScriptFile, TextBorder,
+from pyJianYingDraft import (AudioSegment, ClipSettings, KeyframeProperty,
+                             ScriptFile, TextBorder,
                              TextIntro, TextSegment, TextStyle, Timerange,
                              TrackSpec, TrackType, TransitionType, VideoMaterial,
                              VideoSegment)
@@ -109,6 +110,7 @@ class DraftBuilder:
         self.text_config = self.look.get("text") or {}
         self._frames = {}
         self._lanes = {}
+        self._moved = set()
         self._warned = set()
 
     # --- materials --------------------------------------------------------
@@ -210,11 +212,19 @@ class DraftBuilder:
                 "背景")
         if body_start is None:
             return
-        plate = self.project / self.sb["video"].get("background", "background.png")
-        script.add_segment(
-            VideoSegment(VideoMaterial(str(plate)),
-                         Timerange(_us(body_start), _us(body_end - body_start))),
-            "背景")
+        plate = VideoMaterial(str(
+            self.project / self.sb["video"].get("background", "background.png")))
+        # One plate segment per shot rather than one for the whole body. The
+        # picture is identical either way; what it buys is a camera move that
+        # belongs to a shot, since a push-in across a single 45-second segment
+        # would be one continuous 45-second zoom.
+        for seg in segments:
+            if seg.kind != "scene":
+                continue
+            piece = VideoSegment(plate,
+                                 Timerange(_us(seg.start), _us(seg.duration)))
+            self._push_in(piece, seg, 0.0, 0.0)
+            script.add_segment(piece, "背景")
 
     def _add_elements(self, script, segments):
         previous = {}
@@ -237,6 +247,7 @@ class DraftBuilder:
                     VideoMaterial(str(path)),
                     Timerange(_us(seg.start), _us(seg.duration)),
                     clip_settings=clip)
+                self._push_in(segment, seg, clip.transform_x, clip.transform_y)
                 # A dissolve is only meaningful where two segments actually
                 # touch on the same lane - Jianying has nothing to blend across
                 # a gap, and the renderer's own dissolve is what this mimics.
@@ -245,6 +256,38 @@ class DraftBuilder:
                     last[0].add_transition(TransitionType.叠化)
                 script.add_segment(segment, track)
                 previous[track] = (segment, seg.end)
+
+    def _push_in(self, segment, seg, transform_x, transform_y):
+        """A slow zoom across one shot, or nothing. True if it moved.
+
+        Every layer in a shot is a canvas-sized frame, so scaling them all by
+        the same factor about the canvas centre *is* a camera move - but only
+        if their offsets scale with them. A layer scaled in place stays where
+        it was, and the shot pulls apart instead of pushing in. Hence position
+        keyframes alongside the scale one, and hence both ends keyframed: a
+        keyframed property stops reading the static transform, so a start
+        keyframe that was left out would snap the element to the centre.
+        """
+        motion = self.look.get("motion") or {}
+        if not motion.get("enabled", True):
+            return False
+        if seg.data.get("framing") not in (motion.get("framings") or []):
+            return False
+        amount = min(float(motion.get("push_in", 0.05)),
+                     float(motion.get("max_push", 0.08)))
+        if amount <= 0:
+            return False
+        end = _us(seg.duration)
+        for prop, start_value, end_value in (
+                (KeyframeProperty.uniform_scale, 1.0, 1.0 + amount),
+                (KeyframeProperty.position_x, transform_x,
+                 transform_x * (1.0 + amount)),
+                (KeyframeProperty.position_y, transform_y,
+                 transform_y * (1.0 + amount))):
+            segment.add_keyframe(prop, 0, start_value)
+            segment.add_keyframe(prop, end, end_value)
+        self._moved.add(seg.data.get("id"))
+        return True
 
     def _add_native_text(self, script, el, seg):
         """Export a label or balloon as real Jianying text. True if it did.

@@ -96,6 +96,12 @@ LOOK_DEFAULTS = {
             "bubble": "打字机_I",
         },
     },
+    "motion": {
+        "enabled": True,
+        "push_in": 0.05,
+        "max_push": 0.08,
+        "framings": ["close"],
+    },
     "matting": {
         "chroma_lo": 40.0,
         "chroma_hi": 130.0,

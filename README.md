@@ -699,6 +699,43 @@ both orders. Consistent and wrong, which is the same failure the absolute judge
 had. `DUO_CANDIDATES` turns it on for anyone who wants it. The reliable repair
 is to delete the sprite and rebuild: one call, and a person deciding.
 
+### Motion lives in the draft, never in the renderer
+
+The renderer must hold still. That is what the frame cache rests on — a
+164-second video composites 41 unique frames and copies the other 4,885 — and
+what the "background is static" check verifies against the reference
+measurements. None of that is negotiable.
+
+The draft has no such constraint, and it is the deliverable, so everything that
+moves goes there:
+
+| | In the MP4 | In the draft |
+|---|---|---|
+| Sound cues | mixed in | their own `音效` tracks, mutable and movable |
+| Labels | drawn, pixel-exact | real text with an entrance animation |
+| Camera | none | a slow push-in on close shots |
+
+**The push-in is the one feature here whose runtime behaviour was never
+observed.** Jianying is not installed on the machine this was built on, so what
+is verified is that the numbers are self-consistent, not that Jianying agrees.
+`look.motion.enabled: false` turns it off in one edit if it looks wrong.
+
+What *is* checked, and worth knowing because it is the failure the whole design
+turns on: scaling every layer of a shot where it stands is **not** a camera
+move. The layers grow in place and the composition pulls apart. It only reads
+as a camera if each layer's offset scales with it, which means keyframing
+position beside scale — and both ends of both, since a keyframed property stops
+reading the static transform and a missing start keyframe snaps the element to
+the centre. `check_draft.py` rebuilds the last frame of a moving shot and
+asserts it is the first frame enlarged about the canvas centre and nothing
+else; breaking the position keyframes on purpose fails it.
+
+Restraint is configured rather than assumed: `framings: ["close"]` means only
+about a fifth of shots move at all, `push_in` is 5% across a whole shot, and
+`max_push` caps it at 8% however the config is edited. The reference videos
+contain no camera moves whatsoever, so this is a deliberate departure — worth
+it because a person now reviews every draft, but not something to turn up.
+
 A pose that fails to arrive — quota, a content filter, a dropped connection —
 stands in the nearest existing pose rather than disappearing. The first real
 run of this hit a quota wall and the shot lost both its characters, which is

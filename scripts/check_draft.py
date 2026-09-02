@@ -48,11 +48,61 @@ def duration_of(sb):
 
 
 def _covering(track, t_us):
-    for seg in track["segments"]:
-        start = seg["target_timerange"]["start"]
-        if start <= t_us < start + seg["target_timerange"]["duration"]:
-            return seg
-    return None
+    """The segment showing at `t_us`, preferring the one that just began.
+
+    A dissolve makes the outgoing clip run past the incoming one's start, so
+    two segments genuinely cover that instant. Taking the first in track order
+    returns the shot that is on its way out: the check then compared shot 6's
+    picture against shot 7's plate and called three working shots broken.
+    """
+    covering = [seg for seg in track["segments"]
+                if seg["target_timerange"]["start"] <= t_us
+                < seg["target_timerange"]["start"]
+                + seg["target_timerange"]["duration"]]
+    if not covering:
+        return None
+    return max(covering, key=lambda seg: seg["target_timerange"]["start"])
+
+
+# How a keyframed property is named in the file, and which of ours it drives.
+KEYFRAME_PROPERTIES = {
+    "KFTypeScaleX": "scale", "KFTypeScaleY": "scale",
+    "KFTypePositionX": "x", "KFTypePositionY": "y",
+}
+
+
+def keyframed(segment, offset_us):
+    """{scale, x, y} the keyframes say at `offset_us` into a segment.
+
+    Missing entries mean the property is not keyframed and the static clip
+    value stands. Interpolation is linear because that is the curve the
+    exporter writes ("Line"); anything else here would be describing a
+    different video from the one in the file.
+    """
+    out = {}
+    for track in segment.get("common_keyframes") or []:
+        name = KEYFRAME_PROPERTIES.get(track.get("property_type"))
+        points = sorted(track.get("keyframe_list") or [],
+                        key=lambda k: k.get("time_offset", 0))
+        if not name or not points:
+            continue
+        first, last = points[0], points[-1]
+        if offset_us <= first["time_offset"]:
+            value = first["values"][0]
+        elif offset_us >= last["time_offset"]:
+            value = last["values"][0]
+        else:
+            before = max((k for k in points
+                          if k["time_offset"] <= offset_us),
+                         key=lambda k: k["time_offset"])
+            after = min((k for k in points if k["time_offset"] > offset_us),
+                        key=lambda k: k["time_offset"])
+            span = after["time_offset"] - before["time_offset"]
+            k = (offset_us - before["time_offset"]) / span if span else 0.0
+            value = (before["values"][0]
+                     + k * (after["values"][0] - before["values"][0]))
+        out[name] = value
+    return out
 
 
 def rebuild(draft_dir, t_us, materials, W, H):
@@ -76,10 +126,23 @@ def rebuild(draft_dir, t_us, materials, W, H):
         if layer.size != (W, H):
             layer = layer.resize((W, H), Image.LANCZOS)
         clip = seg["clip"]
-        # transform is in half-canvas units, y positive up; scale is left at 1
-        # by construction, and asserted to be so below.
-        left = round(clip["transform"]["x"] * W / 2)
-        top = round(-clip["transform"]["y"] * H / 2)
+        moving = keyframed(seg, t_us - seg["target_timerange"]["start"])
+        # transform is in half-canvas units, y positive up. Static scale is 1
+        # by construction and asserted below; a camera push-in expresses itself
+        # as keyframes instead, which win where they exist.
+        offset_x = moving.get("x", clip["transform"]["x"])
+        offset_y = moving.get("y", clip["transform"]["y"])
+        scale = moving.get("scale", clip["scale"]["x"])
+        if abs(scale - 1.0) > 1e-6:
+            layer = layer.resize((max(1, round(W * scale)),
+                                  max(1, round(H * scale))), Image.LANCZOS)
+        # The layer scales about its own centre, and that centre sits where the
+        # offset puts it - which is what makes scaling every layer of a shot by
+        # one factor read as a camera move rather than as things growing.
+        centre_x = W / 2 + offset_x * W / 2
+        centre_y = H / 2 - offset_y * H / 2
+        left = round(centre_x - layer.width / 2)
+        top = round(centre_y - layer.height / 2)
         alpha = float(clip.get("alpha", 1.0))
         if alpha < 1.0:
             layer.putalpha(layer.getchannel("A").point(lambda v: int(v * alpha)))
@@ -116,8 +179,17 @@ def compare(project, draft_dir):
     for seg in segments:
         if seg.kind != "scene":
             continue
-        mid = (seg.start + seg.end) / 2          # away from any dissolve
-        got = rebuild(draft_dir, int(mid * SEC), materials, W, H)
+        # The shot's first instant, not its middle. A push-in is keyframed from
+        # 1.0 at the start, so this is the one moment where the draft and the
+        # renderer's static plate are meant to be identical; sampling mid-shot
+        # would compare a zoomed frame against an unzoomed one and call a
+        # working camera move a defect.
+        # _us, not int(): the exporter rounds and this truncated, so an
+        # accumulated float start of 32.9959999s landed one microsecond inside
+        # the previous shot and compared shot 6's picture against shot 7's
+        # plate. A millisecond further in is clear of the boundary either way,
+        # and a push-in has moved by 0.001% of nothing by then.
+        got = rebuild(draft_dir, _us(seg.start) + 1000, materials, W, H)
         # Labels exported as real Jianying text are not on a video track, so
         # the renderer's plate has to be composed without them or every shot
         # with a label reads as a mismatch. This is the one place the two
@@ -231,8 +303,59 @@ def main():
           f"clips, aligned to their shots"
           f"{'' if audio else ' (none - voice stage not run)'}")
 
-    # 6. emphasis text and sound cues, where the config asks for them
     look = styles_mod.look(carried=video.get("look"))
+
+    # 6. the camera move is a camera move.
+    #    Scaling every layer of a shot in place is not a push-in: the layers
+    #    grow where they stand and the composition pulls apart. It only reads
+    #    as a camera if each layer's offset scales with it, which means
+    #    position keyframes beside the scale one. That is checkable without
+    #    Jianying: the last frame of a moving shot has to be its first frame
+    #    enlarged about the canvas centre, and nothing else.
+    motion = (look.get("motion") or {})
+    ceiling = 1.0 + float(motion.get("max_push", 0.08))
+    moving, over, wrong = [], [], []
+    for track in content["tracks"]:
+        if track["type"] != "video":
+            continue
+        for seg in track["segments"]:
+            scales = [k["values"][0]
+                      for kf in seg.get("common_keyframes") or []
+                      if kf.get("property_type") in ("KFTypeScaleX", "KFTypeScaleY")
+                      for k in kf.get("keyframe_list") or []]
+            if not scales:
+                continue
+            moving.append(seg["target_timerange"]["start"])
+            if max(scales) > ceiling + 1e-6 or min(scales) < 1.0 - 1e-6:
+                over.append(round(max(scales), 3))
+
+    for start in sorted(set(moving))[:3]:
+        span = next(sg["target_timerange"]["duration"]
+                    for tr in content["tracks"] if tr["type"] == "video"
+                    for sg in tr["segments"]
+                    if sg["target_timerange"]["start"] == start
+                    and sg.get("common_keyframes"))
+        first = rebuild(draft_dir, start + 1000, materials, W, H)
+        last = rebuild(draft_dir, start + span - 1000, materials, W, H)
+        zoom = 1.0 + float(motion.get("push_in", 0.05))
+        grown = Image.fromarray(np.uint8(np.clip(first, 0, 255))).resize(
+            (round(W * zoom), round(H * zoom)), Image.LANCZOS)
+        left, top = (grown.width - W) // 2, (grown.height - H) // 2
+        expect = np.asarray(grown.crop((left, top, left + W, top + H)),
+                            dtype=np.int16)
+        drift = float(np.abs(last - expect).mean())
+        if drift > 6.0:
+            wrong.append((round(start / SEC, 2), round(drift, 1)))
+
+    if over:
+        failures.append(f"a camera move scales past the {ceiling:.2f} ceiling: {over[:3]}")
+    if wrong:
+        failures.append(f"a camera move is not a zoom about the centre: {wrong[:3]}")
+    print(f"  {'ok ' if not (over or wrong) else 'FAIL'} "
+          f"{len(set(moving))} shot(s) push in, within {ceiling:.2f}x and "
+          f"about the centre")
+
+    # 7. emphasis text and sound cues, where the config asks for them
     wants_text = bool((look.get("text") or {}).get("native_labels", True))
     labels = sum(1 for sc in sb.get("scenes", [])
                  for el in sc.get("elements", [])
@@ -257,7 +380,7 @@ def main():
     print(f"  {'ok ' if not late else 'FAIL'} {len(cues)} sound cue(s), "
           f"all inside the video")
 
-    # 7. tracks that should exist
+    # 8. tracks that should exist
     names = {tr.get("name") for tr in content["tracks"]}
     for wanted, why in (("背景", "background"), ("配音", "narration"),
                         ("字幕", "subtitles")):

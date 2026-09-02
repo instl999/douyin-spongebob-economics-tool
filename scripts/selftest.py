@@ -471,6 +471,31 @@ def main():
             key = ("text" if name.startswith("文字") else
                    "sfx" if name.startswith("音效") else name)
             by_kind[key] = by_kind.get(key, 0) + len(track["segments"])
+        # A camera move belongs only to the framings the config names, and it
+        # has to be a move: scaling every layer where it stands makes the shot
+        # pull apart instead of pushing in, so the offsets are keyframed too.
+        motion = styles_mod.look()["motion"]
+        moving = {}
+        for track in content["tracks"]:
+            if track["type"] != "video":
+                continue
+            for sg in track["segments"]:
+                props = {kf.get("property_type")
+                         for kf in sg.get("common_keyframes") or []}
+                if props:
+                    moving.setdefault(sg["target_timerange"]["start"], set())
+                    moving[sg["target_timerange"]["start"]] |= props
+        want_moving = sum(1 for sc in storyboard["scenes"]
+                          if sc.get("framing") in motion["framings"])
+        suite.check("only the configured framings get a camera move",
+                    len(moving) == want_moving,
+                    f"{len(moving)} moving shot(s), "
+                    f"{want_moving} {'/'.join(motion['framings'])} in the board")
+        suite.check("a move keyframes position as well as scale",
+                    all({"KFTypeScaleX", "KFTypePositionX"} <= props
+                        for props in moving.values()),
+                    "scaling in place is not a camera move")
+
         wanted_labels = sum(1 for sc in storyboard["scenes"]
                             for el in sc["elements"]
                             if el.get("type") in ("label", "bubble"))
