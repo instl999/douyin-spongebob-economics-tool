@@ -36,18 +36,35 @@ from layout import from_video as layout_from_video
 # 1920x1080 frame costs several times more to send for no gain in judgement.
 REVIEW_WIDTH = 768
 
-QUESTION = """这是一条科普视频里的一个画面，声音关掉了。
+# Two calls, deliberately. Asking one question - "here is the line, does the
+# picture act it out?" - produced a judge that said no to everything. Shown a
+# frame of Mr. Krabs handing SpongeBob an envelope, it answered False to "Mr.
+# Krabs hands the pay envelope to SpongeBob"; asked about the same frame with
+# the line "SpongeBob is sleeping", it described the picture, unprompted, as
+# "SpongeBob and Mr. Krabs standing, handing over an envelope". It could see
+# the action perfectly well. Being told what to look for was what broke it:
+# the criterion primed it to reject, and it rejected.
+#
+# So the eye and the judgement are split. The vision call never sees the
+# narration, which also stops the narration talking it into seeing things.
+DESCRIBE = """这是一条动画视频里的一个画面。用一句话说清楚画面里在发生什么：
+谁在做什么动作，手里有什么，表情如何。20-30字，只描述看到的，不要评价。"""
 
-这一镜的旁白是：「{narration}」
+JUDGE = """一条科普视频里，某一镜的旁白是：「{narration}」
 
-先说画面里实际发生了什么，再判断它有没有把旁白演出来。判断标准只有一条：
-一个看不到字幕、听不到声音的人，看这个画面，会不会说出旁白里那个动作。
-人物只是站在相关的东西旁边，不算演出来。
+这一镜的画面内容是：「{depicts}」
 
-只输出 JSON，不要别的：
-{{"depicts": "画面里在发生什么，20字以内",
-  "acts_out": true 或 false,
-  "missing": "如果没演出来，缺的是什么动作，15字以内；演出来了就写空字符串"}}"""
+判断这个画面有没有把旁白的意思演出来。标准：一个看不到字幕、听不到声音的人，
+看这个画面，能不能看懂旁白在说的那件事。
+
+宽严要把握好：
+- 画面是静止的，不要因为「动作没有完成」「看不出正在进行」就判否
+- 人物只是站在相关的东西旁边、没有任何动作，判否
+- 抽象的道理（比如「这就是两者的区别」）用图表、标签、表情来表达，算演出来了
+
+只输出 JSON：
+{{"acts_out": true 或 false,
+  "missing": "如果没演出来，缺的是什么，15字以内；演出来了就写空字符串"}}"""
 
 
 def review_shot(scene, background, assets, lay, panel_color, workdir):
@@ -60,18 +77,21 @@ def review_shot(scene, background, assets, lay, panel_color, workdir):
     path = workdir / f"_critique_{scene.get('id', 0):02d}.jpg"
     image.save(path, "JPEG", quality=88)
     try:
-        raw = ark.read_image_text(
-            path, QUESTION.format(narration=scene.get("subtitle", "")),
-            max_tokens=300)
+        depicts = ark.read_image_text(path, DESCRIBE, max_tokens=200).strip()
     finally:
         path.unlink(missing_ok=True)
-    text = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```")
+
+    raw = ark.chat([{"role": "user", "content": JUDGE.format(
+        narration=scene.get("subtitle", ""), depicts=depicts)}],
+        temperature=0.0, max_tokens=200).strip()
+    text = raw.removeprefix("```json").removeprefix("```").removesuffix("```")
     try:
-        return json.loads(text)
+        verdict = json.loads(text)
     except json.JSONDecodeError:
-        # A model that answers in prose is not a failed shot, and should not be
-        # reported as one.
-        return {"depicts": text[:60], "acts_out": None, "missing": ""}
+        # A judge that answers in prose is not a failed shot.
+        return {"depicts": depicts, "acts_out": None, "missing": ""}
+    verdict["depicts"] = depicts
+    return verdict
 
 
 def run(project, limit=None, verbose=False):
@@ -121,9 +141,12 @@ def run(project, limit=None, verbose=False):
         print(f"    shows {verdict.get('depicts', '')!r}, "
               f"missing {verdict.get('missing', '')!r}")
     if weak:
-        print("\nTo fix: edit those shots' `elements` in plan.json - usually the "
-              "pose is wrong, or the prop is beside someone rather than being "
-              "used - then re-run `build.py <project> --from storyboard`.")
+        print("\nThis judge is deliberately strict and will reject shots that "
+              "read fine to a person. Use the descriptions above to decide "
+              "which of these are actually wrong.")
+        print("To fix one: edit its `elements` in plan.json - usually the pose "
+              "is wrong, or the prop is beside someone rather than being used "
+              "- then re-run `build.py <project> --from storyboard`.")
     return 1 if weak else 0
 
 

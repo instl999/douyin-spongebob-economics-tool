@@ -37,6 +37,13 @@ LABEL_TONES = tuple(styles_mod.look()["label_tones"])
 # nearest existing pose exactly as an unknown sprite name always has.
 NEW_POSE_BUDGET = 8
 
+# Two-figure sprites are drawn for one beat and are far less reusable than a
+# pose, so they get their own, smaller allowance. They exist because a handover
+# assembled from two separate cut-outs never actually connects - which makes
+# them the only way some sentences can be shown at all, and also the reason not
+# to reach for one when a pose would do.
+NEW_INTERACTION_BUDGET = 4
+
 SYSTEM = """You are the director of a SpongeBob-style animated explainer.
 
 The picture is built by compositing: one fixed background plate, with cut-out
@@ -186,6 +193,11 @@ def _catalogue_text(cast):
         lines.append("## props")
         for filename, description in brief["props"].items():
             lines.append(f"- {filename} - {description}")
+    if brief.get("interactions"):
+        lines.append("")
+        lines.append("## two-figure sprites already drawn (reuse these)")
+        for filename, description in brief["interactions"].items():
+            lines.append(f"- {filename} - {description}")
     return chr(10).join(lines)
 
 
@@ -198,6 +210,7 @@ def build_prompt(beats, cast, orientation="landscape",
         count=len(beats), beats=listing, catalogue=catalogue,
         casting=_casting_notes(cast),
         pose_budget=pose_budget,
+        duo_budget=NEW_INTERACTION_BUDGET,
         lo_elements=2, hi_elements=3 if portrait else 4,
         orientation_note=ORIENTATION_NOTES.get(
             orientation, ORIENTATION_NOTES["landscape"]))
@@ -290,8 +303,38 @@ def _pose_request(el, cast, known, shot_id, problems):
     return character, pose, description
 
 
+def _interaction_request(el, cast, known, shot_id, problems):
+    """Turn a director's `new_interaction` into a two-figure sprite, or None."""
+    asset = el.get("asset") or ""
+    description = (el.get("new_interaction") or "").strip()
+    if not description:
+        return None
+    stem = asset[:-4] if asset.endswith(".png") else asset
+    if not stem.startswith("duo_"):
+        problems.append(
+            f"shot {shot_id}: an interaction must be named "
+            f"duo_<a>_<b>_<action>.png, not {asset!r}, ignored")
+        return None
+    members = cast.duo_members(asset)
+    if len(members) != 2 or members[0] == members[1]:
+        problems.append(
+            f"shot {shot_id}: {asset!r} does not name two different characters "
+            "in this cast, ignored")
+        return None
+    action = stem[len("duo_" + "_".join(members)) + 1:]
+    if not POSE_NAME.match(action):
+        problems.append(f"shot {shot_id}: {action!r} is not a usable "
+                        "interaction name, ignored")
+        return None
+    if asset in known:
+        return None
+    if len(description) > 240:
+        description = description[:240].rsplit(",", 1)[0]
+    return members, action, description
+
+
 def _elements(raw_elements, cast, known, shot_id, problems,
-              requests=None, budget=0):
+              requests=None, budget=0, duos=None, duo_budget=0):
     elements, seen = [], set()
     for el in raw_elements or []:
         kind = el.get("type", "sprite")
@@ -321,21 +364,34 @@ def _elements(raw_elements, cast, known, shot_id, problems,
         else:
             asset = el.get("asset") or el.get("sprite") or ""
             if asset not in known:
-                # A name the catalogue does not have is usually a hallucination
-                # and snaps to a near pose. But when the director says what the
-                # body should be doing, it is a request: the sentence describes
-                # an action nothing in the cast performs, which is exactly the
-                # case this format is otherwise bad at.
+                # A name the catalogue does not have is usually a
+                # hallucination, and snaps to a near pose. Two things make it a
+                # request instead: the director saying what the body should be
+                # doing, or naming two characters and what passes between them.
+                # Both are the case this format is otherwise bad at.
+                pair = (_interaction_request(el, cast, known, shot_id, problems)
+                        if duos is not None and duo_budget > 0 else None)
                 asked = (_pose_request(el, cast, known, shot_id, problems)
-                         if requests is not None and budget > 0 else None)
-                if asked:
+                         if pair is None and requests is not None and budget > 0
+                         else None)
+                if pair:
+                    members, action, description = pair
+                    asset = f"duo_{'_'.join(members)}_{action}.png"
+                    known.add(asset)
+                    duo_budget -= 1
+                    duos.append({"asset": asset, "members": members,
+                                 "action": action, "description": description,
+                                 "shot": shot_id})
+                    problems.append(f"shot {shot_id}: new interaction "
+                                    f"{asset!r} - {description}")
+                elif asked:
                     character, pose, description = asked
                     asset = f"{character}_{pose}.png"
                     known.add(asset)
+                    budget -= 1
                     requests.append({"asset": asset, "character": character,
                                      "pose": pose, "description": description,
                                      "shot": shot_id})
-                    budget -= 1
                     problems.append(
                         f"shot {shot_id}: new pose {asset!r} - {description}")
                 else:
@@ -368,11 +424,20 @@ def _elements(raw_elements, cast, known, shot_id, problems,
             # different props is normal, so props key on their whole name
             # rather than on the shared "prop_" prefix.
             stem = asset.rsplit(".", 1)[0]
-            subject = stem if stem.startswith("prop_") else stem.split("_", 1)[0]
-            if subject in seen:
-                problems.append(f"shot {shot_id}: {asset!r} repeats {subject}, dropped")
+            # An interaction sprite contains both its characters, so it claims
+            # both names: without that, a shot could hold the drawn-together
+            # pair *and* a separate sprite of one of them, and that character
+            # would be on screen twice.
+            members = cast.duo_members(asset)
+            subjects = (set(members) if members
+                        else {stem if stem.startswith("prop_")
+                              else stem.split("_", 1)[0]})
+            clash = subjects & seen
+            if clash:
+                problems.append(f"shot {shot_id}: {asset!r} repeats "
+                                f"{sorted(clash)[0]}, dropped")
                 continue
-            seen.add(subject)
+            seen |= subjects
 
             item = {"asset": asset,
                     "flip": bool(el.get("flip")),
@@ -422,7 +487,7 @@ def validate(data, beats, cast, max_sprites=None):
         except (TypeError, ValueError):
             continue
 
-    scenes, recent, requests = [], [], []
+    scenes, recent, requests, duos = [], [], [], []
     for i, narration in enumerate(beats, 1):
         raw = by_id.get(i, {})
         if not raw:
@@ -438,7 +503,8 @@ def validate(data, beats, cast, max_sprites=None):
         recent.append(framing)
 
         elements = _elements(raw.get("elements"), cast, known, i, problems,
-                             requests, NEW_POSE_BUDGET - len(requests))
+                             requests, NEW_POSE_BUDGET - len(requests),
+                             duos, NEW_INTERACTION_BUDGET - len(duos))
         if max_sprites:
             sprites = [e for e in elements if "asset" in e]
             if len(sprites) > max_sprites:
@@ -539,6 +605,7 @@ def validate(data, beats, cast, max_sprites=None):
                    "highlight": (ending.get("highlight") or "").strip() or None},
         "scenes": scenes,
         "new_poses": requests,
+        "new_interactions": duos,
         "problems": problems,
     }
 
@@ -566,7 +633,8 @@ def _draw_together(scene, problems):
     if not relation:
         return
     people = [el for el in scene["elements"]
-              if el.get("asset") and not el["asset"].startswith("prop_")]
+              if el.get("asset") and not el["asset"].startswith("prop_")
+              and not el["asset"].startswith("duo_")]
     named = [el for el in people
              if el["asset"].rsplit(".", 1)[0].split("_", 1)[0] in relation]
     if len(named) != 2:
@@ -604,7 +672,8 @@ def _vary_poses(scenes, cast, problems):
     for scene in scenes:
         for el in scene["elements"]:
             asset = el.get("asset")
-            if asset and not asset.startswith("prop_"):
+            if (asset and not asset.startswith("prop_")
+                    and not asset.startswith("duo_")):
                 counts[asset] = counts.get(asset, 0) + 1
 
     for asset, seen in sorted(counts.items(), key=lambda kv: -kv[1]):
@@ -664,7 +733,11 @@ def commit_poses(cast, plan):
     for request in plan.get("new_poses") or []:
         cast.learn_pose(request["character"], request["pose"],
                         request["description"])
-    return len(plan.get("new_poses") or [])
+    for request in plan.get("new_interactions") or []:
+        cast.learn_interaction(request["members"], request["action"],
+                               request["description"])
+    return (len(plan.get("new_poses") or [])
+            + len(plan.get("new_interactions") or []))
 
 
 def used_sprites(plan):

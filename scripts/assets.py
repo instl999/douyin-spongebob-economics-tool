@@ -37,6 +37,19 @@ PROP_RULES = ("a single inanimate object on its own, no characters, no people, "
               "centred, complete, no drop shadow, no ground, no scenery, "
               "no text, no watermark")
 
+# Two figures in one image, for a beat where one acts on the other. Everything
+# else here is one character per sprite, which is what makes the library
+# reusable - but it also means a handover can never actually connect, because
+# the envelope lives in one PNG and the hands that take it live in another. No
+# arrangement of two rectangles fixes that. For the beats where the interaction
+# *is* the sentence, the two figures have to be drawn together.
+DUO_RULES = ("both characters fully visible and complete, standing close "
+             "together and physically interacting, facing each other, "
+             "nothing cropped, no drop shadow, no ground, no scenery, "
+             "no text, no watermark")
+
+DUO_PREFIX = "duo_"
+
 # Sprites are generated square and cropped to their own bounds, so the video's
 # orientation is irrelevant to them. Keeping the size fixed means one library
 # serves landscape and portrait projects instead of two. 1920x1920 is exactly
@@ -157,6 +170,62 @@ class Cast:
 
     def prop_prompt(self, description):
         return self.sprite_prompt(description, PROP_RULES)
+
+    def duo_prompt(self, members, description):
+        """One image of two named characters doing something to each other."""
+        characters = self.data.get("characters") or {}
+        looks = [f"{name} ({(characters.get(name) or {}).get('look', '')})"
+                 for name in members]
+        return ", ".join(p for p in [
+            self.style, " and ".join(looks), description,
+            DUO_RULES, CHROMA_PROMPT] if p)
+
+    def duo_members(self, filename):
+        """The two characters in an interaction sprite, or [] if it is not one."""
+        stem = filename[:-4] if filename.endswith(".png") else filename
+        if not stem.startswith(DUO_PREFIX):
+            return []
+        rest = stem[len(DUO_PREFIX):].split("_")
+        characters = self.data.get("characters") or {}
+        # duo_<a>_<b>_<action>: the action can contain underscores, the names
+        # cannot, so the members are however many leading parts are characters.
+        members = []
+        for part in rest:
+            if part in characters and len(members) < 2:
+                members.append(part)
+            else:
+                break
+        return members if len(members) == 2 else []
+
+    @property
+    def interactions(self):
+        """Two-figure sprites this cast has learned: {name: description}."""
+        if not self.learned_path.exists():
+            return {}
+        try:
+            stored = json.loads(self.learned_path.read_text(encoding="utf-8-sig"))
+        except (json.JSONDecodeError, OSError):
+            return {}
+        return dict(stored.get("interactions") or {})
+
+    def learn_interaction(self, members, action, description):
+        """Record a two-figure sprite. Returns its filename."""
+        characters = self.data.get("characters") or {}
+        for name in members:
+            if name not in characters:
+                raise ValueError(f"{name!r} is not a character in this cast")
+        filename = f"{DUO_PREFIX}{'_'.join(members)}_{action}.png"
+        self.learned_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            stored = json.loads(self.learned_path.read_text(encoding="utf-8-sig"))
+        except (json.JSONDecodeError, OSError, FileNotFoundError):
+            stored = {}
+        stored.setdefault("interactions", {})[filename] = description
+        self.learned_path.write_text(
+            json.dumps(stored, ensure_ascii=False, indent=2) + "\n",
+
+            encoding="utf-8")
+        return filename
 
     def relative_height(self, filename):
         """How tall this sprite is relative to the cast's baseline character.
@@ -316,6 +385,19 @@ class Cast:
             "reference exactly as they are; change only the pose and expression",
             SPRITE_RULES, CHROMA_PROMPT] if p)
 
+    def anchored_duo_prompt(self, members, description):
+        """Two characters, drawn against both their anchors, doing something."""
+        characters = self.data.get("characters") or {}
+        looks = " and ".join(
+            f"{name} ({(characters.get(name) or {}).get('look', '')})"
+            for name in members)
+        return ", ".join(p for p in [
+            f"the same two characters as the reference images ({looks}), "
+            f"now {description}",
+            "keep each character's face, colours, costume, proportions and art "
+            "style exactly as the references show them",
+            DUO_RULES, CHROMA_PROMPT] if p)
+
     def brief(self):
         """What each sprite depicts, for the director to choose between.
 
@@ -337,7 +419,8 @@ class Cast:
             characters[name] = (char.get("role", ""), poses)
         props = {f"prop_{name}.png": desc
                  for name, desc in (self.data.get("props") or {}).items()}
-        return {"characters": characters, "props": props}
+        return {"characters": characters, "props": props,
+                "interactions": dict(self.interactions)}
 
     def catalogue(self):
         """Every asset this cast can produce: {filename: prompt}."""
@@ -349,6 +432,10 @@ class Cast:
                     f"{look}, {pose_desc}")
         for name, desc in (self.data.get("props") or {}).items():
             out[f"prop_{name}.png"] = self.prop_prompt(desc)
+        for filename, desc in self.interactions.items():
+            members = self.duo_members(filename)
+            if members:
+                out[filename] = self.duo_prompt(members, desc)
         return out
 
 
@@ -398,9 +485,8 @@ class Library:
             return self.sprites / filename, False
         raw_path = self.raw / (Path(filename).stem + ".jpg")
         if anchor:
-            ark.generate_image(self.cast.anchored_prompt(anchor["description"]),
-                               raw_path, size=size,
-                               reference_images=[anchor["uri"]])
+            ark.generate_image(anchor["prompt"], raw_path, size=size,
+                               reference_images=anchor["uris"])
         else:
             ark.generate_image(prompt, raw_path, size=size)
         info = matting.process_file(raw_path, self.sprites / filename)
@@ -568,6 +654,8 @@ class Library:
         stem = filename[:-4] if filename.endswith(".png") else filename
         if stem.startswith("prop_"):
             return False           # a prop has no other poses to stay in step with
+        if stem.startswith(DUO_PREFIX):
+            return False           # an interaction is never anyone's anchor
         character, _, pose = stem.partition("_")
         return pose and pose == self.cast.anchor_pose(character)
 
@@ -579,24 +667,41 @@ class Library:
         consistent, which is the old behaviour and much better than refusing to
         draw it.
         """
-        import base64
         stem = filename[:-4] if filename.endswith(".png") else filename
         if stem.startswith("prop_") or self._is_anchor(filename):
             return None
+
+        members = self.cast.duo_members(filename)
+        if members:
+            # Two figures, so two references: each character is pinned to its
+            # own anchor, which is the whole reason a drawn-together sprite can
+            # still look like the cast rather than like two new people.
+            uris = [u for u in (self._anchor_uri(m) for m in members) if u]
+            description = self.cast.interactions.get(filename)
+            if len(uris) != len(members) or not description:
+                return None
+            return {"uris": uris,
+                    "prompt": self.cast.anchored_duo_prompt(members, description)}
+
         character, _, pose = stem.partition("_")
-        source = self.cast.anchor_file(character)
-        if not source:
-            return None
+        uri = self._anchor_uri(character)
         description = ((self.cast.data.get("characters") or {})
                        .get(character, {}).get("poses", {}).get(pose))
-        if not description:
+        if not uri or not description:
             return None
-        cached = self._anchor_cache.get(character)
-        if cached is None:
-            cached = ("data:image/jpeg;base64,"
-                      + base64.b64encode(source.read_bytes()).decode())
-            self._anchor_cache[character] = cached
-        return {"uri": cached, "description": description}
+        return {"uris": [uri],
+                "prompt": self.cast.anchored_prompt(description)}
+
+    def _anchor_uri(self, character):
+        """The character's anchor image as a data URI, read once."""
+        import base64
+        if character not in self._anchor_cache:
+            source = self.cast.anchor_file(character)
+            self._anchor_cache[character] = (
+                "data:image/jpeg;base64,"
+                + base64.b64encode(source.read_bytes()).decode()
+                if source else None)
+        return self._anchor_cache[character]
 
 
     def available(self):

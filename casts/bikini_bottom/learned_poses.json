@@ -11,6 +11,12 @@
     },
     "sponge": {
       "take_envelope": "both hands reaching to take the envelope, huge open grin, eyes crinkled with joy"
+    },
+    "squid": {
+      "point": "standing pointing forward, matter of fact expression"
     }
+  },
+  "interactions": {
+    "duo_krabs_sponge_handover.png": "Mr. Krabs holds out a pay envelope with a grudging expression, SpongeBob reaches with both hands to take it, grinning widely"
   }
 }

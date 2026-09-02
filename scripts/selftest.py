@@ -270,6 +270,37 @@ def main():
                     not any(reloaded.is_learned(a) for a in used),
                     "learned poses mean one specific action")
 
+        # Two figures in one sprite, for a beat that is an exchange. A shot
+        # cannot hold the pair and one of its members separately - that would
+        # put a character on screen twice.
+        duo = plan_mod.validate({"shots": [
+            {"id": 1, "framing": "medium", "elements": [
+                {"asset": "duo_alice_bob_handover.png",
+                 "new_interaction": "alice hands bob an envelope, he takes it",
+                 "x": 0.5, "y": 0.97, "h": 0.5},
+                {"asset": "alice_stand.png", "x": 0.2, "y": 0.97, "h": 0.46}]},
+            {"id": 2, "framing": "medium", "elements": [
+                {"asset": "duo_alice_alice_x.png",
+                 "new_interaction": "alice and alice", "x": 0.5}]},
+            {"id": 3, "framing": "medium", "elements": [
+                {"asset": "duo_alice_carol_x.png",
+                 "new_interaction": "with someone not in the cast", "x": 0.5}]},
+        ]}, ["一。", "二。", "三。"], reloaded)
+        made = {d["asset"] for d in duo["new_interactions"]}
+        shot1 = [e["asset"] for e in duo["scenes"][0]["elements"] if "asset" in e]
+        suite.check("an exchange can be drawn as one two-figure sprite",
+                    made == {"duo_alice_bob_handover.png"},
+                    f"accepted {sorted(made)}")
+        suite.check("a two-figure sprite claims both its characters",
+                    shot1 == ["duo_alice_bob_handover.png"],
+                    f"shot 1 kept {shot1}")
+        plan_mod.commit_poses(reloaded, duo)
+        again = assets_mod.Cast.load(casts / "probe.json", root=casts)
+        suite.check("and it joins the catalogue for later videos",
+                    "duo_alice_bob_handover.png" in again.catalogue()
+                    and again.duo_members("duo_alice_bob_handover.png")
+                    == ["alice", "bob"])
+
         # Budget: past the cap, requests fall back to the old snapping.
         many = [ask(f"bob_act{n}.png", f"doing thing number {n}", n)
                 for n in range(1, plan_mod.NEW_POSE_BUDGET + 4)]

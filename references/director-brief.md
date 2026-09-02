@@ -93,6 +93,31 @@ the sentence.
   a pose that other scripts would also use ("take_pay") over one welded to this
   sentence ("take_pay_from_krabs_on_friday")
 
+## When the interaction *is* the sentence - ask for both figures at once
+
+Every sprite holds one character, which is what makes them reusable, and it
+also means two of them can never actually touch. The envelope is inside one
+picture and the hands that take it are inside another; standing them close
+helps, but nothing makes the claw meet the hand. For a sentence whose whole
+point is that A does something *to* B, ask for the pair drawn together:
+
+{{"asset": "duo_krabs_sponge_handover.png",
+  "new_interaction": "Mr. Krabs holds out a pay envelope and SpongeBob takes it with both hands, beaming, the envelope passing between them",
+  "x": 0.5, "y": 0.97, "h": 0.5}}
+
+- the filename is `duo_<a>_<b>_<action>.png`, both characters from the cast,
+  named in the order they appear left to right
+- `new_interaction` describes **what passes between them** - the object
+  changing hands, the pointing and the reacting, who is doing and who is
+  receiving. Do not describe costume or art style; those come from the cast
+- it counts as **both** characters, so do not also place either of them
+  separately in that shot
+- give it a slightly larger `h` than a single character (0.48-0.55) and put it
+  at x 0.5; it is two figures wide
+- you have {duo_budget} of these for the whole video. Spend them on the beats
+  where the sentence is an exchange - paying, handing over, arguing face to
+  face, one showing another something - and use a pose for everything else
+
 {orientation_note}
 
 ## Framing

@@ -176,9 +176,14 @@ def stage_plan(project, force=False):
     for req in result.get("new_poses") or []:
         log(f"  + new pose {req['asset']} (shot {req['shot']}): "
             f"{req['description']}")
-    if result.get("new_poses"):
-        log(f"    {len(result['new_poses'])} pose(s) added to this cast - "
-            f"drawn once, reused by later videos")
+    for req in result.get("new_interactions") or []:
+        log(f"  + new interaction {req['asset']} (shot {req['shot']}): "
+            f"{req['description']}")
+    if result.get("new_poses") or result.get("new_interactions"):
+        added = (len(result.get("new_poses") or [])
+                 + len(result.get("new_interactions") or []))
+        log(f"    {added} sprite(s) added to this cast - drawn once, "
+            f"reused by later videos")
     target.write_text(json.dumps(result, ensure_ascii=False, indent=2),
                       encoding="utf-8")
     return result

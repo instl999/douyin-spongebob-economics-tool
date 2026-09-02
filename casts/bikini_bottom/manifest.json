@@ -796,5 +796,31 @@
     "size": "2560x1440",
     "verified": "工资的错觉",
     "built": "2026-09-01 19:37:00"
+  },
+  "squid_point.png": {
+    "fingerprint": "42b0568fe6263c01",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, Squidward Tentacles the octopus, tall pale blue-green body, large bald head, long drooping nose, heavy-lidded half-closed eyes, brown short-sleeved shirt, four tentacle legs, standing pointing forward, matter of fact expression, full body, complete figure, centred, nothing cropped, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "anchored": true,
+    "coverage": 0.4795,
+    "pixels": [
+      759,
+      1445
+    ],
+    "built": "2026-09-01 19:58:13"
+  },
+  "duo_krabs_sponge_handover.png": {
+    "fingerprint": "6d4c9acace9afd4a",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, krabs (Mr. Krabs the crab, rounded red crab body, two long light-green eye stalks with small black eyes on top, large red claws for hands, light blue short-sleeved shirt with a jagged hem, brown trousers with a black belt and gold buckle, short red legs) and sponge (SpongeBob SquarePants, bright yellow rectangular sponge body with round holes, large blue eyes with black pupils, buck teeth, white shirt with a red necktie, brown square trousers, thin black-shoed legs), Mr. Krabs holds out a pay envelope with a grudging expression, SpongeBob reaches with both hands to take it, grinning widely, both characters fully visible and complete, standing close together and physically interacting, facing each other, nothing cropped, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "anchored": true,
+    "coverage": 0.4413,
+    "pixels": [
+      1682,
+      1282
+    ],
+    "built": "2026-09-01 19:58:26"
   }
 }
