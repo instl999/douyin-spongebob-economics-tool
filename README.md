@@ -674,6 +674,30 @@ envelope, grudging expression* — and `sponge_take_envelope` — *both hands
 reaching to take the envelope, huge open grin, eyes crinkled with joy*. Before,
 that beat was two characters standing near a pile of coins.
 
+**When the interaction is the sentence, both figures are drawn at once.** One
+character per sprite is what makes the library reusable, and it also means two
+sprites can never touch: the envelope is inside one PNG and the hands that take
+it are inside another. Placing them closer helps and does not fix it. So a beat
+whose point is an exchange can be drawn as a single sprite —
+`duo_krabs_sponge_handover.png` — with both characters pinned to their own
+anchor images so neither drifts. It claims both names, so neither can also
+appear separately in that shot, and the variety and proximity passes leave it
+alone. Budget of 4 per video, separate from and smaller than the pose budget:
+these are drawn for one beat and are much less reusable.
+
+Two figures is twice the anatomy and half the attention per figure, and it
+shows — the first handover came back with a claw that was not attached to
+anyone. `DUO_RULES` therefore spells out limb count and attachment, and which
+way the action runs, the same way `PROP_RULES` has to say "no characters"
+twice. That fixed it.
+
+Drawing each one twice and keeping the better was tried and is **off by
+default**. Calibrated on a pair where the answer was obvious — one had the
+detached claw, one did not — the model chose the detached one, both times, in
+both orders. Consistent and wrong, which is the same failure the absolute judge
+had. `DUO_CANDIDATES` turns it on for anyone who wants it. The reliable repair
+is to delete the sprite and rebuild: one call, and a person deciding.
+
 A pose that fails to arrive — quota, a content filter, a dropped connection —
 stands in the nearest existing pose rather than disappearing. The first real
 run of this hit a quota wall and the shot lost both its characters, which is

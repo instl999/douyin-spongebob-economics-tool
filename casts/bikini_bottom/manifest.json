@@ -811,16 +811,16 @@
     "built": "2026-09-01 19:58:13"
   },
   "duo_krabs_sponge_handover.png": {
-    "fingerprint": "6d4c9acace9afd4a",
-    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, krabs (Mr. Krabs the crab, rounded red crab body, two long light-green eye stalks with small black eyes on top, large red claws for hands, light blue short-sleeved shirt with a jagged hem, brown trousers with a black belt and gold buckle, short red legs) and sponge (SpongeBob SquarePants, bright yellow rectangular sponge body with round holes, large blue eyes with black pupils, buck teeth, white shirt with a red necktie, brown square trousers, thin black-shoed legs), Mr. Krabs holds out a pay envelope with a grudging expression, SpongeBob reaches with both hands to take it, grinning widely, both characters fully visible and complete, standing close together and physically interacting, facing each other, nothing cropped, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "fingerprint": "79dfbf0c7d00c674",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, krabs (Mr. Krabs the crab, rounded red crab body, two long light-green eye stalks with small black eyes on top, large red claws for hands, light blue short-sleeved shirt with a jagged hem, brown trousers with a black belt and gold buckle, short red legs) and sponge (SpongeBob SquarePants, bright yellow rectangular sponge body with round holes, large blue eyes with black pupils, buck teeth, white shirt with a red necktie, brown square trousers, thin black-shoed legs), Mr. Krabs holds out a pay envelope with a grudging expression, SpongeBob reaches with both hands to take it, grinning widely, both characters fully visible and complete, standing close together and physically interacting, turned toward each other, the giver's arm clearly extended and the receiver's hands open and reaching so it is obvious which way the action goes, each character anatomically correct with the normal number of limbs, every arm and hand plainly attached to the body it belongs to, no duplicated limbs, no detached or floating hands, nothing cropped, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
     "size": "1920x1920",
     "key": "chroma",
     "anchored": true,
-    "coverage": 0.4413,
+    "coverage": 0.4215,
     "pixels": [
-      1682,
-      1282
+      1778,
+      1352
     ],
-    "built": "2026-09-01 19:58:26"
+    "built": "2026-09-02 06:54:53"
   }
 }

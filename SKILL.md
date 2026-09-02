@@ -214,6 +214,7 @@ python scripts/draft.py out/my_video --install
 | 某一镜的构图 | `out/<name>/plan.json` 的 `x` / `y` / `h` / `framing` |
 | **某一镜「没演出文案的意思」** | 看 `plan.json` 里那一镜的 `beat`：`action` 错了是理解错了，`action` 对但选的姿势不对是选角错了。改 `elements`，或在 `casts/<cast>.json` 的 `poses` 里补一个真正在做这个动作的姿势 |
 | **导演自己加的姿势** | `casts/<cast>/learned_poses.json`；每条视频最多加 8 个，画一次以后所有视频复用。删掉就是下次再问一遍 |
+| **「递东西 / 互动」演不出来** | 两张分开的素材永远碰不到一起。导演会要一张**双人素材** `duo_<甲>_<乙>_<动作>.png`，两个人画在同一张图里，每条视频最多 4 张。出来解剖有问题（多手、断肢）就删掉那张 PNG 重跑一次，自己看哪张好 —— 模型自己挑不准，实测它会挑中有断肢的那张 |
 | 把某一镜放到别的场景（办公室/码头/店里） | 加一个 `{"type":"panel", ...}`，是一块画在所有人后面的色块，参考片就是这么在同一张背景上做出室内场景的 |
 | 镜头松紧 | 每镜的 `framing`：`wide` / `medium` / `close`；**倍数**在 `styles.json` 的 `look.framing` |
 | 每镜多长 | project 的 `shot_seconds`（默认 5.0） |

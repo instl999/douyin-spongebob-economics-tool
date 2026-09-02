@@ -43,12 +43,52 @@ PROP_RULES = ("a single inanimate object on its own, no characters, no people, "
 # the envelope lives in one PNG and the hands that take it live in another. No
 # arrangement of two rectangles fixes that. For the beats where the interaction
 # *is* the sentence, the two figures have to be drawn together.
+# Two figures is roughly twice the anatomy to get right and about half the
+# attention per figure, and it shows: the first handover came back with Mr.
+# Krabs holding the envelope with a claw that was not attached to him, plus a
+# spare one at his side. Limb count and attachment therefore have to be said
+# out loud, the way PROP_RULES has to say "no characters" twice.
+#
+# Direction has to be said too. One figure holding an object and another
+# touching it is symmetric, and reads either way round: the giver needs a
+# visibly extended arm and the receiver visibly open, reaching hands.
 DUO_RULES = ("both characters fully visible and complete, standing close "
-             "together and physically interacting, facing each other, "
+             "together and physically interacting, turned toward each other, "
+             "the giver's arm clearly extended and the receiver's hands open "
+             "and reaching so it is obvious which way the action goes, "
+             "each character anatomically correct with the normal number of "
+             "limbs, every arm and hand plainly attached to the body it "
+             "belongs to, no duplicated limbs, no detached or floating hands, "
              "nothing cropped, no drop shadow, no ground, no scenery, "
              "no text, no watermark")
 
 DUO_PREFIX = "duo_"
+
+# How many times to draw an interaction before choosing. Off by default, and
+# the reason is worth recording rather than repeating.
+#
+# Drawing twice and keeping the better one only helps if the selector is better
+# than a coin flip, and this one could not be shown to be. Calibrated on a pair
+# where the answer was clear - one had a claw detached from its owner, the
+# other did not - it chose the detached one, both times, in both orders. It is
+# consistent and it is not right, which is the same failure the absolute judge
+# in critique.py had: this model is a poor judge of its own pictures.
+#
+# So the second draw is available and not default. If an interaction comes out
+# wrong, delete its PNG and rebuild: one call, and a person deciding, which is
+# the only reliable judge here.
+DUO_CANDIDATES = 1
+
+COMPARE_PROMPT = """这 {count} 张图画的是同一个内容：
+
+{description}
+
+选出最好的一张。判断顺序：
+1. 解剖是否正确 —— 有没有多出来的手/爪子、没连在身上的肢体、畸形的四肢
+2. 动作方向是否清楚 —— 谁在给、谁在接，一眼能不能看出来
+3. 两个角色是否都完整、都在互动
+
+只回一个数字（1 到 {count}），不要任何其他内容。"""
 
 # Sprites are generated square and cropped to their own bounds, so the video's
 # orientation is irrelevant to them. Keeping the size fixed means one library
@@ -468,7 +508,7 @@ class Library:
                 and (self.sprites / filename).exists())
 
     def build_sprite(self, filename, prompt, size, force=False, lock=None,
-                     anchor=None):
+                     anchor=None, candidates=1):
         """Generate + matte one sprite unless the cache already has it.
 
         `lock` guards the shared manifest when several of these run at once.
@@ -484,11 +524,13 @@ class Library:
         if not force and self.is_current(filename, prompt, size):
             return self.sprites / filename, False
         raw_path = self.raw / (Path(filename).stem + ".jpg")
-        if anchor:
-            ark.generate_image(anchor["prompt"], raw_path, size=size,
-                               reference_images=anchor["uris"])
+        draw = (lambda out: ark.generate_image(anchor["prompt"], out, size=size,
+                                               reference_images=anchor["uris"])
+                if anchor else ark.generate_image(prompt, out, size=size))
+        if candidates > 1:
+            self._draw_best(draw, raw_path, candidates, anchor, prompt)
         else:
-            ark.generate_image(prompt, raw_path, size=size)
+            draw(raw_path)
         info = matting.process_file(raw_path, self.sprites / filename)
         entry = {
             "fingerprint": self._fingerprint(prompt, size),
@@ -504,6 +546,46 @@ class Library:
             self.manifest[filename] = entry
             self._save_manifest()
         return self.sprites / filename, True
+
+    def _draw_best(self, draw, out_path, candidates, anchor, prompt):
+        """Draw the same sprite a few times and keep the one that reads best.
+
+        Only worth it where a sprite is both hard to get right and rare enough
+        that drawing it twice is affordable - which is exactly a two-figure
+        interaction. The first handover came back with a claw detached from its
+        owner; the second attempt at the same prompt did not.
+
+        The judgement is comparative, never absolute. Asked whether one picture
+        is good, this model says no to almost anything; asked which of two is
+        better, it is useful.
+        """
+        wanted = (anchor or {}).get("prompt") or prompt
+        drafts = []
+        for index in range(candidates):
+            draft = out_path.with_name(f"{out_path.stem}.try{index}.jpg")
+            try:
+                draw(draft)
+                drafts.append(draft)
+            except Exception:
+                if not drafts and index == candidates - 1:
+                    raise            # every attempt failed; let the caller see
+        if not drafts:
+            raise RuntimeError(f"no candidate could be drawn for {out_path.name}")
+        best = drafts[0]
+        if len(drafts) > 1:
+            try:
+                answer = ark.compare_images(drafts, COMPARE_PROMPT.format(
+                    description=wanted[:400], count=len(drafts)))
+                pick = next((int(ch) for ch in answer if ch.isdigit()
+                             and 1 <= int(ch) <= len(drafts)), 1)
+                best = drafts[pick - 1]
+                self.log(f"    kept candidate {pick} of {len(drafts)}")
+            except Exception as exc:
+                self.log(f"    could not compare candidates ({str(exc)[:60]}); "
+                         f"keeping the first")
+        best.replace(out_path)
+        for draft in drafts:
+            draft.unlink(missing_ok=True)
 
     def build_background(self, out_path, size, force=False):
         """The one plate the whole video sits on. Not matted.
@@ -610,7 +692,11 @@ class Library:
             try:
                 _, made = self.build_sprite(filename, prompt, size, force=force,
                                             lock=lock,
-                                            anchor=self._anchor_for(filename))
+                                            anchor=self._anchor_for(filename),
+                                            candidates=(
+                                                DUO_CANDIDATES
+                                                if self.cast.duo_members(filename)
+                                                else 1))
             except Exception as exc:            # keep going; report at the end
                 with lock:
                     counter["n"] += 1

@@ -132,6 +132,26 @@ def read_image_text(image_path, question, model=None, max_tokens=120):
         model=model, temperature=0.0, max_tokens=max_tokens).strip()
 
 
+def compare_images(paths, question, model=None, max_tokens=60):
+    """Show several images at once and ask which one wins.
+
+    Asking a model to judge one picture against a standard is unreliable - the
+    critic built on that said no to everything. Asking which of two is better
+    is a much easier question, and the one worth asking when a sprite matters
+    enough to draw twice.
+    """
+    import base64
+    content = [{"type": "text", "text": question}]
+    for index, path in enumerate(paths, 1):
+        data = base64.b64encode(Path(path).read_bytes()).decode()
+        mime = "image/png" if Path(path).suffix.lower() == ".png" else "image/jpeg"
+        content.append({"type": "text", "text": f"图 {index}:"})
+        content.append({"type": "image_url",
+                        "image_url": {"url": f"data:{mime};base64,{data}"}})
+    return chat([{"role": "user", "content": content}],
+                model=model, temperature=0.0, max_tokens=max_tokens).strip()
+
+
 # --- images ---------------------------------------------------------------
 
 # The plan requires >= 3,686,400 pixels. These are the two shapes we ever need.
