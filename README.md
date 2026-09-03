@@ -699,6 +699,34 @@ both orders. Consistent and wrong, which is the same failure the absolute judge
 had. `DUO_CANDIDATES` turns it on for anyone who wants it. The reliable repair
 is to delete the sprite and rebuild: one call, and a person deciding.
 
+### Sound is chosen from meaning, and never repeats while it can help it
+
+The library is 25 synthesised effects, rebuilt from one command
+(`python scripts/gen_sfx.py`), so there is no licensing question. The first
+version had six, and they were the reason the sound did not fit: `ding`, `coin`
+and `pop` measured a spectral **flatness of 0.001–0.003**, which is to say they
+were pure sine tones, and `whoosh` was white noise ring-modulated by a sine, so
+it hissed at a fixed 11 kHz instead of moving. What separates an effect from a
+beep is inharmonic partials, a spectrum that moves, and a few milliseconds of
+transient at the front — all three are cheap, and none of them were there.
+
+Levels are a property of the library, not of the mix. Every effect is matched
+to the same loudness over its loudest 100 ms and then peak-limited; normalising
+to peak instead left a **14.4 dB spread**, which in a finished video meant one
+cue inaudible at −1.8 dB and another jumping out at +21 dB. Matched, the spread
+is 7.6 dB and every cue in a real build clears the audibility bar.
+
+Which effect plays is chosen from the beat — the director already records the
+subject, action, object, emotion and relation of every sentence, and that is a
+far better basis than which props happen to be on screen. A delighted beat gets
+a chime, a dismayed one an error buzz. Each moment names a palette rather than
+a sound, and the picker takes the **least recently used**, falling back to an
+adjacent palette when its first choice is stale, so the whole library is spent
+before anything repeats.
+
+Measured on the same video: **4 distinct sounds and 53% the same effect, to 12
+distinct and 13%.**
+
 ### Motion lives in the draft, never in the renderer
 
 The renderer must hold still. That is what the frame cache rests on — a

@@ -215,7 +215,9 @@ python scripts/draft.py out/my_video --install
 | **某一镜「没演出文案的意思」** | 看 `plan.json` 里那一镜的 `beat`：`action` 错了是理解错了，`action` 对但选的姿势不对是选角错了。改 `elements`，或在 `casts/<cast>.json` 的 `poses` 里补一个真正在做这个动作的姿势 |
 | **导演自己加的姿势** | `casts/<cast>/learned_poses.json`；每条视频最多加 8 个，画一次以后所有视频复用。删掉就是下次再问一遍 |
 | **镜头运动（推镜）** | `casts/styles.json` → `look.motion`；**只在剪映工程里有，MP4 预览是静止的**。默认只推特写、5%、上限 8%。这是唯一没法在本地验证的功能，第一次打开工程要专门看一眼，不对就 `enabled: false` |
-| **音效 / 字幕动画** | `look.sound` / `look.text`；音效两者都有，文字动画只在工程里 |
+| **音效** | `look.sound.cues`：每个「时刻」给一组音效，每次挑**最久没用过**的那个，所以不会一个声音响七遍。音效由 `python scripts/gen_sfx.py` 合成，共 25 个 |
+| **某个情绪配错了音** | 音效是按导演写的 `beat.emotion` 选的（`sfx.py` 的 `EMOTION_WORDS` 是中英文关键词表）。配错了先看 `plan.json` 里那一镜的 emotion 写了什么 |
+| **字幕动画** | `look.text.animation`，只在剪映工程里生效 |
 | **「递东西 / 互动」演不出来** | 两张分开的素材永远碰不到一起。导演会要一张**双人素材** `duo_<甲>_<乙>_<动作>.png`，两个人画在同一张图里，每条视频最多 4 张。出来解剖有问题（多手、断肢）就删掉那张 PNG 重跑一次，自己看哪张好 —— 模型自己挑不准，实测它会挑中有断肢的那张 |
 | 把某一镜放到别的场景（办公室/码头/店里） | 加一个 `{"type":"panel", ...}`，是一块画在所有人后面的色块，参考片就是这么在同一张背景上做出室内场景的 |
 | 镜头松紧 | 每镜的 `framing`：`wide` / `medium` / `close`；**倍数**在 `styles.json` 的 `look.framing` |

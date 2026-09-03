@@ -326,6 +326,12 @@ def stage_storyboard(project, plan, voice_index):
         built = {"id": i, "subtitle": scene["narration"],
                  "framing": scene.get("framing", "medium"),
                  "elements": scene["elements"], "duration": duration}
+        # The director's reading of the sentence carries through. Sound cues
+        # are chosen from the emotion and the action, and without this the
+        # storyboard - which is all the cue planner sees - would have nothing
+        # to choose on but which props happen to be present.
+        if scene.get("beat"):
+            built["beat"] = scene["beat"]
         spans = _caption_spans(scene["narration"], duration)
         built["captions"] = [{"text": t, "start": s, "end": e} for s, e, t in spans]
         for s, e, t in spans:

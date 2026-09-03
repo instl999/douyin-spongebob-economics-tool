@@ -79,12 +79,10 @@ LOOK_DEFAULTS = {
     "sound": {
         "enabled": True,
         "gain": 0.34,
-        "transition": "whoosh",
-        "label": "pop",
-        "money": "coin",
-        "board": "scribble",
-        "ending": "ding",
         "max_per_shot": 2,
+        # Several per moment on purpose: the picker takes the least recently
+        # used, which is what stops one swoosh carrying every cut in a video.
+        "cues": {"transition": ["swoosh_up", "swoosh_down", "swoosh_soft", "tape_stop"], "money": ["cash", "coins_drop"], "good": ["sparkle", "chime"], "bad": ["thud", "error", "wobble"], "surprise": ["boing", "stab", "impact"], "wry": ["tick", "pop_cork"], "label": ["pop_cork", "tick", "riser"], "board": ["scribble"], "punchline": ["rimshot", "sting"]},
     },
     "text": {
         "native_labels": True,

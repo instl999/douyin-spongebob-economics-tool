@@ -127,26 +127,69 @@
     "sound": {
       "enabled": true,
       "gain": 0.34,
-      "transition": "whoosh",
-      "label": "pop",
-      "money": "coin",
-      "board": "scribble",
-      "ending": "ding",
       "max_per_shot": 2,
+      "cues": {
+              "transition": [
+                      "swoosh_up",
+                      "swoosh_down",
+                      "swoosh_soft",
+                      "tape_stop"
+              ],
+              "money": [
+                      "cash",
+                      "coins_drop"
+              ],
+              "good": [
+                      "sparkle",
+                      "chime"
+              ],
+              "bad": [
+                      "thud",
+                      "error",
+                      "wobble"
+              ],
+              "surprise": [
+                      "boing",
+                      "stab",
+                      "impact"
+              ],
+              "wry": [
+                      "tick",
+                      "pop_cork"
+              ],
+              "label": [
+                      "pop_cork",
+                      "tick",
+                      "riser"
+              ],
+              "board": [
+                      "scribble"
+              ],
+              "punchline": [
+                      "rimshot",
+                      "sting"
+              ]
+      },
       "_hint": [
-        "音效。素材在 assets/sfx/（pop / whoosh / ding / coin / scribble / splash），",
-        "由 scripts/gen_sfx.py 生成，改了那个脚本就重新生成一遍。",
+        "音效。素材由 scripts/gen_sfx.py 合成到 assets/sfx/，共 25 个，改了那个",
+        "脚本就重新跑一遍生成。",
         "",
-        "每种音效什么时候响，是从分镜里推出来的，不用手写：",
-        "  transition  换镜时（第一镜不响）",
-        "  label       有标签/气泡出现时",
-        "  money       这一镜有钱相关的标签或道具",
-        "  board       这一镜有可写的板面（白板、图表）",
-        "  ending      金句卡",
+        "cues 是「什么时刻」对应「可以用哪几个音效」。同一类里给多个是关键 ——",
+        "每次从这一类里挑**最久没用过**的那个，所以七次换镜会听到四种不同的",
+        "swoosh，而不是同一个响七次。想更单调就每类只留一个。",
         "",
-        "把某一项设成 null 或空字符串就是关掉那一类；enabled 设 false 全关。",
-        "max_per_shot 是每镜最多几个音效 —— 音效比没有音效更容易做过头，",
-        "两个已经不少了。gain 是音量，相对旁白。"
+        "时刻怎么判定（按优先级，一镜只取一个）：",
+        "  money      这一镜有钱相关的标签或道具",
+        "  good/bad/surprise/wry  从导演写的 beat.emotion + beat.action 里",
+        "                         匹配关键词得到（中英文都认）",
+        "  label      有标签/气泡但没别的理由",
+        "  board      有可写的板面（白板、图表）",
+        "  transition 每次换镜（第一镜不响）",
+        "  punchline  金句卡",
+        "",
+        "把某一类设成 [] 就是关掉那一类；enabled 设 false 全关。",
+        "max_per_shot 是每镜最多几个音效 —— 两个已经不少了。",
+        "gain 是音量，相对旁白；实测每个音效比前一刻高约 10 dB。"
       ]
     },
 

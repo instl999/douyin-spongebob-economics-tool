@@ -450,10 +450,42 @@ def main():
                     cues and all(title <= w <= total for w, _, _ in cues),
                     f"{len(cues)} cues from {min(w for w,_,_ in cues):.1f}s "
                     f"to {max(w for w,_,_ in cues):.1f}s of {total:.1f}s")
-        ending_at = [w for w, n, _ in cues if n == "ding"]
+        punchline = set(styles_mod.look()["sound"]["cues"].get("punchline") or [])
+        ending_at = [w for w, n, _ in cues if n in punchline]
         suite.check("the ending card gets its sting",
                     ending_at and ending_at[-1] > total - 5.0,
-                    f"ding at {ending_at[-1]:.1f}s" if ending_at else "none")
+                    f"at {ending_at[-1]:.1f}s" if ending_at else "none")
+
+        # Variety is the point, not decoration. A fixed table gave one real
+        # video 53% the same effect - seven whooshes of thirteen cues - which
+        # is what a viewer hears as "these don't fit" before they notice
+        # anything about the sounds themselves.
+        long_board = dict(storyboard, scenes=[
+            dict(storyboard["scenes"][i % 2], id=i + 1,
+                 beat={"emotion": e}, duration=2.0)
+            for i, e in enumerate(["happy", "confused", "disappointed", "smug",
+                                   "delighted", "worried", "shocked", "glum"])])
+        many = sfx_mod.plan(long_board, [2.0] * 8, cast=None)
+        names = [n for _, n, _ in many]
+        commonest = max(names.count(n) for n in set(names)) if names else 99
+        suite.check("cues do not repeat while the palette has anything left",
+                    len(set(names)) >= max(4, len(names) * 0.6)
+                    and commonest <= max(2, len(names) // 4),
+                    f"{len(set(names))} distinct of {len(names)}, "
+                    f"most-repeated {commonest}")
+
+        # And the reaction has to come from the beat, not from the props.
+        happy = sfx_mod.plan(
+            dict(storyboard, scenes=[dict(storyboard["scenes"][0],
+                                          beat={"emotion": "delighted"})]),
+            [3.0], cast=None)
+        glum = sfx_mod.plan(
+            dict(storyboard, scenes=[dict(storyboard["scenes"][0],
+                                          beat={"emotion": "dismayed"})]),
+            [3.0], cast=None)
+        suite.check("a delighted beat and a dismayed one sound different",
+                    [n for _, n, _ in happy] != [n for _, n, _ in glum],
+                    f"{[n for _, n, _ in happy]} vs {[n for _, n, _ in glum]}")
 
         # The build records the plan in the storyboard so the mix and the draft
         # cannot each derive their own; the draft reads only that.
