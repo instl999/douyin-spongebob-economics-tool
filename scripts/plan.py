@@ -44,6 +44,17 @@ NEW_POSE_BUDGET = 8
 # to reach for one when a pose would do.
 NEW_INTERACTION_BUDGET = 4
 
+# Hanging boards, charts and calendars are the only thing that ever occupies
+# the upper half of the frame, and they were arriving at roughly two thirds of
+# a character's height. Measured across seven videos, the top 24-37% of every
+# frame was empty.
+MIN_BOARD_HEIGHT = 0.40
+
+# A "wide" shot scales everything down 12%. That is worth it for three figures
+# or a building and actively harmful below that: one video used wide for 13 of
+# 32 shots while averaging 2.7 elements, so "wide" just meant "smaller".
+WIDE_NEEDS_ELEMENTS = 3
+
 SYSTEM = """You are the director of a SpongeBob-style animated explainer.
 
 The picture is built by compositing: one fixed background plate, with cut-out
@@ -413,6 +424,17 @@ def _elements(raw_elements, cast, known, shot_id, problems,
             if cast.hangs(asset):
                 anchor = "center"
                 y = max(0.22, min(0.62, y))
+                # A board or chart is usually what the shot is *about*, and it
+                # was coming out at 0.27-0.35 of frame height against a
+                # character's 0.42-0.50 - which reads as a sticker on a wall of
+                # empty sky rather than as the subject. The floor is the
+                # difference between a diagram and a decoration.
+                item_h = _clamp(el.get("h"), 0.10, 0.85, 0.46)
+                if item_h < MIN_BOARD_HEIGHT:
+                    problems.append(
+                        f"shot {shot_id}: {asset!r} at h={item_h:.2f} is too "
+                        f"small to read, raised to {MIN_BOARD_HEIGHT}")
+                    el = dict(el, h=MIN_BOARD_HEIGHT)
             elif anchor != "bottom" or y < 0.88:
                 if y < 0.88:
                     problems.append(
@@ -453,10 +475,22 @@ def _elements(raw_elements, cast, known, shot_id, problems,
             item["z"] = _clamp(el.get("z"), -5.0, 5.0, 1.0)
         elements.append(item)
 
-    # Elements composite in list order, so draw order is depth. Furniture the
-    # cast marks as foreground goes last, over the legs of whoever is standing
-    # at it; hanging boards go first, behind everyone. A stable sort keeps the
-    # director's order within each band.
+    return in_depth_order(elements, cast)
+
+
+def in_depth_order(elements, cast):
+    """Sort into draw order: walls, boards, characters, then furniture.
+
+    Elements composite in list order, so list order *is* depth. A stable sort
+    keeps the director's order within each band.
+
+    This is a module-level function rather than a closure because it has to be
+    re-applied. Two later repairs insert an element into an already-sorted
+    list - the borrowed character for a shot of empty scenery, and the carried
+    setup for a shot that came back with nothing - and both put it at index 0,
+    which is *behind* everything. The result was a character rendered under a
+    translucent wall, washed out, while the props sat crisply in front.
+    """
     def depth(item):
         # An explicit z wins, so an author can put a character between a
         # counter and a stove - something the automatic bands cannot express,
@@ -531,7 +565,7 @@ def validate(data, beats, cast, max_sprites=None):
                 problems.append(
                     f"shot {i}: scenery with nobody in it, added "
                     f"{borrowed['asset']}")
-                elements.insert(0, borrowed)
+                elements = in_depth_order(elements + [borrowed], cast)
 
         if not any("asset" in e for e in elements):
             # An empty shot renders as a bare plate with a caption floating on
@@ -543,9 +577,17 @@ def validate(data, beats, cast, max_sprites=None):
             if carried:
                 problems.append(
                     f"shot {i}: nothing usable came back, holding shot {i - 1}'s setup")
-                elements = carried + [e for e in elements if "asset" not in e]
+                elements = in_depth_order(
+                    carried + [e for e in elements if "asset" not in e], cast)
             else:
                 problems.append(f"shot {i}: no usable elements and nothing to hold")
+        if framing == "wide" and sum(
+                1 for e in elements if "asset" in e) < WIDE_NEEDS_ELEMENTS:
+            problems.append(
+                f"shot {i}: wide with too little in it, framed medium instead")
+            framing = "medium"
+            recent[-1] = framing
+
         scene = {"id": i, "narration": narration, "framing": framing,
                  "elements": elements}
         # What the director understood the sentence to depict. Kept so that a
@@ -580,6 +622,7 @@ def validate(data, beats, cast, max_sprites=None):
             problems.append(f"shot {scene['id']}: framing raised to close for variety")
 
     for scene in scenes:
+        _waist_high(scene, cast, problems)
         _draw_together(scene, problems)
     _vary_poses(scenes, cast, problems)
 
@@ -615,6 +658,36 @@ def validate(data, beats, cast, max_sprites=None):
 # end up: the repair only ever pushes apart, so asking for too little produces
 # the closest legal spacing, which is what an interaction wants.
 INTERACTION_SPAN = 0.18
+
+# How tall a piece of foreground furniture may be relative to the character
+# standing behind it. Furniture is drawn *over* their legs on purpose, and at
+# equal height that stops being an overlap and becomes a wall: a counter at
+# h=0.40 in front of a character at h=0.46 left a pair of feet and a sliver of
+# face. Waist-high is what "standing behind the counter" looks like.
+FURNITURE_SHARE = 0.62
+
+
+def _waist_high(scene, cast, problems):
+    """Shrink foreground furniture that would hide whoever stands at it."""
+    people = [el for el in scene["elements"]
+              if el.get("asset") and not el["asset"].startswith("prop_")]
+    if not people:
+        return
+    for el in scene["elements"]:
+        asset = el.get("asset")
+        if not asset or not cast.in_front(asset):
+            continue
+        # Whoever this furniture is drawn over: the nearest character in x,
+        # which is the one the director put it with.
+        near = min(people, key=lambda c: abs(c.get("x", 0.5) - el.get("x", 0.5)))
+        if abs(near.get("x", 0.5) - el.get("x", 0.5)) > 0.20:
+            continue                      # beside them, not in front of them
+        ceiling = round(float(near.get("h", 0.46)) * FURNITURE_SHARE, 3)
+        if float(el.get("h", 0.4)) > ceiling:
+            problems.append(
+                f"shot {scene['id']}: {asset!r} at h={el.get('h')} would hide "
+                f"{near['asset']}, lowered to {ceiling}")
+            el["h"] = ceiling
 
 
 def _draw_together(scene, problems):

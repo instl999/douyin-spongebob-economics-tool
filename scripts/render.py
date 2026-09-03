@@ -105,6 +105,12 @@ def element_origin(el, image, lay):
     immediately, and the draft came out 12/255 away from the render.
     """
     cx, cy = lay.point(el.get("x", 0.5), el.get("y", 0.95))
+    if el.get("type") == "panel":
+        # A panel is a wall, and walls reach the floor. Placed on the stage's
+        # ground line like everything else, its bottom edge landed at 86% of
+        # the frame and the plate's grass carried on below it, so the room read
+        # as a grey slab pasted onto a meadow instead of as a room.
+        return int(cx - image.width / 2), lay.height - image.height
     anchor = el.get("anchor", "bottom")
     if anchor == "top_left":
         return int(cx), int(cy)

@@ -1,0 +1,12 @@
+{
+  "name": "shopfloor",
+  "title": "省下的工资",
+  "script": "examples\\shopfloor.txt",
+  "cast": "bikini_bottom",
+  "orientation": "landscape",
+  "shot_seconds": 5.0,
+  "voice": {
+    "speaker": "zh_male_yuanboxiaoshu_uranus_bigtts",
+    "speed": 1.0
+  }
+}

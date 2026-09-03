@@ -243,21 +243,32 @@ class DraftBuilder:
                 clip = ClipSettings(transform_x=dx / (self.W / 2),
                                     transform_y=-dy / (self.H / 2),
                                     alpha=float(el.get("opacity", 1.0)))
+                # An element that arrives part-way through starts part-way
+                # through here as well. The renderer has faded these in since
+                # the beginning and the draft ignored it, which nobody noticed
+                # because nothing had ever set `appear`.
+                appear = max(0.0, min(float(el.get("appear", 0.0) or 0.0),
+                                      seg.duration * 0.8))
                 segment = VideoSegment(
                     VideoMaterial(str(path)),
-                    Timerange(_us(seg.start), _us(seg.duration)),
+                    Timerange(_us(seg.start + appear),
+                              _us(seg.duration - appear)),
                     clip_settings=clip)
-                self._push_in(segment, seg, clip.transform_x, clip.transform_y)
+                if appear > 0:
+                    segment.add_fade(_us(min(0.3, appear)), 0)
+                self._push_in(segment, seg, clip.transform_x, clip.transform_y,
+                              offset=appear)
                 # A dissolve is only meaningful where two segments actually
                 # touch on the same lane - Jianying has nothing to blend across
                 # a gap, and the renderer's own dissolve is what this mimics.
                 last = previous.get(track)
-                if self.dissolve and last and abs(last[1] - seg.start) < 1e-6:
+                if (self.dissolve and last and not appear
+                        and abs(last[1] - seg.start) < 1e-6):
                     last[0].add_transition(TransitionType.叠化)
                 script.add_segment(segment, track)
                 previous[track] = (segment, seg.end)
 
-    def _push_in(self, segment, seg, transform_x, transform_y):
+    def _push_in(self, segment, seg, transform_x, transform_y, offset=0.0):
         """A slow zoom across one shot, or nothing. True if it moved.
 
         Every layer in a shot is a canvas-sized frame, so scaling them all by
@@ -277,13 +288,21 @@ class DraftBuilder:
                      float(motion.get("max_push", 0.08)))
         if amount <= 0:
             return False
-        end = _us(seg.duration)
+        # The zoom belongs to the *shot*, not to this segment. An element that
+        # arrives part-way through has a shorter segment, and keyframing it
+        # from 1.0 over its own length would zoom it slower than everything
+        # around it - the layers drift apart and the move stops being a camera.
+        # It starts at whatever scale the shot has already reached.
+        span = max(seg.duration - offset, 1e-6)
+        begun = 1.0 + amount * (offset / max(seg.duration, 1e-6))
+        ended = 1.0 + amount
+        end = _us(span)
         for prop, start_value, end_value in (
-                (KeyframeProperty.uniform_scale, 1.0, 1.0 + amount),
-                (KeyframeProperty.position_x, transform_x,
-                 transform_x * (1.0 + amount)),
-                (KeyframeProperty.position_y, transform_y,
-                 transform_y * (1.0 + amount))):
+                (KeyframeProperty.uniform_scale, begun, ended),
+                (KeyframeProperty.position_x,
+                 transform_x * begun, transform_x * ended),
+                (KeyframeProperty.position_y,
+                 transform_y * begun, transform_y * ended)):
             segment.add_keyframe(prop, 0, start_value)
             segment.add_keyframe(prop, end, end_value)
         self._moved.add(seg.data.get("id"))
@@ -323,8 +342,11 @@ class DraftBuilder:
         dx = (left + image.width / 2) - self.W / 2
         dy = (top + image.height / 2) - self.H / 2
 
+        appear = max(0.0, min(float(el.get("appear", 0.0) or 0.0),
+                              seg.duration * 0.8))
         segment = TextSegment(
-            text, Timerange(_us(seg.start), _us(seg.duration)),
+            text, Timerange(_us(seg.start + appear),
+                            _us(seg.duration - appear)),
             style=TextStyle(size=size, align=1, bold=True,
                             color=tuple(c / 255 for c in colour)),
             border=TextBorder(color=(1.0, 1.0, 1.0), width=28.0),
@@ -342,7 +364,8 @@ class DraftBuilder:
                 self._warn(f"unknown text animation {animation!r}, "
                            f"leaving {text!r} static")
         script.add_segment(segment, self._lane(
-            script, TrackType.text, "文字", _us(seg.start), _us(seg.end)))
+            script, TrackType.text, "文字",
+            _us(seg.start + appear), _us(seg.end)))
         return True
 
     def _lane(self, script, kind, base, start, end):

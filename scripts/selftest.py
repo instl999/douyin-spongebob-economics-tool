@@ -311,6 +311,58 @@ def main():
                     f"{len(capped['new_poses'])} of {len(many)} requested, "
                     f"cap {plan_mod.NEW_POSE_BUDGET}")
 
+    # --- composition: the frame was 90% empty -----------------------------
+    # Measured across seven finished videos: foreground filled 8-10% of the
+    # frame, the top 24-37% was dead, and the three features that would fix it
+    # were used 4, 6 and 0 times in 87 shots.
+    house = assets_mod.Cast.load(ROOT / "casts" / "bikini_bottom.json",
+                                 root=ROOT / "casts")
+    board = plan_mod.validate(
+        {"shots": [{"id": 1, "framing": "medium", "elements": [
+            {"asset": "sponge_work.png", "x": 0.3, "h": 0.46},
+            {"asset": "prop_whiteboard.png", "x": 0.7, "h": 0.22,
+             "anchor": "center", "y": 0.4}]}]},
+        ["一句。"], house)
+    heights = {e["asset"]: e["h"] for e in board["scenes"][0]["elements"]
+               if e.get("asset")}
+    suite.check("a board too small to read is raised",
+                heights.get("prop_whiteboard.png", 0) >= plan_mod.MIN_BOARD_HEIGHT,
+                f"0.22 -> {heights.get('prop_whiteboard.png')}")
+
+    hide = plan_mod.validate(
+        {"shots": [{"id": 1, "framing": "medium", "elements": [
+            {"asset": "sponge_work.png", "x": 0.5, "h": 0.46},
+            {"asset": "prop_kitchen_counter.png", "x": 0.5, "h": 0.44}]}]},
+        ["一句。"], house)
+    counter = next(e for e in hide["scenes"][0]["elements"]
+                   if e.get("asset") == "prop_kitchen_counter.png")
+    suite.check("furniture cannot swallow whoever stands behind it",
+                counter["h"] <= 0.46 * plan_mod.FURNITURE_SHARE + 1e-6,
+                f"0.44 -> {counter['h']} against a 0.46 character")
+
+    thin_wide = plan_mod.validate(
+        {"shots": [{"id": 1, "framing": "wide", "elements": [
+            {"asset": "sponge_work.png", "x": 0.5, "h": 0.46}]}]},
+        ["一句。"], house)
+    suite.check("a wide shot with nothing in it is just a small shot",
+                thin_wide["scenes"][0]["framing"] != "wide",
+                f"wide -> {thin_wide['scenes'][0]['framing']}")
+
+    borrowed = plan_mod.validate(
+        {"shots": [
+            {"id": 1, "framing": "medium", "elements": [
+                {"asset": "sponge_work.png", "x": 0.3, "h": 0.46}]},
+            {"id": 2, "framing": "medium", "elements": [
+                {"type": "panel", "x": 0.5, "w": 0.8, "ph": 0.6},
+                {"asset": "prop_krusty_krab.png", "x": 0.5, "h": 0.5}]}]},
+        ["一句。", "二句。"], house)
+    order = [e.get("asset") or e.get("type")
+             for e in borrowed["scenes"][1]["elements"]]
+    suite.check("an element added after sorting still lands in depth order",
+                order[0] == "panel" and "sponge_work.png" in order[1:],
+                f"{order} - a character inserted at index 0 renders behind "
+                f"the translucent wall")
+
     # --- a parameter accepted and then dropped ----------------------------
     # `panel_color` was threaded from the cast into compose_plate and never
     # passed on to the function that uses it. Nothing failed; panels just kept

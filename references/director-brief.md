@@ -147,9 +147,22 @@ meeting table - and the place is built.
 
 **Look through the shot list for every sentence that names a location and give
 those shots a panel.** It is the only way this format can leave the default
-setting, so a video whose script mentions an office and never shows one has
-missed something. Do not put one on every shot; shots that are about an idea
-rather than a place do not need one.
+setting.
+
+This instruction has been in the brief from the beginning and across seven
+finished videos a panel was used **four times in eighty-seven shots**. The
+result is that every shot of every video is the same empty meadow: measured,
+the mean colour of one 32-shot video varied by three levels out of 255 from
+start to finish. If the script names two or three places, two or three shots
+need a panel. Do not put one on every shot - shots about an idea rather than a
+place do not need one - but a video whose script mentions an office and never
+shows one has failed at this.
+
+**Furniture in front is the other half of it.** A counter, a desk, a table
+placed at nearly the same x as a character is drawn *over their legs*, so they
+read as standing behind it rather than beside it. That overlap is most of what
+makes a shot look like a scene instead of cut-outs on a lawn, and it was used
+in **six of eighty-seven shots**. Any shot set in a workplace wants one.
 
 ## Coordinates
 
@@ -160,6 +173,11 @@ x and y are 0-1 across the stage. y is where the *bottom* of a sprite sits.
 - Props are usually smaller than the people using them: h 0.20-0.35 for a
   hand-held or table-top object, 0.35-0.50 for furniture, 0.50-0.65 only for a
   building. A stack of banknotes as tall as a person reads as a mistake
+- **Boards, charts, calendars and maps are the exception: h 0.40-0.55.** They
+  are usually what the shot is *about*, and they are the only thing that ever
+  occupies the upper half of the frame. Measured, they were coming out at 0.27
+  against a character's 0.45, which reads as a sticker on a wall of empty sky.
+  A chart the audience is meant to read has to be readable
 - One character: x 0.5. Two: x 0.30 and x 0.70. Three: 0.22, 0.5, 0.78
 - A prop a character uses goes beside them, e.g. character x 0.34, prop x 0.64
 - Furniture a character works AT - a counter, a desk, a sink, a table - goes at
@@ -177,7 +195,14 @@ x and y are 0-1 across the stage. y is where the *bottom* of a sprite sits.
 - Speech bubbles: "type": "bubble" with "text", "anchor": "center", y 0.18-0.34,
   "tail": "left" or "right" leaning back toward the speaker. Under 15
   characters, used sparingly, for a character's own line
-- Anything arriving part-way through a shot: "appear": seconds from shot start
+- **"appear": seconds from the shot start, for anything that should arrive
+  rather than already be there.** This is the only way a shot develops instead
+  of being a still held for five or six seconds, and across seven videos it was
+  used **zero times**. A label lands better a beat after the sentence starts
+  saying it; a chart lands better after the character has turned to it. Use it
+  on most shots that run over four seconds and have more than one thing in
+  them. (Emphasis text gets a default arrival if you leave it out, but you know
+  the sentence and the code does not.)
 - Draw order is worked out for you: walls behind, then hanging boards, then
   characters, then furniture over their legs. Only set "z" (a number, lower is
   further back) when you need something the bands cannot express - a character

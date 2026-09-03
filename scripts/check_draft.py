@@ -194,11 +194,15 @@ def compare(project, draft_dir):
         # the renderer's plate has to be composed without them or every shot
         # with a label reads as a mismatch. This is the one place the two
         # outputs deliberately differ.
-        scene = seg.data
-        if native_labels:
-            scene = dict(scene, elements=[
-                el for el in scene.get("elements", [])
-                if el.get("type") not in ("label", "bubble")])
+        # compose_plate deliberately draws everything at full opacity - the
+        # frame loop fades arrivals in over it - so an element that has not
+        # arrived yet has to come out of the comparison, or a correct draft is
+        # reported broken. Same reason labels come out when they are exported
+        # as text: these are the two places the outputs legitimately differ.
+        scene = dict(seg.data, elements=[
+            el for el in seg.data.get("elements", [])
+            if not (native_labels and el.get("type") in ("label", "bubble"))
+            and not float(el.get("appear", 0.0) or 0.0) > 0.0])
         want = render_mod.compose_plate(scene, background, assets, lay,
                                         sb.get("panel_color"))
         diffs.append((seg.data.get("id", seg.index + 1),
@@ -329,7 +333,22 @@ def main():
             if max(scales) > ceiling + 1e-6 or min(scales) < 1.0 - 1e-6:
                 over.append(round(max(scales), 3))
 
-    for start in sorted(set(moving))[:3]:
+    # A shot where something arrives has different content at its end than at
+    # its start, so "the last frame is the first frame enlarged" is not true of
+    # it however correct the camera is. Those shots are skipped rather than
+    # reported: the arrival is the difference, not the move.
+    unsteady = []
+    for shot in render_mod.build_timeline(
+            sb, [float(sc.get("duration", 3.0))
+                 for sc in sb.get("scenes", [])])[0]:
+        if shot.kind == "scene" and any(
+                float(el.get("appear", 0.0) or 0.0) > 0
+                for el in shot.data.get("elements", [])):
+            unsteady.append((_us(shot.start), _us(shot.end)))
+    steady = [m for m in sorted(set(moving))
+              if not any(lo <= m < hi for lo, hi in unsteady)]
+
+    for start in steady[:3]:
         span = next(sg["target_timerange"]["duration"]
                     for tr in content["tracks"] if tr["type"] == "video"
                     for sg in tr["segments"]

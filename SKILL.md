@@ -173,6 +173,7 @@ python scripts/draft.py out/my_video --install
 | `audio is not silent` FAIL | 配音全没生成 | 跑 `--check` 看 TTS 那行；音色必须是 `_uranus_` 系列 |
 | `duration` 对不上 | storyboard 和成片不一致，通常是手改过 storyboard.json | 删掉 `storyboard.json`，`--from storyboard` 重生成 |
 | `subtitle timing` 报 overlapping | 手改过 srt 或 plan 的时间 | 删 `storyboard.json` 重生成 |
+| `composition` FAIL（画面填充率过低） | 一镜里东西太少，或者全片都在默认草地上 | 看文案有没有点到地点：点到了就该有 `panel`（房间色块）+ `foreground` 家具。改 `plan.json` 加上，`--from storyboard` 重跑 |
 
 ---
 

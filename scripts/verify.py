@@ -260,6 +260,57 @@ def check_plan_carried(report, storyboard, plan_path):
                + (f"; plan has {counts[0]}" if counts[0] != counts[1] else ""))
 
 
+# Below this the frame reads as empty. Measured across seven finished videos,
+# foreground covered 8-10% of the frame while nothing anywhere noticed - so
+# this is set just under what was shipping, to catch a video that is worse
+# than the ones that prompted the check rather than to relitigate those.
+MIN_COVERAGE = 7.0
+
+
+def check_composition(report, storyboard, project_dir, lay):
+    """How much of the frame the picture actually uses.
+
+    Every other check here asks whether something is broken. This one asks
+    whether the shot is worth looking at, which is the question the pipeline
+    was worst at answering: the plate is static, nothing overlaps, the draft
+    matches - and 90% of the frame is empty sky.
+    """
+    import numpy as np
+    from PIL import Image
+    import render as render_mod
+
+    assets = render_mod.Assets(project_dir)
+    scenes = storyboard.get("scenes", [])
+    if not scenes:
+        report.add(True, "composition", "no shots")
+        return
+    W, H = lay.size
+    coverage, empty_top = [], []
+    for scene in scenes:
+        canvas = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        framing = render_mod.FRAMING.get(scene.get("framing", "medium"), 1.0)
+        for el in scene.get("elements", []):
+            try:
+                img = render_mod.build_element_image(
+                    el, assets, lay, framing, storyboard.get("panel_color"))
+            except Exception:
+                continue
+            if img is not None:
+                canvas.alpha_composite(
+                    img, render_mod.element_origin(el, img, lay))
+        alpha = np.asarray(canvas)[:, :, 3] > 16
+        coverage.append(100.0 * alpha.mean())
+        rows = np.where(alpha.any(axis=1))[0]
+        empty_top.append(100.0 * rows.min() / H if len(rows) else 100.0)
+
+    mean = float(np.mean(coverage))
+    thin = [i + 1 for i, c in enumerate(coverage) if c < MIN_COVERAGE * 0.55]
+    report.add(mean >= MIN_COVERAGE, "composition",
+               f"foreground fills {mean:.1f}% of frame "
+               f"(floor {MIN_COVERAGE}), {np.mean(empty_top):.0f}% empty above"
+               + (f", thinnest shots {thin[:4]}" if thin else ""))
+
+
 def check_layout(report, storyboard, project_dir, lay, cast=None):
     import checks as checks_mod
     import render as render_mod
@@ -294,6 +345,7 @@ def run(project, verbose=False):
     check_subtitles(report, project.out / f"{project.name}.srt", duration)
     check_sprites(report, project.cast.dir)
     check_plan_carried(report, storyboard, project.out / "plan.json")
+    check_composition(report, storyboard, project.out, project.layout)
     findings = check_layout(report, storyboard, project.out, project.layout,
                             cast=project.cast)
 

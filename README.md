@@ -699,6 +699,50 @@ both orders. Consistent and wrong, which is the same failure the absolute judge
 had. `DUO_CANDIDATES` turns it on for anyone who wants it. The reliable repair
 is to delete the sprite and rebuild: one call, and a person deciding.
 
+### The frame was 90% empty, and nothing noticed
+
+A full review of seven finished videos measured the picture rather than judging
+it, and the numbers were worse than they looked:
+
+| | Measured | |
+|---|---|---|
+| Foreground coverage | **8–10% of frame** | ninety per cent empty plate |
+| Empty above the top element | 24–37% of height | the upper third unused |
+| Shot-to-shot mean colour | **3 levels of 255** | one image for two minutes forty |
+| `appear` (arrive mid-shot) | **0 uses in 87 shots** | every shot a held still |
+| `panel` (build a location) | 4 in 87 | never left the meadow |
+| `foreground` furniture | 6 in 87 | cut-outs on a lawn |
+
+Character scale was innocent — 0.424 of frame height against the reference's
+measured 0.39, so if anything large. The problem was that three composition
+features existed, were documented in the brief, and went unused.
+
+Every check in the suite passed on those videos. `verify.py` now has a
+`composition` check, because "the plate is static, nothing overlaps, the draft
+matches" was true of a frame that was mostly sky.
+
+What changed:
+
+- **`appear` is guaranteed, not requested.** Emphasis text in a shot over 3.6
+  seconds arrives a quarter of the way in unless the director says otherwise.
+  The renderer had faded arrivals in since the first version; the draft ignored
+  it, which nobody had noticed because nothing ever set it.
+- **Boards have a floor of 0.40.** They were coming out at 0.27 against a
+  character's 0.45 — a sticker on a wall of sky — and they are the only thing
+  that ever occupies the upper frame.
+- **Furniture is kept waist-high.** A counter at 0.40 in front of a character
+  at 0.46 left a pair of feet and a sliver of face; it is now capped at 62% of
+  whoever stands behind it.
+- **A wall reaches the floor.** Panels sat on the stage's ground line, so the
+  plate's grass carried on beneath them and a room read as a grey slab pasted
+  onto a meadow.
+- **`wide` needs three things in it**, or it is not a wide shot, it is a
+  smaller one. One video used wide for 13 of 32 shots at 2.7 elements average.
+
+On a script that names locations, the same director now uses a panel in 5 of 7
+shots and foreground furniture in 6 of 7 — against 4 and 6 across the previous
+eighty-seven — and **coverage goes from 8–10% to 24%.**
+
 ### Sound is chosen from meaning, and never repeats while it can help it
 
 The library is 25 synthesised effects, rebuilt from one command

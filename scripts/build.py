@@ -303,6 +303,38 @@ def stage_voice(project, plan, force=False, speed=None):
     return index
 
 
+# A shot shorter than this has no room for anything to arrive; the element
+# would still be fading when the shot ends.
+STAGGER_MIN_SHOT = 3.6
+# How far into the shot emphasis text lands. A quarter in is after the sentence
+# has started saying the thing, which is the order an explainer wants: hear it,
+# then see it.
+STAGGER_FRACTION = 0.26
+STAGGER_MAX = 1.4
+
+
+def _stagger(elements, duration):
+    """Let the emphasis text arrive rather than being there from the start.
+
+    `appear` has existed since the first renderer, is faded in over
+    `element_fade`, and across seven finished videos was used exactly **zero**
+    times - so every shot was a tableau held for five or six seconds with
+    nothing developing in it. The director can still set it deliberately; this
+    guarantees the floor, because the measurement says asking has not worked.
+
+    Only labels and balloons, and only when there is more than one thing on
+    screen: a lone label that is not there yet is an empty frame.
+    """
+    if duration < STAGGER_MIN_SHOT:
+        return
+    text = [el for el in elements if el.get("type") in ("label", "bubble")]
+    if not text or len(elements) < 2:
+        return
+    when = round(min(STAGGER_MAX, duration * STAGGER_FRACTION), 2)
+    for el in text:
+        el.setdefault("appear", when)
+
+
 def stage_storyboard(project, plan, voice_index):
     lay = project.layout
     look = project.look
@@ -326,6 +358,7 @@ def stage_storyboard(project, plan, voice_index):
         built = {"id": i, "subtitle": scene["narration"],
                  "framing": scene.get("framing", "medium"),
                  "elements": scene["elements"], "duration": duration}
+        _stagger(built["elements"], duration)
         # The director's reading of the sentence carries through. Sound cues
         # are chosen from the emotion and the action, and without this the
         # storyboard - which is all the cue planner sees - would have nothing
