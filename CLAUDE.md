@@ -37,6 +37,9 @@ once, ~20s per image, then reused forever.
 - Pick a style: the project JSON's `cast` field (a key like `"clay"`, or a path).
 - Change a style's art direction: `"style"` at the top of `casts/<style>.json`.
 - Change the background plate: same file, `"background" → "prompt"`.
+- A script that names no location gets a backdrop generated from its own
+  subject (`setting.png`), used as the plate for every shot. Turn it off with
+  `"fallback_setting": false` in the project JSON.
 - New style: copy `casts/_template.json`, fill the `_hint_*` fields, then
   `python scripts/build.py --check`.
 

@@ -122,6 +122,96 @@ def element_origin(el, image, lay):
     return left, int(cy - image.height / 2)
 
 
+def _luma(rgb):
+    """Relative luminance, sRGB. Takes one colour, or three stacked channels."""
+    def channel(v):
+        v = np.asarray(v, dtype=np.float32) / 255.0
+        return np.where(v <= 0.04045, v / 12.92, ((v + 0.055) / 1.055) ** 2.4)
+    r, g, b = (channel(c) for c in rgb[:3])
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def _contrast(a, b):
+    la, lb = _luma(a), _luma(b)
+    hi, lo = max(la, lb), min(la, lb)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+# How much lighter the brightest part of the ground under a label may be than
+# the darkest before the label is treated as sitting on a *busy* ground rather
+# than a flat one. Measured, not chosen: the shipped plates come in at 1.1 - a
+# sky is one colour - and the first generated room at 6.5, because one label
+# there crossed a cream wall, a grey extractor hood and a red checked border.
+# Anywhere between those two works; the gap is what makes the rule safe.
+BUSY_GROUND = 2.0
+
+
+def outline_against(plate, el, image, lay, options):
+    """Which of `options` to outline this label in, given what is behind it.
+
+    The default is the first option - the reference look, white - and this is
+    written to leave it alone. What changed is that a plate can now be
+    generated rather than drawn for the style, and a generated room is not
+    reliably a flat mid-dark: the Krusty Krab kitchen came back as a cream wall
+    with a steel hood across it, and a white outline on that is not an outline.
+
+    The tell is not whether the plate is light or dark - it is whether the
+    ground under one label is *one* colour. On a flat ground the fill carries
+    the label on its own and the outline is a style choice, so the style keeps
+    it. On a ground that spans wall, metal and paint, no fill reads against all
+    three and the outline becomes the thing holding the letterform together;
+    only then is it worth overriding what the style asked for.
+
+    The candidate is then scored on the *worse* of its two contrasts, against
+    the ground and against the fill. Scoring on the ground alone picks black
+    even behind the near-black neutral tone, where the outline vanishes into
+    the letters instead of into the background: an outline has two jobs.
+    """
+    left, top = element_origin(el, image, lay)
+    box = (max(0, left), max(0, top),
+           min(plate.width, left + image.width),
+           min(plate.height, top + image.height))
+    if box[2] <= box[0] or box[3] <= box[1]:
+        return tuple(options[0])
+    patch = plate.convert("RGB").crop(box)
+    pixels = np.asarray(
+        patch.resize((max(1, patch.width // 8), max(1, patch.height // 8))),
+        dtype=np.float32).reshape(-1, 3)
+    order = np.argsort(_luma(pixels.T))
+    dim = tuple(pixels[order[len(order) // 10]])
+    bright = tuple(pixels[order[-1 - len(order) // 10]])
+    if _contrast(dim, bright) < BUSY_GROUND:
+        return tuple(options[0])
+    ink = tuple(el.get("color") or
+                LABEL_TONES.get(el.get("tone", "neutral"), LABEL_TONES["neutral"]))
+
+    def score(option):
+        return min(_contrast(option, dim), _contrast(option, bright),
+                   _contrast(option, ink))
+
+    return tuple(max(options, key=score))
+
+
+def plate_for(assets, name, lay):
+    """The background image, covered and cropped to the frame.
+
+    Module level rather than a Renderer method because the storyboard stage
+    needs the same pixels to choose label outlines against, and a second copy
+    of "cover, then centre-crop" is how the two would come to disagree about
+    what is behind a label.
+    """
+    img = assets.original(name)
+    W, H = lay.size
+    if img.size != (W, H):
+        # Cover the frame, then centre-crop: never letterbox the plate.
+        ratio = max(W / img.width, H / img.height)
+        img = img.resize((max(W, round(img.width * ratio)),
+                          max(H, round(img.height * ratio))), Image.LANCZOS)
+        left, top = (img.width - W) // 2, (img.height - H) // 2
+        img = img.crop((left, top, left + W, top + H))
+    return img.convert("RGBA")
+
+
 def _paste(canvas, sprite, origin, opacity=1.0):
     if opacity <= 0.004:
         return
@@ -331,23 +421,12 @@ class Renderer:
         self.panel_color = tuple(cfg.get("panel_color") or (176, 196, 205))
         self.assets = Assets(self.workdir)
         bg_name = cfg.get("background", "background.png")
-        self.background = self._load_background(bg_name)
+        self.background = plate_for(self.assets, bg_name, self.lay)
         self._plates = {}
         self._captions = {}
         self._frame_cache = {}
         self._caption_spans_cache = {}
 
-    def _load_background(self, name):
-        img = self.assets.original(name)
-        W, H = self.lay.size
-        if img.size != (W, H):
-            # Cover the frame, then centre-crop: never letterbox the plate.
-            ratio = max(W / img.width, H / img.height)
-            img = img.resize((max(W, round(img.width * ratio)),
-                              max(H, round(img.height * ratio))), Image.LANCZOS)
-            left, top = (img.width - W) // 2, (img.height - H) // 2
-            img = img.crop((left, top, left + W, top + H))
-        return img.convert("RGBA")
 
     # --- cached pieces ----------------------------------------------------
     def plate(self, segment):

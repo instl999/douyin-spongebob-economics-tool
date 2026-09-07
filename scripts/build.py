@@ -212,6 +212,19 @@ def stage_assets(project, plan, force=False):
         log(f"  title_card.png  {note}")
         plan["_title_card_image"] = "title_card.png" if card else None
 
+    setting = (plan.get("setting") or "").strip()
+    if setting and project.get("fallback_setting", True):
+        try:
+            _, made = library.build_setting(
+                setting, project.out / "setting.png", lay.image_size, force=force)
+            log(f"  setting.png     {'generated' if made else 'cached'}  {setting}")
+        except Exception as exc:
+            # A missing backdrop costs the shots their room, not the run - but
+            # a catch this broad turns a typo into something that reads like a
+            # service outage, so the kind of error is part of the message.
+            log(f"  ! backdrop could not be generated "
+                f"({type(exc).__name__}): {str(exc)[:90]}")
+
     assets_mod.link_into(project.out, cast, names=wanted)
     reconcile_sprites(project, plan, cast)
     return background
@@ -313,6 +326,32 @@ STAGGER_FRACTION = 0.26
 STAGGER_MAX = 1.4
 
 
+def _plate(project, plan):
+    """Which image the whole video sits on: the script's own room, or the cast's.
+
+    A generated setting is the *plate*, not a prop. The first version made it a
+    panel - a wall-shaped element pasted over the cast background - and that was
+    wrong twice over. A panel box is about 2.7:1, so cover-cropping a 16:9 room
+    into it cut away the top and the floor and left the blank middle: the
+    Krusty Krab kitchen arrived as a cream slab. And a slab is what it read as,
+    because the cast's own plate still showed around its edges.
+
+    As the plate it is full-bleed, behind everything, identical in every shot -
+    so the frame cache and the "background is static" check hold unchanged, and
+    the draft exporter picks it up without knowing a setting exists.
+    """
+    if not project.get("fallback_setting", True) or not (
+            plan.get("setting") or "").strip():
+        return "background.png"
+    if (project.out / "setting.png").is_file():
+        return "setting.png"
+    # The plan asked for a room and there is no room: generation failed, or an
+    # earlier stage was skipped past. Falling back to the cast plate is right,
+    # doing it quietly is not - the video simply comes out somewhere else.
+    log("  ! no setting.png; falling back to the cast's own plate")
+    return "background.png"
+
+
 def _stagger(elements, duration):
     """Let the emphasis text arrive rather than being there from the start.
 
@@ -333,6 +372,44 @@ def _stagger(elements, duration):
     when = round(min(STAGGER_MAX, duration * STAGGER_FRACTION), 2)
     for el in text:
         el.setdefault("appear", when)
+
+
+def _ink(storyboard, project, lay, look):
+    """Pick each label's outline from the plate it will sit on.
+
+    Decided once, here, and written into the storyboard - the same way `look`
+    and `panel_color` are carried - because the renderer and the draft exporter
+    both draw these and had a white outline hardcoded in each. Two copies of an
+    appearance decision is how the placement arithmetic ended up with three
+    different default y values, and this is the same shape of mistake caught
+    before it is made.
+
+    Only shots that already have a plate are touched, and a label whose author
+    set `outline` explicitly keeps it.
+    """
+    import render as render_mod
+    labels = [el for scene in storyboard.get("scenes") or []
+              for el in scene.get("elements") or []
+              if el.get("type") == "label" and not el.get("outline")]
+    if not labels:
+        return
+
+    pinned = (look.get("text") or {}).get("label_outline", "auto")
+    if pinned != "auto":
+        for el in labels:
+            el["outline"] = list(pinned)
+        return
+
+    name = (storyboard.get("video") or {}).get("background")
+    if not name or not (project.out / name).is_file():
+        return
+    options = [tuple(look["caption"]["fill"]), tuple(look["caption"]["stroke_fill"])]
+    assets = render_mod.Assets(project.out)
+    plate = render_mod.plate_for(assets, name, lay)
+    for el in labels:
+        image = render_mod.build_element_image(el, assets, lay)
+        el["outline"] = list(render_mod.outline_against(
+            plate, el, image, lay, options))
 
 
 def stage_storyboard(project, plan, voice_index):
@@ -385,7 +462,7 @@ def stage_storyboard(project, plan, voice_index):
                             or styles_mod.default_orientation()),
             "width": lay.width, "height": lay.height,
             "fps": int(project.get("fps", 30)),
-            "background": "background.png",
+            "background": _plate(project, plan),
             "dissolve": float(project.get("dissolve",
                                           look["timing"]["dissolve"])),
             "crf": int(project.get("crf", 20)),
@@ -421,6 +498,8 @@ def stage_storyboard(project, plan, voice_index):
         cast=project.cast)
     for line in findings:
         log(f"  {line}")
+
+    _ink(storyboard, project, lay, look)
 
     # Cues are planned last, after both cards are attached and after the
     # layout repair has moved things. Planned any earlier, build_timeline sees

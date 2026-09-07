@@ -107,6 +107,17 @@ TITLE_PROMPT = (
     "色背景，横向排列一行，"
     "字体清晰完整准确")
 
+# The fallback backdrop for shots the script gives no place to. Without one, a
+# video alternates between built rooms and bare meadow, which reads worse than
+# either on its own. It is a wall seen from in front - not a landscape - so it
+# has to be flat, frontal and empty in the middle where the characters stand.
+SETTING_RULES = ("a flat frontal view of an interior wall or backdrop, "
+                 "seen straight on, no perspective vanishing point, "
+                 "no characters, no people, no creatures, no text, "
+                 "no watermark, nothing in the foreground, "
+                 "the middle and lower area plain and uncluttered so figures "
+                 "can stand in front of it, detail only near the top and edges")
+
 BACKGROUND_RULES = ("wide establishing background plate, no characters, "
                     "no people, no text, no watermark, nothing in the "
                     "foreground, empty stage with clear space in the lower half")
@@ -321,6 +332,10 @@ class Cast:
         if not stem.startswith("prop_"):
             return False           # characters always stand
         return stem[len("prop_"):] in set(self.data.get("hanging") or [])
+
+    def setting_prompt(self, description):
+        """A themed backdrop for one video, in this cast's art style."""
+        return ", ".join(p for p in [self.style, description, SETTING_RULES] if p)
 
     def background_prompt(self):
         bg = self.data.get("background", {})
@@ -620,6 +635,31 @@ class Library:
                          or out_path.stat().st_mtime < cached.stat().st_mtime):
             shutil.copy2(cached, out_path)
         return out_path, made
+
+    def build_setting(self, description, out_path, size, force=False):
+        """Generate the video's fallback backdrop. Returns (path, made).
+
+        The *file* belongs to one video - it is derived from that script's
+        subject, unlike the plate, which is what makes a series look like a
+        series and must never drift. The bookkeeping still lives in the cast's
+        manifest, so the key carries the description: on a single "setting"
+        key, two scripts sharing a style would each find the other's
+        fingerprint and regenerate a backdrop the other had already paid for,
+        every time the two were built in turn.
+        """
+        prompt = self.cast.setting_prompt(description)
+        fingerprint = self._fingerprint(prompt, size)
+        key = f"setting::{fingerprint}"
+        out_path = Path(out_path)
+        if (not force and out_path.exists()
+                and self.manifest.get(key, {}).get("fingerprint") == fingerprint):
+            return out_path, False
+        ark.generate_image(prompt, out_path, size=size)
+        self.manifest[key] = {"fingerprint": fingerprint, "prompt": prompt,
+                              "size": size,
+                              "built": time.strftime("%Y-%m-%d %H:%M:%S")}
+        self._save_manifest()
+        return out_path, True
 
     def build_title_card(self, text, out_path, size, force=False, attempts=2):
         """Generate brush-calligraphy lettering, and check that it reads right.

@@ -31,6 +31,10 @@ MIN_GAP = _ZONES["min_gap"]                # closer than this reads as one mass
 # config rather than a second free-standing number that could be set below it.
 REPAIR_GAP = MIN_GAP * _ZONES["repair_gap_multiple"]
 SIDE_MARGIN = _ZONES["side_margin"]
+# Headroom left above a sprite that had to be scaled to fit. Not zero: a head
+# resting exactly on the frame edge reads as cropped even when every pixel is
+# present.
+TOP_MARGIN = _ZONES["top_margin"]
 MAX_PASSES = int(_ZONES["max_passes"])
 
 
@@ -198,6 +202,30 @@ def _repair_scene(scene, assets, lay, framing, W):
         box[0], box[2] = centre - width / 2, centre + width / 2
         findings.append(f"shot {scene.get('id','?')}: {_name(el)} was wider than "
                         f"the frame, scaled to {shrink:.2f}")
+
+    # 1b. Nor taller than the frame. `close` multiplies height by 1.30 and a
+    # tall character multiplies it again, so an h the director writes blind can
+    # put a head above the top edge - and this was *reported* and never
+    # repaired, which in a pipeline whose whole premise is that the director
+    # cannot see the frame means shipping a decapitated character behind a log
+    # line nobody reads. Scaled about the feet, because that is what the
+    # ground line means.
+    for el, box in sprites:
+        top = box[1]
+        if top >= -EDGE_TOLERANCE * lay.height:
+            continue
+        height = box[3] - box[1]
+        room = box[3] - TOP_MARGIN * lay.height
+        if height <= 0 or room <= 0:
+            continue
+        shrink = room / height
+        el["h"] = round(el.get("h", 0.4) * shrink, 4)
+        box[1] = box[3] - height * shrink
+        centre = (box[0] + box[2]) / 2
+        half = (box[2] - box[0]) * shrink / 2
+        box[0], box[2] = centre - half, centre + half
+        findings.append(f"shot {scene.get('id','?')}: {_name(el)} was cut off at "
+                        f"the top, scaled to {shrink:.2f}")
 
     standing = sorted((pair for pair in sprites
                        if pair[0].get("anchor", "bottom") == "bottom"),

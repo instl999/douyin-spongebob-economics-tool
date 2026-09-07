@@ -16,6 +16,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -117,6 +118,8 @@ def main():
         "checks.MIN_GAP": (checks_mod.MIN_GAP, look["safe_zones"]["min_gap"]),
         "checks.SIDE_MARGIN": (checks_mod.SIDE_MARGIN,
                                look["safe_zones"]["side_margin"]),
+        "checks.TOP_MARGIN": (checks_mod.TOP_MARGIN,
+                              look["safe_zones"]["top_margin"]),
         "checks.EDGE_TOLERANCE": (checks_mod.EDGE_TOLERANCE,
                                   look["safe_zones"]["edge_tolerance"]),
         "matting.CHOKE": (matting.CHOKE, look["matting"]["choke"]),
@@ -430,6 +433,177 @@ def main():
     suite.check("matting leaves the artwork's own warm colours alone",
                 r > 175 and g < 75, f"the red circle stayed {r:.0f},{g:.0f},{b:.0f}")
 
+    # --- labels have to survive the plate they land on --------------------
+    # A white outline is the reference look and it is only an outline where
+    # the plate is dark. Generated settings are not reliably dark - the first
+    # one back was a cream wall - so the choice is measured, and this pins both
+    # directions: nothing here should quietly go back to always-white.
+    options = [tuple(look["caption"]["fill"]), tuple(look["caption"]["stroke_fill"])]
+    swatch = {"type": "label", "text": "标签", "x": 0.3, "y": 0.21, "anchor": "middle"}
+
+    class _NoAssets:
+        def sized(self, *a):
+            raise AssertionError("a label must not need a sprite")
+
+        def original(self, *a):
+            raise AssertionError("a label must not need a sprite")
+
+    def _flat(colour):
+        return Image.new("RGB", lay.size, colour)
+
+    def _busy(wall, fixture):
+        """A wall with something bolted across it - the case that needs an
+        outline at all. The generated kitchen was cream with a steel hood."""
+        plate = Image.new("RGB", lay.size, wall)
+        ImageDraw.Draw(plate).rectangle(
+            [0, int(lay.height * 0.16), lay.width, int(lay.height * 0.26)],
+            fill=fixture)
+        return plate
+
+    def _pick(plate, tone):
+        el = dict(swatch, tone=tone)
+        tag = render_mod.build_element_image(el, _NoAssets(), lay)
+        return render_mod.outline_against(plate, el, tag, lay, options)
+
+    white, black = options[0], options[1]
+    # A flat plate is what every shipped style has, and there the fill carries
+    # the label on its own. Whatever the style asked for is left alone - this
+    # is the half that keeps the seven styles looking the way they did.
+    kept = [_pick(_flat(c), "money") for c in ((250, 247, 224), (18, 52, 96),
+                                               (76, 224, 183))]
+    suite.check("a flat plate keeps the outline the style asked for",
+                all(c == white for c in kept), f"cream, deep water, aqua -> {kept}")
+
+    # A busy one does not: no fill reads against both a cream wall and the
+    # steel bolted across it, so here the outline is load-bearing and measured.
+    rescued = _pick(_busy((250, 247, 224), (74, 80, 86)), "money")
+    suite.check("a label on a busy plate gets an outline that reads",
+                rescued == black, f"cream wall + steel hood -> {rescued}")
+
+    # And the measurement weighs the fill as well as the ground. On the ground
+    # alone this picks black behind the near-black neutral tone, where the
+    # outline disappears into the letters instead of behind them.
+    not_lost = _pick(_busy((30, 32, 38), (140, 145, 150)), "neutral")
+    suite.check("an outline never vanishes into the letters it outlines",
+                not_lost == white, f"dark plate, near-black label -> {not_lost}")
+
+    # The renderer and the draft exporter both draw labels and both used to
+    # hardcode white. One measurement carried in the storyboard is what stops
+    # them drifting, the way three copies of the placement arithmetic once did.
+    suite.check("the draft outlines a label the way the render did",
+                "el.get(\"outline\"" in (ROOT / "scripts" / "draft.py").read_text(
+                    encoding="utf-8-sig"),
+                "draft.py reads the outline the storyboard carries")
+
+    # --- a generated setting is the plate, not a prop ---------------------
+    # As a panel it was cover-cropped into a 2.7:1 box, which cut the top and
+    # the floor off a 16:9 room and left the blank middle. Nothing should put
+    # it back into an element.
+    build_src = (ROOT / "scripts" / "build.py").read_text(encoding="utf-8-sig")
+    suite.check("a generated setting is used as the background plate",
+                '"background": _plate(' in build_src
+                and "_give_a_place" not in build_src,
+                "setting.png reaches the renderer as the plate")
+
+    # --- the cost line has to be true -------------------------------------
+    # USAGE was declared and reset and never incremented by anything, so every
+    # run ended with "nothing was generated, everything came from cache" - a
+    # build that had just spent thirteen image generations said exactly what a
+    # fully cached one said. Faked at the socket so this costs nothing.
+    import ark as ark_mod
+    import config as config_mod
+
+    class _Response:
+        def __init__(self, payload):
+            self._payload = json.dumps(payload).encode()
+
+        def read(self):
+            return self._payload
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    real_open, real_key = urllib.request.urlopen, config_mod.ARK_API_KEY
+    real_download = ark_mod._download
+    try:
+        config_mod.ARK_API_KEY = "offline-selftest"
+        ark_mod._download = lambda url, out, retries=3: out
+        urllib.request.urlopen = lambda *a, **k: _Response(
+            {"choices": [{"message": {"content": "ok"}}],
+             "data": [{"url": "http://example.invalid/x.png"}]})
+        ark_mod.reset_usage()
+        ark_mod.chat([{"role": "user", "content": "hi"}])
+        ark_mod.generate_image("a wall", Path(tempfile.gettempdir()) / "x.png")
+        ark_mod.chat([{"role": "user", "content": [
+            {"type": "text", "text": "what"},
+            {"type": "image_url", "image_url": {"url": "data:image/png;base64,x"}}]}])
+        counted = dict(ark_mod.USAGE)
+    finally:
+        urllib.request.urlopen, config_mod.ARK_API_KEY = real_open, real_key
+        ark_mod._download = real_download
+        ark_mod.reset_usage()
+    suite.check("a run reports what it actually spent",
+                counted["text_calls"] == 1 and counted["images"] == 1
+                and counted["vision_calls"] == 1,
+                f"{counted['text_calls']} director, {counted['images']} image, "
+                f"{counted['vision_calls']} vision")
+
+    # --- re-validating a plan must not quietly lose fields ----------------
+    # migrate_plan.py rebuilt the model's answer from an allowlist of three
+    # keys, so every field the validator learned to read after it was written
+    # was dropped on the floor: each shot's `beat`, which the sound design
+    # picks its cues from, and the video's `setting`, which is its backdrop. A
+    # migrated video came out somewhere else with duller sound and said
+    # nothing. This walks the validator's output back through it.
+    import migrate_plan as migrate_mod
+    with tempfile.TemporaryDirectory() as tmp:
+        seed = plan_mod.validate(
+            {"title": "标题", "setting": "a back kitchen",
+             "shots": [{"id": 1, "framing": "medium",
+                        "beat": {"subject": "alice", "action": "is paid",
+                                 "emotion": "delighted"},
+                        "elements": [{"asset": "sponge_work.png",
+                                      "x": 0.5, "h": 0.46}]}]},
+            ["一句。"], house)
+        path = Path(tmp) / "plan.json"
+        path.write_text(json.dumps(seed, ensure_ascii=False), encoding="utf-8")
+        again = migrate_mod.migrate(path, ROOT / "casts" / "bikini_bottom.json")
+        kept = (again.get("setting") == seed["setting"]
+                and again["scenes"][0].get("beat") == seed["scenes"][0].get("beat")
+                and again.get("title") == seed["title"])
+        suite.check("re-validating a plan keeps everything the validator reads",
+                    kept, f"setting {again.get('setting')!r}, "
+                          f"beat {'kept' if again['scenes'][0].get('beat') else 'LOST'}")
+
+    # --- two figures should not be the smallest thing in the video --------
+    paired = plan_mod.validate(
+        {"shots": [{"id": 1, "framing": "medium", "elements": [
+            {"asset": "duo_krabs_sponge_handover.png", "x": 0.5, "h": 0.50}]}]},
+        ["一句。"], house)
+    duo = paired["scenes"][0]["elements"][0]
+    close = look["framing"]["close"]
+    suite.check("an interaction is not left smaller than the singles around it",
+                duo["h"] >= plan_mod.MIN_DUO_HEIGHT,
+                f"0.50 at medium -> {duo['h']} against a solo's "
+                f"0.48x{close} = {0.48 * close:.2f}")
+
+    # --- panels reach the frame edges -------------------------------------
+    # A director writing "w": 0.30 gets a card floating in the middle of the
+    # frame; a wall is supposed to reach the edges. The floor is applied in
+    # validate(), so this asks validate() rather than reading the constant.
+    walled = plan_mod.validate(
+        {"shots": [{"id": 1, "framing": "medium", "elements": [
+            {"type": "panel", "x": 0.2, "y": 0.9, "w": 0.30, "ph": 0.20}]}]},
+        ["一句。"], house)
+    panel = next(el for el in walled["scenes"][0]["elements"]
+                 if el.get("type") == "panel")
+    suite.check("a panel is widened to sit near the frame edges",
+                panel["w"] >= 0.9 and panel["ph"] >= 0.4 and panel["x"] == 0.5,
+                f"0.30x0.20 -> {panel['w']:.2f}x{panel['ph']:.2f} at x={panel['x']}")
+
     # --- a real render, end to end ----------------------------------------
     with tempfile.TemporaryDirectory() as tmp:
         work = Path(tmp)
@@ -456,6 +630,18 @@ def main():
         residual = checks_mod.inspect(storyboard, sprites, lay, repair=False)
         suite.check("layout repair converges", not residual,
                     f"{len(findings)} repaired, {len(residual)} left")
+
+        # A head above the top edge was reported and never repaired: the
+        # message went into the log and the video shipped with a decapitated
+        # character. Everything else in this pass fixes what it finds.
+        tall = {"video": storyboard["video"], "scenes": [{
+            "id": 1, "duration": 1.0, "framing": "close", "subtitle": "x",
+            "elements": [{"asset": "a.png", "x": 0.5, "y": 0.97, "h": 0.95,
+                          "anchor": "bottom", "rel": 1.0}]}]}
+        checks_mod.inspect(tall, sprites, lay, repair=True)
+        suite.check("a head above the frame is scaled back in, not just reported",
+                    not checks_mod.inspect(tall, sprites, lay, repair=False),
+                    f"h 0.95 -> {tall['scenes'][0]['elements'][0]['h']}")
 
         video = work / "selftest.mp4"
         renderer = render_mod.Renderer(storyboard, work)

@@ -76,9 +76,10 @@ Turn a narration script into a finished explainer video.
 python scripts/build.py projects/efficiency_wage.json
 ```
 
-One fixed background plate, AI-generated cut-out characters and props
-composited on top of it, acting out each sentence. Shots hold still and
-dissolve into one another. Narration, subtitles, title and closing cards,
+One fixed background plate — the style's own, or a room generated from the
+script's subject when the script does not name one — with AI-generated cut-out
+characters and props composited on top of it, acting out each sentence. Shots
+hold still and dissolve into one another. Narration, subtitles, title and closing cards,
 music, encoding and quality control all happen in one command.
 
 Built for Chinese-language economics explainers, but nothing in the code is
@@ -392,6 +393,8 @@ take the other six down with it.
 | Use a style | the project JSON's `cast` field: the style key (`"clay"`) or the path to its cast file |
 | Change a style's overall art direction | the `"style"` field at the top of that `casts/<style>.json` (e.g. `casts/bikini_bottom.json` line 4) |
 | Change the background plate every shot sits on | `"background"` → `"prompt"` in the same file |
+| Stop deriving a backdrop from the script and always use the style's plate | `"fallback_setting": false` in the project JSON |
+| Pin label outlines instead of measuring them against the plate | `casts/styles.json` → `look.text.label_outline`, e.g. `[255, 255, 255]` |
 | Create a brand-new style | copy `casts/_template.json` to `casts/<key>.json`, fill it in following the `_hint_*` comments, validate with `python scripts/build.py --check`, then generate the library with `python scripts/build_library.py <key> --plates` |
 
 ### The configuration file

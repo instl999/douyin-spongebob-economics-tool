@@ -74,6 +74,7 @@ LOOK_DEFAULTS = {
         "min_gap": 0.012,
         "repair_gap_multiple": 2.5,
         "side_margin": 0.02,
+        "top_margin": 0.02,
         "max_passes": 3,
     },
     "sound": {
@@ -86,6 +87,9 @@ LOOK_DEFAULTS = {
     },
     "text": {
         "native_labels": True,
+        # "auto" measures the plate under each label and keeps whichever of the
+        # caption's two colours contrasts more; an [r, g, b] pins it instead.
+        "label_outline": "auto",
         "animation": {
             "money": "放大",
             "good": "发光闪入",

@@ -50,10 +50,25 @@ NEW_INTERACTION_BUDGET = 4
 # frame was empty.
 MIN_BOARD_HEIGHT = 0.40
 
+# An interaction sprite holds two figures and is nearly always framed "medium",
+# where a solo reaction is framed "close" and multiplied by 1.30. At the same h
+# the pair therefore lands about 80% the size of the single characters it cuts
+# between, and the shot that is *most* about what is happening reads as the
+# furthest away. Measured on payday: the handover came back at h=0.50 against
+# solos at an effective 0.62, and at 0.60 the two shots match.
+MIN_DUO_HEIGHT = 0.58
+
 # A "wide" shot scales everything down 12%. That is worth it for three figures
 # or a building and actively harmful below that: one video used wide for 13 of
 # 32 shots while averaging 2.7 elements, so "wide" just meant "smaller".
 WIDE_NEEDS_ELEMENTS = 3
+
+# A panel is a room, and a room does not stop two thirds of the way across the
+# picture. Below this the plate's grass shows down both sides and the wall
+# reads as a screen propped on a lawn rather than as somewhere the characters
+# are. Not 1.0: a little of the plate at the edges still reads as depth.
+MIN_PANEL_WIDTH = 0.94
+MIN_PANEL_HEIGHT = 0.45
 
 SYSTEM = """You are the director of a SpongeBob-style animated explainer.
 
@@ -351,10 +366,12 @@ def _elements(raw_elements, cast, known, shot_id, problems,
         kind = el.get("type", "sprite")
         if kind == "panel":
             item = {"type": "panel",
-                    "x": _clamp(el.get("x"), 0.0, 1.0, 0.5),
+                    "x": 0.5,          # a wall is centred; nothing else reads
                     "y": _clamp(el.get("y"), 0.0, 1.05, 0.9),
-                    "w": _clamp(el.get("w"), 0.08, 1.0, 0.4),
-                    "ph": _clamp(el.get("ph"), 0.04, 1.0, 0.28),
+                    "w": _clamp(el.get("w"), MIN_PANEL_WIDTH, 1.0,
+                                MIN_PANEL_WIDTH),
+                    "ph": _clamp(el.get("ph"), MIN_PANEL_HEIGHT, 1.0,
+                                 MIN_PANEL_HEIGHT),
                     "anchor": el.get("anchor", "bottom")}
             for key in ("color", "alpha", "radius"):
                 if key in el:
@@ -461,11 +478,18 @@ def _elements(raw_elements, cast, known, shot_id, problems,
                 continue
             seen |= subjects
 
+            item_h = _clamp(el.get("h"), 0.10, 0.85, 0.46)
+            if members and item_h < MIN_DUO_HEIGHT:
+                problems.append(
+                    f"shot {shot_id}: {asset!r} at h={item_h:.2f} puts two "
+                    f"figures further away than the singles around them, "
+                    f"raised to {MIN_DUO_HEIGHT}")
+                item_h = MIN_DUO_HEIGHT
             item = {"asset": asset,
                     "flip": bool(el.get("flip")),
                     "x": _clamp(el.get("x"), 0.03, 0.97, 0.5),
                     "y": y,
-                    "h": _clamp(el.get("h"), 0.10, 0.85, 0.46),
+                    "h": item_h,
                     "rel": cast.relative_height(asset),
                     "anchor": anchor}
         appear = el.get("appear")
@@ -644,6 +668,7 @@ def validate(data, beats, cast, max_sprites=None):
 
     return {
         "title": (data.get("title") or "").strip(),
+        "setting": (data.get("setting") or "").strip(),
         "ending": {"text": ending_text,
                    "highlight": (ending.get("highlight") or "").strip() or None},
         "scenes": scenes,

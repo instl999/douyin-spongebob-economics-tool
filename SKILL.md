@@ -207,6 +207,8 @@ python scripts/draft.py out/my_video --install
 | 谁出场、什么姿势、有什么道具 | `casts/<cast>.json` 的 `characters` / `props` |
 | 画风 | `casts/<cast>.json` 的 `style` |
 | 背景（**最影响观感**：地平线位置决定角色站得稳不稳） | `casts/<cast>.json` 的 `background.prompt`，说清地平线在哪、两边留空 |
+| 全片背景自动跟着文案走 | 默认开启：导演会根据整篇文案定一个场景（`setting`），生成 `setting.png` 当全片背景板；不想要就在 project 里写 `"fallback_setting": false`，退回画风自带的背景 |
+| 标签描边颜色 | 默认 `"auto"`：量一下标签底下那块背景，白边黑边哪个更清楚用哪个。想固定成参考片的白边就把 `styles.json` 的 `look.text.label_outline` 写成 `[255,255,255]` |
 | 哪些道具可以悬空 | `casts/<cast>.json` 的 `hanging` 列表 |
 | 哪些道具挡在角色前面 | `casts/<cast>.json` 的 `foreground` 列表 |
 | 哪些道具是「可以往上写字」的板面 | `casts/<cast>.json` 的 `writable` 列表；落在上面的标签会自动吸附到板中央，落在角色身上的会被挪开 |

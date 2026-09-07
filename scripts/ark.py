@@ -32,7 +32,16 @@ class ArkError(RuntimeError):
     pass
 
 
-def _request(path, body, timeout=300, retries=4):
+def _request(path, body, timeout=300, retries=4, kind=None):
+    """POST to Ark, with retries. `kind` is which USAGE counter this call is.
+
+    Counted here rather than at the call sites because there is exactly one
+    place a request can succeed, and the counters were previously declared,
+    reset, and never incremented by anything: every run of the pipeline ended
+    by reporting "nothing was generated, everything came from cache" no matter
+    what it had just spent. A cost line that is always reassuring is worse than
+    no cost line.
+    """
     if not config.ARK_API_KEY:
         raise ArkError("ARK_API_KEY is not set - copy .env.example to .env and fill it in")
     url = config.ARK_BASE_URL.rstrip("/") + path
@@ -42,11 +51,16 @@ def _request(path, body, timeout=300, retries=4):
     }
     data = json.dumps(body, ensure_ascii=False).encode("utf-8")
     last = None
+    started = time.time()
     for attempt in range(retries + 1):
         try:
             req = urllib.request.Request(url, data=data, headers=headers, method="POST")
             with urllib.request.urlopen(req, timeout=timeout) as resp:
-                return json.loads(resp.read().decode("utf-8"))
+                payload = json.loads(resp.read().decode("utf-8"))
+            if kind:
+                USAGE[kind] += 1
+            USAGE["seconds"] += time.time() - started
+            return payload
         except urllib.error.HTTPError as exc:
             raw = exc.read().decode("utf-8", "replace")
             try:
@@ -64,6 +78,17 @@ def _request(path, body, timeout=300, retries=4):
 
 
 # --- text -----------------------------------------------------------------
+
+def _has_image(messages):
+    """True if any message carries an image part - i.e. this is a vision call."""
+    for message in messages or []:
+        content = message.get("content")
+        if isinstance(content, list) and any(
+                isinstance(part, dict) and part.get("type") == "image_url"
+                for part in content):
+            return True
+    return False
+
 
 def chat(messages, model=None, temperature=0.7, max_tokens=8192,
          json_object=False, thinking=False):
@@ -83,7 +108,8 @@ def chat(messages, model=None, temperature=0.7, max_tokens=8192,
     }
     if json_object:
         body["response_format"] = {"type": "json_object"}
-    data = _request("/chat/completions", body, timeout=300)
+    data = _request("/chat/completions", body, timeout=300,
+                    kind="vision_calls" if _has_image(messages) else "text_calls")
     return data["choices"][0]["message"]["content"]
 
 
@@ -175,7 +201,8 @@ def generate_image(prompt, out_path, size=SIZE_LANDSCAPE, seed=None,
     if reference_images:
         # Ark accepts a single url/data-uri or a list, depending on model.
         body["image"] = reference_images if len(reference_images) > 1 else reference_images[0]
-    data = _request("/images/generations", body, timeout=timeout)
+    data = _request("/images/generations", body, timeout=timeout,
+                    kind="images")
     url = data["data"][0]["url"]
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)

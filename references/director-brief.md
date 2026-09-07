@@ -112,8 +112,11 @@ point is that A does something *to* B, ask for the pair drawn together:
   receiving. Do not describe costume or art style; those come from the cast
 - it counts as **both** characters, so do not also place either of them
   separately in that shot
-- give it a slightly larger `h` than a single character (0.48-0.55) and put it
-  at x 0.5; it is two figures wide
+- give it `h` 0.58-0.66 and put it at x 0.5. Two figures share the height one
+  character gets, and this shot is nearly always "medium" while the reactions
+  either side of it are "close" - at the same `h` the pair ends up the smallest
+  thing in the video, which is backwards for the shot that carries the action.
+  Anything below 0.58 is raised for you
 - you have {duo_budget} of these for the whole video. Spend them on the beats
   where the sentence is an exchange - paying, handing over, arguing face to
   face, one showing another something - and use a pose for everything else
@@ -135,19 +138,26 @@ video to be "close" - a video that never gets near a face reads flat.
 
 ## Setting a shot somewhere else
 
-The background never changes. When the narration names a *place* - an office, a
-meeting, a shop, a warehouse, a dock, a kitchen - put a flat slab behind
-everyone and the shot reads as being there:
+Every video already sits somewhere: the `setting` you name at the end of your
+answer is generated once and used as the backdrop behind *every* shot, so a
+script that never names a place still gets a room rather than the cast's
+default meadow. That is the floor, not the ceiling.
 
-{{"type": "panel", "x": 0.5, "y": 0.99, "w": 0.55, "ph": 0.34}}
+When one sentence names a *different* place from the video's own - an office in
+a script set in a shop, a warehouse, a dock, a bank hall - put a wall behind
+everyone for that shot:
+
+{{"type": "panel", "x": 0.5, "y": 0.99, "w": 0.94, "ph": 0.5}}
 
 x,y is the bottom centre in stage coordinates; w and ph are fractions of the
-frame. Add the furniture that belongs there on top of it - a desk, a counter, a
-meeting table - and the place is built.
+frame. **A wall reaches the frame edges**: w below 0.94 and ph below 0.45 are
+raised to those, because a narrow slab reads as a card floating on the backdrop
+rather than as a room. Add the furniture that belongs there on top of it - a
+desk, a counter, a meeting table - and the place is built.
 
 **Look through the shot list for every sentence that names a location and give
-those shots a panel.** It is the only way this format can leave the default
-setting.
+those shots a panel.** The generated backdrop covers the video's own place; a
+panel is how a single shot goes somewhere else.
 
 This instruction has been in the brief from the beginning and across seven
 finished videos a panel was used **four times in eighty-seven shots**. The
@@ -187,6 +197,11 @@ x and y are 0-1 across the stage. y is where the *bottom* of a sprite sits.
 - Boards, charts and maps hang at eye level: "anchor": "center", y 0.34-0.46
 - Never leave a solid object floating in open water. Anything not hanging on a
   wall stands on the ground like everyone else
+- **Put a label on most shots.** Two or three words on screen is what makes a
+  point land and what a viewer scrolling without sound reads first. Measured
+  across finished videos this ran from 1 label in 16 shots to 29 in 32; the
+  sparse end is the mistake. Aim for two thirds of shots to carry one, and
+  never invent a fact - a label names something the sentence already says
 - Labels: "type": "label" with "text", "anchor": "center", just above or below
   the thing they name, y 0.20-0.55. Two or three words - a figure, a name, a
   before/after. Never a whole sentence. Add "tone": "good" when it names an
@@ -214,6 +229,7 @@ characters.
 # Output
 
 {{"title": "<= 10 characters, the question the video answers",
+  "setting": "one place this whole script could sit in, 10-20 words, in the cast's world - a back kitchen, a small office, a shop counter, a bank hall. Used as the backdrop for every shot whose sentence names nowhere in particular, so pick the one that suits the subject rather than the first sentence",
   "ending": {{"text": "the closing line, may contain \\n", "highlight": "<= 4 characters from it"}},
   "shots": [
     {{"id": 1, "framing": "medium",

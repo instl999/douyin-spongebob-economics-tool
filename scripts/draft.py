@@ -349,7 +349,11 @@ class DraftBuilder:
                             _us(seg.duration - appear)),
             style=TextStyle(size=size, align=1, bold=True,
                             color=tuple(c / 255 for c in colour)),
-            border=TextBorder(color=(1.0, 1.0, 1.0), width=28.0),
+            # Whatever the renderer measured against the plate, so a label
+            # that needed a dark edge in the MP4 has one here too.
+            border=TextBorder(color=tuple(c / 255 for c in
+                                          el.get("outline", (255, 255, 255))),
+                              width=28.0),
             clip_settings=ClipSettings(transform_x=dx / (self.W / 2),
                                        transform_y=-dy / (self.H / 2)))
         animation = (self.text_config.get("animation") or {}).get(

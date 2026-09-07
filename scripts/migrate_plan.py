@@ -29,15 +29,13 @@ def migrate(plan_path, cast_path):
     cast = assets_mod.Cast.load(cast_file)
 
     beats = [scene["narration"] for scene in original["scenes"]]
-    data = {
-        "title": original.get("title"),
-        "ending": original.get("ending"),
-        "shots": [{"id": scene.get("id", i),
-                   "framing": scene.get("framing", "medium"),
-                   "elements": scene.get("elements", [])}
-                  for i, scene in enumerate(original["scenes"], 1)],
-    }
-    updated = plan_mod.validate(data, beats, cast)
+    # The whole plan goes back in, not a copy of the three fields this script
+    # happened to know about. That allowlist silently dropped every field the
+    # validator learned to read afterwards: each shot's `beat` - which is what
+    # the sound design picks cues from - and later the video's `setting`, so a
+    # migrated video lost its backdrop and nothing said so. `validate` already
+    # accepts "scenes" as an alias for "shots" and fills in its own defaults.
+    updated = plan_mod.validate(original, beats, cast)
     plan_path.write_text(json.dumps(updated, ensure_ascii=False, indent=2),
                          encoding="utf-8")
     return updated
