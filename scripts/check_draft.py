@@ -22,6 +22,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import console  # noqa: F401  UTF-8 stdout; see console.py
+
 import numpy as np
 from PIL import Image
 

@@ -97,6 +97,19 @@ def wrap(text, size, max_width, bold=True):
     if buf:
         tokens.append(buf)
 
+    def splits_word(line):
+        """True if moving line's last character would break a Latin word.
+
+        Moving one character between lines is harmless in CJK, where every
+        character stands alone, and wrong in Latin script. Unguarded it turned
+        "distant places." into "distant plac" / "es." in the English subtitle
+        line. Only ASCII alphanumerics can be adjacent inside a word, so this
+        never fires on Chinese.
+        """
+        return (len(line) >= 2
+                and line[-1].isascii() and line[-1].isalnum()
+                and line[-2].isascii() and line[-2].isalnum())
+
     for tok in tokens:
         candidate = current + tok
         if width(candidate) <= max_width or not current:
@@ -104,10 +117,11 @@ def wrap(text, size, max_width, bold=True):
             continue
         # Pull one character down if the next line would open on a closer, or
         # this line would end on an opener.
-        if tok in NO_LINE_START and len(current) > 1:
+        if tok in NO_LINE_START and len(current) > 1 and not splits_word(current):
             lines.append(current[:-1])
             current = current[-1] + tok
-        elif current and current[-1] in NO_LINE_END and len(current) > 1:
+        elif (current and current[-1] in NO_LINE_END and len(current) > 1
+              and not splits_word(current)):
             lines.append(current[:-1])
             current = current[-1] + tok
         else:
@@ -124,6 +138,8 @@ def wrap(text, size, max_width, bold=True):
     # above can spare them.
     while len(lines) > 1 and len(lines[-1]) <= 2 and len(lines[-2]) > 3:
         moved = lines[-2][-1]
+        if splits_word(lines[-2]):
+            break                      # see splits_word: never break a word
         if advance(moved + lines[-1], size, bold) > max_width:
             break
         lines[-2], lines[-1] = lines[-2][:-1], moved + lines[-1]

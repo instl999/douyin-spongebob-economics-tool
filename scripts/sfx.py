@@ -135,8 +135,18 @@ def carried(storyboard):
             when, name = float(entry[0]), str(entry[1])
         except (TypeError, ValueError, IndexError):
             continue
-        if name in have:
+        if name not in have:
+            continue
+        # An optional third element is that one cue's own gain, overriding the
+        # global one. The title card's stinger needs it: an opening accent sits
+        # about 6 dB above the level a coin drop under narration wants, and
+        # raising `sfx_volume` to suit it would raise every other cue too.
+        try:
+            gain = float(entry[2])
+        except (TypeError, ValueError, IndexError):
             out.append((when, name, have[name]))
+        else:
+            out.append((when, name, have[name], gain))
     return out
 
 
@@ -220,8 +230,8 @@ def plan(storyboard, durations, cast=None, look=None):
 def describe(cues):
     """One line for the build log: how many, how varied."""
     counts = {}
-    for _, name, _ in cues:
-        counts[name] = counts.get(name, 0) + 1
+    for cue in cues:                       # a cue may carry a fourth element
+        counts[cue[1]] = counts.get(cue[1], 0) + 1
     listing = ", ".join(f"{name}x{n}" if n > 1 else name
                         for name, n in sorted(counts.items()))
     return f"{len(counts)} distinct: {listing}"

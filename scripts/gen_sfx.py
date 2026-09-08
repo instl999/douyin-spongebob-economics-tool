@@ -27,6 +27,8 @@ import argparse
 import wave
 from pathlib import Path
 
+import console  # noqa: F401  UTF-8 stdout; see console.py
+
 import numpy as np
 from scipy import signal
 

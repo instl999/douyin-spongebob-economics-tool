@@ -3,6 +3,11 @@
 
 # generated output
 out/
+
+# download and generation cache: 239 MB of retrieved clips and generated
+# subjects on a single project, all of it re-fetchable from the URLs and
+# prompts that are recorded, and some single files past GitHub's 100 MB limit
+cache/
 **/_build/
 **/frames/
 **/_narration_parts/

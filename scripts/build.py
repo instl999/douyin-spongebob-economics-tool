@@ -25,6 +25,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import console  # noqa: F401  UTF-8 stdout; see console.py
+
 import assets as assets_mod
 import audio as audio_mod
 import config
@@ -268,6 +270,24 @@ def _subject_of(asset):
     return stem if stem.startswith("prop_") else stem.split("_", 1)[0]
 
 
+TITLE_SFX_LEAD = audio_mod.TITLE_SFX_LEAD
+# A name in the sfx library, not a path: that is what a cue is. `""` in a
+# project's `opening_sfx` turns it off.
+OPENING_SFX = "opening_dong"
+
+
+def title_slot(configured, spoken, tail, lead=TITLE_SFX_LEAD):
+    """How long the title card holds once it has a line to read.
+
+    The configured length is a floor, not the answer. A title is read aloud
+    now, and any title past about eight characters does not fit in the 2.6 s
+    the card used to hold for - it would cut to shot 1 mid-word.
+    """
+    if spoken <= 0:
+        return configured
+    return max(configured, lead + spoken + tail)
+
+
 def stage_voice(project, plan, force=False, speed=None):
     voice = project.get("voice", {}) or {}
     speaker = voice.get("speaker")
@@ -277,9 +297,15 @@ def stage_voice(project, plan, force=False, speed=None):
              if index_path.exists() and not force else {})
 
     degraded = 0
-    for i, scene in enumerate(plan["scenes"], 1):
-        key = str(i)
-        text = scene["narration"]
+    # The title card is read aloud like any other line. It used to hold a
+    # silent slot in the narration track, so the video opened on two and a half
+    # seconds of nothing while the card sat there.
+    title_text = project.get("title") or plan.get("title") or ""
+    jobs = [("title", title_text)] if title_text else []
+    jobs += [(str(i), scene["narration"])
+             for i, scene in enumerate(plan["scenes"], 1)]
+
+    for key, text in jobs:
         cached = index.get(key)
         # A shot that fell back to silence is cached like any other, so without
         # this a transient network fault becomes a permanent hole: every later
@@ -289,13 +315,15 @@ def stage_voice(project, plan, force=False, speed=None):
         if (cached and not stale and cached.get("text") == text
                 and Path(cached["path"]).exists()):
             continue
+        label = "title" if key == "title" else f"shot {key}"
         if stale:
-            log(f"  shot {i}: retrying (was silent from an earlier failure)")
-        out = project.out / "voice" / f"scene_{i:02d}.mp3"
+            log(f"  {label}: retrying (was silent from an earlier failure)")
+        out = project.out / "voice" / (
+            "title.mp3" if key == "title" else f"scene_{int(key):02d}.mp3")
         try:
             result = tts_mod.synth(text, out, speaker=speaker, speed=speed)
         except tts_mod.TTSError as exc:
-            log(f"  ! shot {i}: {exc}")
+            log(f"  ! {label}: {exc}")
             log("    falling back to an estimated duration for this shot")
             result = tts_mod._silent(text, out)
         if result["degraded"]:
@@ -303,7 +331,7 @@ def stage_voice(project, plan, force=False, speed=None):
         index[key] = {"text": text, "path": str(result["path"]),
                       "duration": result["duration"],
                       "words": result["words"], "degraded": result["degraded"]}
-        log(f"  shot {i:>2}: {result['duration']:5.2f}s"
+        log(f"  {label:>8}: {result['duration']:5.2f}s"
             f"{'  (estimated - no TTS)' if result['degraded'] else ''}")
 
     index_path.write_text(json.dumps(index, ensure_ascii=False, indent=2),
@@ -422,7 +450,20 @@ def stage_storyboard(project, plan, voice_index):
     title_text = project.get("title") or plan.get("title") or ""
     title_seconds = float(project.get("title_seconds", 2.6)) if title_text else 0.0
     if title_seconds:
-        pieces.append((None, title_seconds))
+        # The card holds for as long as its own line needs, never less than the
+        # configured minimum. Reading it aloud inside a fixed 2.6 s would clip
+        # any title longer than about eight characters, and the card would cut
+        # to shot 1 mid-word.
+        entry = voice_index.get("title", {})
+        spoken = float(entry.get("duration") or 0.0)
+        audio_path = entry.get("path")
+        title_seconds = title_slot(title_seconds, spoken, tail)
+        pieces.append((audio_path if audio_path and Path(audio_path).exists()
+                       else None, title_seconds, TITLE_SFX_LEAD))
+        # Deliberately NOT an SRT cue, even though it is now spoken. The draft
+        # imports the SRT as a native subtitle track, so a cue here printed the
+        # title a second time in small white text under the calligraphy card
+        # that already says it. The card is the title's caption.
         clock += title_seconds
 
     for i, scene in enumerate(plan["scenes"], 1):
@@ -511,6 +552,16 @@ def stage_storyboard(project, plan, voice_index):
         [round(when, 3), name] for when, name, _ in sfx_mod.plan(
             storyboard, [s["duration"] for s in scenes],
             cast=project.cast, look=look)]
+
+    # The title card's stinger is a cue at t=0 like any other, recorded here
+    # rather than laid into the mix separately. `carried` is read by BOTH the
+    # mix and the draft writer, so a cue that lives anywhere else is a cue the
+    # two can disagree about - which is the failure the cue list was moved onto
+    # the storyboard to prevent in the first place.
+    opening = project.get("opening_sfx", OPENING_SFX)
+    if title_text and opening and opening in sfx_mod.library():
+        storyboard["sound_cues"].insert(
+            0, [0.0, opening, float(project.get("opening_volume", 0.7))])
 
     (project.out / "storyboard.json").write_text(
         json.dumps(storyboard, ensure_ascii=False, indent=2), encoding="utf-8")

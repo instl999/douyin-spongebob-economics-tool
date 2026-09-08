@@ -839,5 +839,37 @@
     "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, inside the Krusty Krab restaurant front counter area, a flat frontal view of an interior wall or backdrop, seen straight on, no perspective vanishing point, no characters, no people, no creatures, no text, no watermark, nothing in the foreground, the middle and lower area plain and uncluttered so figures can stand in front of it, detail only near the top and edges",
     "size": "2560x1440",
     "built": "2026-09-06 19:58:11"
+  },
+  "title::什么是沉没成本::2560x1440": {
+    "fingerprint": "5412da548ff61500",
+    "prompt": "中文书法艺术字『什么是沉没成本』，狂草毛笔字，鲜红色字体带灰白色立体投影，笔画有飞白和枯笔质感，纯黑色背景，横向排列一行，字体清晰完整准确",
+    "size": "2560x1440",
+    "verified": "什么是沉没成本",
+    "built": "2026-09-07 19:38:28"
+  },
+  "setting::eaa3ac4efe744987": {
+    "fingerprint": "eaa3ac4efe744987",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, Krusty Krab店内前台，靠近蟹老板的收银柜台, a flat frontal view of an interior wall or backdrop, seen straight on, no perspective vanishing point, no characters, no people, no creatures, no text, no watermark, nothing in the foreground, the middle and lower area plain and uncluttered so figures can stand in front of it, detail only near the top and edges",
+    "size": "2560x1440",
+    "built": "2026-09-07 19:35:13"
+  },
+  "sponge_hold_umbrella.png": {
+    "fingerprint": "51f9c6b94ae07263",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, SpongeBob SquarePants, bright yellow rectangular sponge body with round holes, large blue eyes with black pupils, buck teeth, white shirt with a red necktie, brown square trousers, thin black-shoed legs, standing holding an open umbrella above head, determined expression, full body, complete figure, centred, nothing cropped, no drop shadow, no ground, no scenery, no text, no watermark, solid pure magenta background, RGB 255 0 255, flat uniform chroma key backdrop, no gradient, no texture, no shadow",
+    "size": "1920x1920",
+    "key": "chroma",
+    "anchored": false,
+    "coverage": 0.4805,
+    "pixels": [
+      1118,
+      1493
+    ],
+    "built": "2026-09-07 19:38:06"
+  },
+  "setting::23298ed712f5220f": {
+    "fingerprint": "23298ed712f5220f",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, the Krusty Krab kitchen under the sea, with counters and equipment, a flat frontal view of an interior wall or backdrop, seen straight on, no perspective vanishing point, no characters, no people, no creatures, no text, no watermark, nothing in the foreground, the middle and lower area plain and uncluttered so figures can stand in front of it, detail only near the top and edges",
+    "size": "2560x1440",
+    "built": "2026-09-07 19:39:07"
   }
 }

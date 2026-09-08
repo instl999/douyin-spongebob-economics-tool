@@ -31,6 +31,8 @@ the character's height, and scale numbers stay comparable between assets.
 import argparse
 from pathlib import Path
 
+import console  # noqa: F401  UTF-8 stdout; see console.py
+
 import numpy as np
 from PIL import Image
 from scipy import ndimage
