@@ -202,12 +202,14 @@ class DraftBuilder:
 
     def _add_background(self, script, segments):
         """The plate under the shots, and the black cards either side of them."""
-        body_start = body_end = None
+        # Only whether the body exists matters here; the plate is laid one
+        # segment per shot below, so the body's end was left over from when it
+        # was a single span and nothing has read it since.
+        body_start = None
         for seg in segments:
             if seg.kind == "scene":
                 if body_start is None:
                     body_start = seg.start
-                body_end = seg.end
                 continue
             card = self._card_png(seg.data, seg.kind)
             script.add_segment(

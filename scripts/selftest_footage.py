@@ -467,7 +467,7 @@ def run(suite, lay):
             src = cache / f"pexels_sar{i}.mp4"
             subprocess.run(
                 [config.FFMPEG, "-y", "-v", "error", "-f", "lavfi",
-                 "-i", f"testsrc=size=320x240:rate=15:duration=1",
+                 "-i", "testsrc=size=320x240:rate=15:duration=1",
                  "-vf", f"setsar={sar}", "-c:v", "libx264", "-t", "1",
                  "-pix_fmt", "yuv420p", str(src)], check=True)
             clip = {"provider": "pexels", "id": f"sar{i}", "duration": 1.0,

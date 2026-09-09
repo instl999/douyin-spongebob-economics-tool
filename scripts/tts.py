@@ -129,7 +129,7 @@ def _post_with_retries(body, headers, timeout):
             last = TTSError(f"{exc.code} {detail}")
             if exc.code not in RETRYABLE_STATUS:
                 raise last from None          # a rejection will not improve
-        except TTSError as exc:
+        except TTSError:
             # A code in the body - a bad speaker, a mismatched resource. Also
             # permanent; retrying just spends the quota again.
             raise

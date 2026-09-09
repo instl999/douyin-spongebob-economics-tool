@@ -235,8 +235,8 @@ def mix(narration, out_path, total, bgm=None, bgm_volume=0.10,
             # effect. Re-measure audio changes downstream of normalisation, not
             # upstream of it.
             chains.append(
-                f"[bed0][voicekey]sidechaincompress=threshold=0.03:ratio=8:"
-                f"attack=25:release=350[bed]")
+                "[bed0][voicekey]sidechaincompress=threshold=0.03:ratio=8:"
+                "attack=25:release=350[bed]")
         else:
             chains.append("[bed0]anull[bed]")
         labels.append("[bed]")

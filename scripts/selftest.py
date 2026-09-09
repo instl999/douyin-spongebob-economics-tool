@@ -12,7 +12,6 @@ build fails and it is not obvious whether the pipeline or the API is at fault.
 It spends nothing, so it can be run freely.
 """
 import json
-import shutil
 import subprocess
 import sys
 import tempfile

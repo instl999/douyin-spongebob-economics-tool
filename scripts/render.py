@@ -19,7 +19,6 @@ simply what the format looks like.
 
 Frames go to ffmpeg's stdin as raw RGB24. Nothing is written to disk.
 """
-import math
 import subprocess
 from pathlib import Path
 
@@ -29,7 +28,7 @@ from PIL import Image
 import config
 import styles as styles_mod
 import textkit
-from layout import Layout, from_video as layout_from_video
+from layout import from_video as layout_from_video
 
 # How much of the frame the subject fills, per shot. Measured on the
 # references, the largest foreground object runs 0.51-0.86 of frame height with
