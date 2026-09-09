@@ -274,12 +274,12 @@ TITLE_SFX_LEAD = audio_mod.TITLE_SFX_LEAD
 # A name in the sfx library, not a path: that is what a cue is. `""` in a
 # project's `opening_sfx` turns it off.
 OPENING_SFX = "opening_dong"
-# gen_sfx normalises the whole library to -12 dB, which is hotter than the
-# downloaded cue this replaced. Measured on a finished video, 0.7 put the
-# stinger 6 dB above the title's own voice; 0.42 lands all three parts of the
-# opening - cue, title, first line - within a decibel of each other, which is
-# where the reference sat.
-OPENING_GAIN = 0.42
+# Unity. The opening cue plays exactly as supplied - no gain, no normalising,
+# no levelling against the narration. Earlier versions tuned this (0.7, then
+# 0.42 once the cue was generated at -12 dB) and both were wrong for the same
+# reason: the cue is the user's own file and is meant to sound the way it
+# sounds.
+OPENING_GAIN = 1.0
 
 
 def title_slot(configured, spoken, tail, lead=TITLE_SFX_LEAD):
@@ -565,6 +565,16 @@ def stage_storyboard(project, plan, voice_index):
     # two can disagree about - which is the failure the cue list was moved onto
     # the storyboard to prevent in the first place.
     opening = project.get("opening_sfx", OPENING_SFX)
+    if title_text and opening and opening not in sfx_mod.library():
+        # Not in the library: a fresh clone, because the cue is no longer
+        # committed - see .gitignore. Build one so the video still opens on a
+        # stinger rather than on nothing.
+        try:
+            import gen_sfx
+            if opening in gen_sfx.GENERATORS:
+                gen_sfx.generate_all(ROOT / "assets" / "sfx", only={opening})
+        except Exception as exc:                 # a cue is not worth a build
+            log(f"  ! could not build the opening cue: {exc}")
     if title_text and opening and opening in sfx_mod.library():
         storyboard["sound_cues"].insert(
             0, [0.0, opening, float(project.get("opening_volume", OPENING_GAIN))])

@@ -845,7 +845,7 @@
     "prompt": "中文书法艺术字『什么是沉没成本』，狂草毛笔字，鲜红色字体带灰白色立体投影，笔画有飞白和枯笔质感，纯黑色背景，横向排列一行，字体清晰完整准确",
     "size": "2560x1440",
     "verified": "什么是沉没成本",
-    "built": "2026-09-08 17:57:13"
+    "built": "2026-09-08 18:55:30"
   },
   "setting::eaa3ac4efe744987": {
     "fingerprint": "eaa3ac4efe744987",
@@ -877,5 +877,11 @@
     "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, Inside the Krusty Krab restaurant, behind the shop counter, a flat frontal view of an interior wall or backdrop, seen straight on, no perspective vanishing point, no characters, no people, no creatures, no text, no watermark, nothing in the foreground, the middle and lower area plain and uncluttered so figures can stand in front of it, detail only near the top and edges",
     "size": "2560x1440",
     "built": "2026-09-08 17:57:57"
+  },
+  "setting::918ab6539bffede4": {
+    "fingerprint": "918ab6539bffede4",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, 海底比奇堡街头，海绵宝宝的日常生活场景, a flat frontal view of an interior wall or backdrop, seen straight on, no perspective vanishing point, no characters, no people, no creatures, no text, no watermark, nothing in the foreground, the middle and lower area plain and uncluttered so figures can stand in front of it, detail only near the top and edges",
+    "size": "2560x1440",
+    "built": "2026-09-08 18:56:11"
   }
 }
