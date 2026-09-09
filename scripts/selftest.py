@@ -731,6 +731,13 @@ def main():
                     f"shipped: {shipped or 'nothing'}")
         suite.check("opening: nothing can synthesise the cue behind our backs",
                     build_mod.OPENING_SFX not in gen_sfx.GENERATORS)
+        # A leftover copy in the other format shadows the shipped one silently:
+        # same name, same sound, no way to tell from the build which is
+        # playing. This actually happened to the installed skill directory.
+        duplicates = sfx_mod.duplicate_cues()
+        suite.check("opening: no cue is shadowed by a copy in another format",
+                    not duplicates,
+                    ", ".join(sorted(duplicates)) or "26 cues, no collisions")
         if cue_path:
             cue = [(0.0, build_mod.OPENING_SFX, cue_path, 0.7)]
             on = audio_mod.mix(opening_narration, work / "cue_on.wav",

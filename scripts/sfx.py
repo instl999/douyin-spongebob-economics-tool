@@ -64,6 +64,26 @@ EMOTION_WORDS = [
 CUE_SUFFIXES = (".wav", ".mp3")
 
 
+def duplicate_cues():
+    """Cue names present in more than one format, with the one that wins.
+
+    Every generated cue is a wav and the supplied opening cue is an mp3, so
+    the two never collide on purpose. A collision is a leftover - and a silent
+    one: the loser simply stops being used. That is how a stale converted copy
+    of the opening cue kept shadowing the file actually shipped, with the same
+    name, the same sound, and no way to tell from the build which was playing.
+    """
+    if not SFX_DIR.is_dir():
+        return {}
+    seen = {}
+    for suffix in CUE_SUFFIXES:
+        for path in sorted(SFX_DIR.glob(f"*{suffix}")):
+            seen.setdefault(path.stem, []).append(path)
+    chosen = library()
+    return {name: (paths, chosen.get(name))
+            for name, paths in seen.items() if len(paths) > 1}
+
+
 def library():
     """{name: path} for every effect on disk.
 

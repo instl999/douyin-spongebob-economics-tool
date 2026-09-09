@@ -589,6 +589,10 @@ def stage_storyboard(project, plan, voice_index):
     # two can disagree about - which is the failure the cue list was moved onto
     # the storyboard to prevent in the first place.
     opening = project.get("opening_sfx", OPENING_SFX)
+    for name, (paths, winner) in sfx_mod.duplicate_cues().items():
+        others = ", ".join(p.name for p in paths if p != winner)
+        log(f"  ! cue '{name}' exists more than once; using {winner.name} "
+            f"and ignoring {others}")
     if title_text and opening and opening not in sfx_mod.library():
         # Supplied, never synthesised. There is no fallback to generate one:
         # the opening cue is a specific sound the videos are known by, and a
