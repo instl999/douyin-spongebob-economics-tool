@@ -713,6 +713,18 @@ def main():
         # command. A downloaded cue was committed here by mistake and broke
         # that; this is the check that would have caught it.
         import gen_sfx
+        # The cue's pitch glides down and then holds. Building it as a sweep
+        # across a slice with the rest zero-filled left a 0.162 step in one
+        # sample where the slice ended, while the decay envelope was still at
+        # 0.17 - a click in the middle of the hit. Only the attack may step.
+        cue_wave = gen_sfx.opening_dong()
+        steps = np.abs(np.diff(cue_wave))
+        after_attack = steps[int(gen_sfx.SR * 0.02):]
+        suite.check("opening: the cue has no click in the middle of it",
+                    after_attack.max() < 0.05,
+                    f"largest step after the attack {after_attack.max():.4f} "
+                    f"at {(after_attack.argmax() + gen_sfx.SR * 0.02) / gen_sfx.SR:.2f}s")
+
         shipped = sorted(set(sfx_mod.library()) - set(gen_sfx.GENERATORS))
         suite.check("opening: every cue in the library is generated",
                     not shipped,

@@ -389,9 +389,16 @@ def opening_dong(dur=3.2):
     over a long quiet tail, and it needs both.
     """
     t = _t(dur)
-    body = _sweep(t[:int(SR * 0.35)], 96.0, 52.0, curve=0.35)
-    low = np.zeros_like(t)
-    low[:len(body)] = body
+    # The pitch glides down and then HOLDS. Sweeping across a slice and
+    # zero-filling the rest put a step of 0.162 into a single sample where the
+    # slice ended - the decay envelope is still at 0.17 there, so the body of
+    # the hit stopped dead mid-ring. That is a click, and it sits right in the
+    # middle of the sound. One continuous frequency array has no seam to click
+    # at.
+    glide = int(SR * 0.35)
+    freq = np.full_like(t, 52.0)
+    freq[:glide] = 96.0 + (52.0 - 96.0) * (np.arange(glide) / glide) ** 0.35
+    low = np.sin(2 * np.pi * np.cumsum(freq) / SR)
     room = _band(_noise(len(t)), 60, 420) * np.exp(-t / 2.4) * 0.55
     # Mono, like every other generator here: generate_all applies the stereo
     # width itself from WIDTH, and a generator that widened its own output
