@@ -56,6 +56,14 @@ def run(suite, lay):
             _os.environ.pop("PEXELS_API_KEY", None)
         else:
             _os.environ["PEXELS_API_KEY"] = _saved
+    # "covered 0/0 beats (0%)" reads as a total failure; it is the opposite.
+    all_made = [{"chosen": None, "graphic": {"kind": "counter"}},
+                {"chosen": None, "composite": {"layout": "card"}}]
+    suite.check("footage: a video of only made shots has no coverage gap",
+                footage_mod.coverage(all_made)["beats"] == 0
+                and not footage_mod.coverage(all_made)["gaps"],
+                "0 beats searched, 0 gaps")
+
     suite.check("footage: a provider with no credential says so",
                 len(blind) == 1 and "PEXELS_API_KEY" in blind[0] and not keyed,
                 blind[0][:48] if blind else "said nothing")

@@ -288,8 +288,14 @@ def build(script_path, out_dir, orientation="landscape", grade="vintage",
         beats, durations=durations, orientation=orientation,
         provider=provider, progress=lambda m: None)
     cov = footage_mod.coverage(results)
-    log(f"  retrieval covered {cov['matched']}/{cov['beats']} beats "
-        f"({cov['ratio']:.0%}); the rest are generated")
+    if cov["beats"]:
+        log(f"  retrieval covered {cov['matched']}/{cov['beats']} beats "
+            f"({cov['ratio']:.0%}); the rest are generated")
+    else:
+        # "covered 0/0 beats (0%)" reads as a total failure. It is the
+        # opposite: every beat is a chart or a composite, so none of them
+        # wanted footage and nothing was searched for.
+        log("  no beat asked for footage; every shot is drawn or composited")
 
     log("\npictures")
     shot_paths, rows = stage_pictures(results, durations, out_dir, lay, grade)
