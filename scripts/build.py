@@ -274,6 +274,12 @@ TITLE_SFX_LEAD = audio_mod.TITLE_SFX_LEAD
 # A name in the sfx library, not a path: that is what a cue is. `""` in a
 # project's `opening_sfx` turns it off.
 OPENING_SFX = "opening_dong"
+# gen_sfx normalises the whole library to -12 dB, which is hotter than the
+# downloaded cue this replaced. Measured on a finished video, 0.7 put the
+# stinger 6 dB above the title's own voice; 0.42 lands all three parts of the
+# opening - cue, title, first line - within a decibel of each other, which is
+# where the reference sat.
+OPENING_GAIN = 0.42
 
 
 def title_slot(configured, spoken, tail, lead=TITLE_SFX_LEAD):
@@ -561,7 +567,7 @@ def stage_storyboard(project, plan, voice_index):
     opening = project.get("opening_sfx", OPENING_SFX)
     if title_text and opening and opening in sfx_mod.library():
         storyboard["sound_cues"].insert(
-            0, [0.0, opening, float(project.get("opening_volume", 0.7))])
+            0, [0.0, opening, float(project.get("opening_volume", OPENING_GAIN))])
 
     (project.out / "storyboard.json").write_text(
         json.dumps(storyboard, ensure_ascii=False, indent=2), encoding="utf-8")

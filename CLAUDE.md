@@ -153,6 +153,18 @@ mid-word on any title past about eight characters.
 Per-project overrides: `opening_sfx` (a library name; `""` turns it off) and
 `title_seconds`.
 
+The cue itself is **generated**, like the rest of `assets/sfx`. `gen_sfx.py`
+says so in its own docstring - everything there is synthesised so the library
+owes nobody anything - and a downloaded 综艺音效 was committed here by mistake
+before that rule was noticed. `python scripts/gen_sfx.py assets/sfx --only
+opening_dong` rebuilds it, and a selftest check now fails if any cue in the
+library has no generator.
+
+Its gain is 0.42, not the library's 0.34 or the 0.7 the downloaded file used:
+`gen_sfx` normalises to -12 dB, and measured on a finished video 0.7 put the
+stinger 6 dB above the title's own voice. At 0.42 the cue, the title and the
+first line all sit within a decibel of each other.
+
 The title is **not** an SRT cue. The draft imports the SRT as a native subtitle
 track, so a cue there printed the title a second time in small white text under
 the calligraphy card that already says it.

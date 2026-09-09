@@ -708,6 +708,16 @@ def main():
         cue_path = sfx_mod.library().get(build_mod.OPENING_SFX)
         suite.check("opening: the stinger is in the cue library",
                     cue_path is not None, build_mod.OPENING_SFX)
+        # gen_sfx.py states its own invariant - everything here is generated,
+        # so there is no licensing question and the library rebuilds from one
+        # command. A downloaded cue was committed here by mistake and broke
+        # that; this is the check that would have caught it.
+        import gen_sfx
+        shipped = sorted(set(sfx_mod.library()) - set(gen_sfx.GENERATORS))
+        suite.check("opening: every cue in the library is generated",
+                    not shipped,
+                    f"{len(sfx_mod.library())} cues, all generated" if not shipped
+                    else "not generated: " + ", ".join(shipped))
         if cue_path:
             cue = [(0.0, build_mod.OPENING_SFX, cue_path, 0.7)]
             on = audio_mod.mix(opening_narration, work / "cue_on.wav",
