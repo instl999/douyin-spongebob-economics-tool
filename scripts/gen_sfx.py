@@ -20,7 +20,8 @@ three are cheap:
   of broadband click. Without it the sound fades in and feels soft.
 
 Everything here is generated, so there is no licensing question and the whole
-library rebuilds from one command. Sounds are grouped by what they are *for*,
+library rebuilds from one command. The one exception is the opening cue, which
+is supplied rather than synthesised - see `build.OPENING_SFX`. Sounds are grouped by what they are *for*,
 because that is how sfx.py chooses between them.
 """
 import argparse
@@ -366,53 +367,6 @@ def splash(dur=0.4):
     return swoosh_soft(dur)
 
 
-def opening_dong(dur=3.2):
-    """The 咚 that opens a video: one deep hit, ringing out for three seconds.
-
-    Not one of the beat cues - those are all under a second and land under
-    narration. This one plays alone over the title card, so its tail is most of
-    the sound and most of what makes it read as produced rather than generated.
-
-    It is here rather than shipped as a file because this module's whole point
-    is that the library owes nobody anything. A downloaded 综艺音效 was committed
-    here by mistake; that is what this replaces.
-
-    The envelope is measured against a real cue, in quarter-second RMS:
-
-        this   -16.8 -25.4 -30.9 -34.1 -35.4 ... -42.6 dB
-        real   -18.7 -27.9 -30.7 -30.8 -32.8 ... -41.9 dB
-
-    Two earlier attempts missed in opposite directions - one fell 3 dB across
-    the opening quarter-second where a real impact falls 9, and read as a
-    sustained tone; the next fixed the attack and then died 18 dB early,
-    stopping dead where the reference rings on. An impact is a fast body decay
-    over a long quiet tail, and it needs both.
-    """
-    t = _t(dur)
-    # The pitch glides down and then HOLDS. Sweeping across a slice and
-    # zero-filling the rest put a step of 0.162 into a single sample where the
-    # slice ended - the decay envelope is still at 0.17 there, so the body of
-    # the hit stopped dead mid-ring. That is a click, and it sits right in the
-    # middle of the sound. One continuous frequency array has no seam to click
-    # at.
-    glide = int(SR * 0.35)
-    freq = np.full_like(t, 52.0)
-    freq[:glide] = 96.0 + (52.0 - 96.0) * (np.arange(glide) / glide) ** 0.35
-    low = np.sin(2 * np.pi * np.cumsum(freq) / SR)
-    room = _band(_noise(len(t)), 60, 420) * np.exp(-t / 2.4) * 0.55
-    # Mono, like every other generator here: generate_all applies the stereo
-    # width itself from WIDTH, and a generator that widened its own output
-    # would be widened twice.
-    return _norm(
-        low * _decay(t, 5.0, attack=0.001)                 # the hit
-        + np.sin(2 * np.pi * 36.0 * t) * _decay(t, 2.9) * 0.5   # weight
-        + np.sin(2 * np.pi * 52.0 * t) * _decay(t, 1.2) * 0.1   # ring
-        + _bell(t, 52.0, rate=5.5) * 0.16                  # struck, not drummed
-        + _click(len(t), 0.35)                             # the beater
-        + room                                             # and the room
-    )
-
-
 GENERATORS = {
     # transitions
     "swoosh_up": swoosh_up, "swoosh_down": swoosh_down,
@@ -428,8 +382,6 @@ GENERATORS = {
     "rimshot": rimshot, "sting": sting,
     # marks
     "tick": tick, "scribble": scribble,
-    # the opening title card's stinger - long, and played alone
-    "opening_dong": opening_dong,
     # the original six names, so an old config still resolves
     "whoosh": whoosh, "pop": pop, "ding": ding, "coin": coin, "splash": splash,
 }
@@ -438,7 +390,7 @@ GENERATORS = {
 # read as sharper when they are dead centre.
 WIDTH = {"swoosh_up": 0.8, "swoosh_down": 0.8, "swoosh_soft": 0.6,
          "riser": 0.7, "sparkle": 0.5, "rimshot": 0.4, "whoosh": 0.8,
-         "splash": 0.6, "opening_dong": 0.25}
+         "splash": 0.6}
 
 
 def write_wav(path, samples):

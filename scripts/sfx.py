@@ -58,11 +58,25 @@ EMOTION_WORDS = [
 ]
 
 
+# Generated cues are written as wav. The opening cue is a supplied file and
+# ships as it was given, so the library reads both rather than making anyone
+# convert their own sound effect to suit the folder.
+CUE_SUFFIXES = (".wav", ".mp3")
+
+
 def library():
-    """{name: path} for every effect on disk."""
+    """{name: path} for every effect on disk.
+
+    A wav wins over an mp3 of the same name, so a generated cue is never
+    shadowed by a stale download sitting beside it.
+    """
     if not SFX_DIR.is_dir():
         return {}
-    return {f.stem: f for f in sorted(SFX_DIR.glob("*.wav"))}
+    found = {}
+    for suffix in reversed(CUE_SUFFIXES):
+        for path in sorted(SFX_DIR.glob(f"*{suffix}")):
+            found[path.stem] = path
+    return dict(sorted(found.items()))
 
 
 def _has(scene, predicate):

@@ -273,6 +273,9 @@ def _subject_of(asset):
 TITLE_SFX_LEAD = audio_mod.TITLE_SFX_LEAD
 # A name in the sfx library, not a path: that is what a cue is. `""` in a
 # project's `opening_sfx` turns it off.
+# The supplied opening cue, by name in assets/sfx. It is shipped, not
+# generated: gen_sfx builds every other cue in that folder, and this one is a
+# specific sound the videos are known by.
 OPENING_SFX = "opening_dong"
 # Unity. The opening cue plays exactly as supplied - no gain, no normalising,
 # no levelling against the narration. Earlier versions tuned this (0.7, then
@@ -587,15 +590,11 @@ def stage_storyboard(project, plan, voice_index):
     # the storyboard to prevent in the first place.
     opening = project.get("opening_sfx", OPENING_SFX)
     if title_text and opening and opening not in sfx_mod.library():
-        # Not in the library: a fresh clone, because the cue is no longer
-        # committed - see .gitignore. Build one so the video still opens on a
-        # stinger rather than on nothing.
-        try:
-            import gen_sfx
-            if opening in gen_sfx.GENERATORS:
-                gen_sfx.generate_all(ROOT / "assets" / "sfx", only={opening})
-        except Exception as exc:                 # a cue is not worth a build
-            log(f"  ! could not build the opening cue: {exc}")
+        # Supplied, never synthesised. There is no fallback to generate one:
+        # the opening cue is a specific sound the videos are known by, and a
+        # stand-in that merely resembles it is worse than saying it is missing.
+        log(f"  ! opening cue '{opening}' is not in assets/sfx - the video "
+            f"will open without one")
     if title_text and opening and opening in sfx_mod.library():
         storyboard["sound_cues"].insert(
             0, [0.0, opening, float(project.get("opening_volume", OPENING_GAIN))])

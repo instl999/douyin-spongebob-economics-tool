@@ -23,8 +23,3 @@ __pycache__/
 
 # scratch from re-matting experiments
 scripts/_rematte/
-
-# the opening cue: either the user's own file or one gen_sfx builds on first
-# use. Not committed - a downloaded 综艺音效 was, once, and this is a public
-# MIT repo redistributing whatever sits at this path.
-assets/sfx/opening_dong.wav
