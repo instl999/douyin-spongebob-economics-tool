@@ -674,9 +674,18 @@ def main():
         lead = audio_mod.TITLE_SFX_LEAD
         suite.check("opening: a long title lengthens its card",
                     build_mod.title_slot(2.6, 1.0, 0.35) == 2.6
-                    and abs(build_mod.title_slot(2.6, 4.0, 0.35)
-                            - (lead + 4.0 + 0.35)) < 1e-6,
-                    f"{build_mod.title_slot(2.6, 4.0, 0.35):.2f}s for a 4s title")
+                    and abs(build_mod.title_slot(2.6, 3.5, 0.35)
+                            - (lead + 3.5 + 0.35)) < 1e-6,
+                    f"{build_mod.title_slot(2.6, 3.5, 0.35):.2f}s for a 3.5s title")
+        # ...but not without limit. The director brief asks for ten characters
+        # or fewer and that is a request; a thirty-character title reads for
+        # five seconds and would hold the card that long before shot 1.
+        suite.check("opening: a title too long to read loses its voice",
+                    not build_mod.title_voice_fits(5.3, 0.35)
+                    and build_mod.title_voice_fits(2.1, 0.35)
+                    and build_mod.title_slot(2.6, 30.0, 0.35)
+                    <= build_mod.MAX_TITLE_SLOT,
+                    f"cap {build_mod.MAX_TITLE_SLOT}s")
 
         spoken = work / "title_voice.wav"
         subprocess.run(

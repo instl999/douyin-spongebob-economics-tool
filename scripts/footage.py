@@ -1005,6 +1005,25 @@ def score_clip(clip, needs, cache_dir=None, model=None):
 
 # --- the funnel ------------------------------------------------------------
 
+def unusable_providers(provider):
+    """Configured providers that cannot actually run, and why.
+
+    A provider named in FOOTAGE_PROVIDERS but missing its credential does not
+    fail loudly: Pexels answers some networks without a key and 401s others,
+    and either way the build just reports "retrieval covered 0/N beats" with no
+    hint that half the funnel was never connected. Saying so once, up front, is
+    the difference between a tuning problem and a five-minute mystery.
+    """
+    reasons = []
+    for name in [n.strip() for n in str(provider).split("+") if n.strip()]:
+        if name == "pexels" and not os.environ.get("PEXELS_API_KEY", "").strip():
+            reasons.append(
+                "pexels has no PEXELS_API_KEY; it answers some networks "
+                "without one and refuses others. A key is free at "
+                "https://www.pexels.com/api/")
+    return reasons
+
+
 def select_footage(beats, durations=None, orientation="landscape",
                    provider="pexels", model=None,
                    candidates_per_beat=CANDIDATES_PER_BEAT,

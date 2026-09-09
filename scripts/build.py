@@ -282,16 +282,31 @@ OPENING_SFX = "opening_dong"
 OPENING_GAIN = 1.0
 
 
-def title_slot(configured, spoken, tail, lead=TITLE_SFX_LEAD):
+# The longest the card may hold before shot 1. The director brief asks for a
+# title of ten characters or fewer, and this file's own findings say what that
+# is worth: a prompt is a request, check the output. A thirty-character title
+# reads for five seconds, and nothing stopped the card growing to fit it.
+MAX_TITLE_SLOT = 4.5
+
+
+def title_voice_fits(spoken, tail, lead=TITLE_SFX_LEAD, cap=MAX_TITLE_SLOT):
+    """Whether reading the title aloud leaves shot 1 starting in time."""
+    return lead + spoken + tail <= cap
+
+
+def title_slot(configured, spoken, tail, lead=TITLE_SFX_LEAD, cap=MAX_TITLE_SLOT):
     """How long the title card holds once it has a line to read.
 
     The configured length is a floor, not the answer. A title is read aloud
     now, and any title past about eight characters does not fit in the 2.6 s
     the card used to hold for - it would cut to shot 1 mid-word.
+
+    It is not an unbounded ceiling either. Callers drop the voice-over rather
+    than let the card run past `cap`; this clamps as a second line of defence.
     """
     if spoken <= 0:
         return configured
-    return max(configured, lead + spoken + tail)
+    return min(max(configured, lead + spoken + tail), max(configured, cap))
 
 
 def stage_voice(project, plan, force=False, speed=None):
@@ -463,6 +478,12 @@ def stage_storyboard(project, plan, voice_index):
         entry = voice_index.get("title", {})
         spoken = float(entry.get("duration") or 0.0)
         audio_path = entry.get("path")
+        if spoken and not title_voice_fits(spoken, tail):
+            # Too long to read before shot 1 has to start. The card stays; only
+            # its voice goes. Clamping instead would cut the title mid-word.
+            log(f"  title voice dropped: {spoken:.1f}s of speech would hold the "
+                f"card past {MAX_TITLE_SLOT}s - ask the director for a shorter title")
+            spoken, audio_path = 0.0, None
         title_seconds = title_slot(title_seconds, spoken, tail)
         pieces.append((audio_path if audio_path and Path(audio_path).exists()
                        else None, title_seconds, TITLE_SFX_LEAD))

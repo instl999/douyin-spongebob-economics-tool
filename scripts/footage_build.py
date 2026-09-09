@@ -282,6 +282,8 @@ def build(script_path, out_dir, orientation="landscape", grade="vintage",
     durations = [seconds for _, seconds, _ in pieces]
 
     log("\nfootage")
+    for reason in footage_mod.unusable_providers(provider):
+        log(f"  ! {reason}")
     results = footage_mod.select_footage(
         beats, durations=durations, orientation=orientation,
         provider=provider, progress=lambda m: None)

@@ -40,6 +40,26 @@ def run(suite, lay):
             {"id": 3, "needs": "rain on a window", "queries": []},
         ]}, beats)
     suite.check("footage: one plan per beat", len(plans) == 3, f"{len(plans)}")
+    # A provider named in FOOTAGE_PROVIDERS but missing its credential does
+    # not fail loudly - Pexels answers some networks without a key and 401s
+    # others - so a build reports "covered 0/N beats" with no hint that half
+    # the funnel was never connected.
+    import os as _os
+    _saved = _os.environ.get("PEXELS_API_KEY")
+    try:
+        _os.environ["PEXELS_API_KEY"] = ""
+        blind = footage_mod.unusable_providers("pexels+commons")
+        _os.environ["PEXELS_API_KEY"] = "a-key"
+        keyed = footage_mod.unusable_providers("pexels+commons")
+    finally:
+        if _saved is None:
+            _os.environ.pop("PEXELS_API_KEY", None)
+        else:
+            _os.environ["PEXELS_API_KEY"] = _saved
+    suite.check("footage: a provider with no credential says so",
+                len(blind) == 1 and "PEXELS_API_KEY" in blind[0] and not keyed,
+                blind[0][:48] if blind else "said nothing")
+
     suite.check("footage: over-long and empty queries dropped",
                 plans[0]["queries"] == ["rotary telephone", "old phone dial"],
                 str(plans[0]["queries"]))
