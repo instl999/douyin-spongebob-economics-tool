@@ -15,6 +15,8 @@ of the same character or are dropped, coordinates are clamped, solid objects
 are put back on the ground, and a character cannot appear twice in one shot. A
 director that hallucinates should cost one element, not the run.
 """
+import hashlib
+import re
 from pathlib import Path
 
 import ark
@@ -35,6 +37,18 @@ LABEL_TONES = tuple(styles_mod.look()["label_tones"])
 # asks for a bespoke pose per shot, the library stops being reusable, and the
 # next video pays all over again. Past the cap, requests fall back to the
 # nearest existing pose exactly as an unknown sprite name always has.
+# How much of a description survives into a prompt. Long enough for a body,
+# a face and a held object; short enough that the model does not start
+# illustrating subordinate clauses.
+DESCRIPTION_MAX = 220
+
+# How many separate pictures one video may ask for. Nothing is reused between
+# videos any more, so this is the whole bill: at roughly twenty seconds and one
+# image each, a cap is the difference between a video and an afternoon. Past it
+# the extra elements are dropped, cheapest-looking first.
+MAX_DRAWINGS = 40
+MAX_DUOS = 6
+
 NEW_POSE_BUDGET = 8
 
 # Two-figure sprites are drawn for one beat and are far less reusable than a
@@ -201,42 +215,131 @@ ORIENTATION_NOTES = {
 }
 
 
-def _catalogue_text(cast):
-    """The sprite list, with what each one actually shows.
+# Words that carry no picture. Dropped from a filename slug so that
+# "a fat stack of gold coins" and "the stack of gold coins" read as the same
+# thing at a glance; the hash beside it is what actually decides identity.
+SLUG_SKIP = {"a", "an", "the", "of", "in", "on", "at", "with", "and", "to",
+             "his", "her", "their", "its", "one", "some", "is", "are"}
+SLUG_SPLIT = re.compile(r"[^a-z0-9]+")
 
-    Grouped by character so that the choice reads as "which of these bodies is
-    doing the thing", which is the question, rather than as a flat list of
-    filenames to pattern-match against.
+# What a sprite is *for*, which decides how it is placed and drawn over.
+# These used to be three lists in the cast file keyed on prop filenames -
+# `hanging`, `foreground`, `writable` - and a list of filenames cannot describe
+# a picture that is invented for one video and never drawn again. The director
+# names the role instead, and the description is read as a fallback.
+SPRITE_ROLES = ("figure", "prop", "furniture", "board", "hanging")
+ROLE_WORDS = (
+    ("board", ("whiteboard", "chalkboard", "blackboard", "chart", "graph",
+               "diagram", "poster", "noticeboard", "screen showing",
+               "白板", "黑板", "图表", "海报")),
+    ("hanging", ("clock", "sign", "banner", "hanging", "on the wall", "mounted",
+                 "钟", "招牌", "挂")),
+    ("furniture", ("counter", "desk", "table", "workbench", "bar", "cart",
+                   "till", "register", "柜台", "桌", "工作台")),
+)
+
+
+def _slug(text, words=4, limit=28):
+    """A short readable stem for a generated sprite's filename."""
+    parts = [p for p in SLUG_SPLIT.split(text.lower())
+             if p and p not in SLUG_SKIP]
+    return "_".join(parts[:words])[:limit].strip("_") or "sprite"
+
+
+def _sprite_name(kind, who, shows):
+    """The filename for one described sprite.
+
+    Two shots that ask for the same picture get the same name and so are drawn
+    once - which is the only dedup left now that nothing is reused between
+    videos, and worth having: a talking-head script asks for the same figure
+    four times. The hash is what decides that, and the slug is only there so a
+    person can tell what a file is without opening it.
     """
-    brief = cast.brief()
+    key = hashlib.sha256(
+        "|".join([kind, ",".join(who), shows]).encode("utf-8")).hexdigest()[:6]
+    if kind == "duo":
+        return f"duo_{'_'.join(who)}_{_slug(shows)}_{key}.png"
+    if kind == "figure":
+        return f"{who[0]}_{_slug(shows)}_{key}.png"
+    return f"prop_{_slug(shows)}_{key}.png"
+
+
+def _role_for(el, kind, shows):
+    """Whether this sprite hangs, stands in front, or just stands."""
+    named = (el.get("role") or "").strip().lower()
+    if named in SPRITE_ROLES:
+        return named
+    if kind in ("figure", "duo"):
+        return "figure"
+    low = shows.lower()
+    for role, words in ROLE_WORDS:
+        if any(word in low for word in words):
+            return role
+    return "prop"
+
+
+def _sprite_spec(el, cast, shot_id, problems):
+    """Read one described sprite off the director's answer.
+
+    The director used to pick a filename out of a catalogue, and a catalogue is
+    why every video looked like the last one: fifty-odd drawings shared by
+    every script, so a pile of gold coins turned up in five videos out of
+    eight. Now the sentence is described and the picture is drawn for it.
+    """
+    shows = (el.get("shows") or el.get("new_pose")
+             or el.get("new_interaction") or "").strip()
+    who = el.get("who")
+    who = [who] if isinstance(who, str) else list(who or [])
+    who = [str(name).strip() for name in who if str(name).strip()]
+
+    characters = cast.data.get("characters") or {}
+    unknown = [name for name in who if name not in characters]
+    if unknown:
+        problems.append(f"shot {shot_id}: no character called {unknown[0]!r} in "
+                        "this cast, drawn without them")
+        who = [name for name in who if name in characters]
+    if len(who) > 2:
+        problems.append(f"shot {shot_id}: {len(who)} characters in one drawing "
+                        "never comes back right, kept the first two")
+        who = who[:2]
+    if not shows:
+        problems.append(f"shot {shot_id}: an element with nothing to draw "
+                        "(`shows` is empty), dropped")
+        return None
+    if len(shows) > DESCRIPTION_MAX:
+        shows = shows[:DESCRIPTION_MAX].rsplit(",", 1)[0]
+
+    kind = "duo" if len(who) == 2 else "figure" if who else "prop"
+    return (_sprite_name(kind, who, shows), kind, who, shows,
+            _role_for(el, kind, shows))
+
+
+def _roster_text(cast):
+    """Who exists in this cast, and what they look like.
+
+    This replaced a catalogue of every drawing already made. The catalogue was
+    the reason every video looked like the last one: fifty-odd pictures shared
+    by every script, so the director's job was picking from a menu and a pile
+    of gold coins turned up in five videos out of eight. What the director
+    needs is who is available to act, not what has already been drawn.
+    """
     lines = []
-    for name, (role, poses) in brief["characters"].items():
-        lines.append(f"## {name}" + (f" - {role}" if role else ""))
-        for filename, description in poses.items():
-            lines.append(f"- {filename} - {description}")
-        lines.append("")
-    if brief["props"]:
-        lines.append("## props")
-        for filename, description in brief["props"].items():
-            lines.append(f"- {filename} - {description}")
-    if brief.get("interactions"):
-        lines.append("")
-        lines.append("## two-figure sprites already drawn (reuse these)")
-        for filename, description in brief["interactions"].items():
-            lines.append(f"- {filename} - {description}")
+    for name, char in (cast.data.get("characters") or {}).items():
+        role = (char.get("role") or "").strip()
+        lines.append(f"- {name}" + (f" - {role}" if role else ""))
     return chr(10).join(lines)
 
 
 def build_prompt(beats, cast, orientation="landscape",
-                 pose_budget=NEW_POSE_BUDGET):
-    catalogue = _catalogue_text(cast)
+                 pose_budget=MAX_DRAWINGS):
+    catalogue = _roster_text(cast)
     listing = chr(10).join(f"{i}. {text}" for i, text in enumerate(beats, 1))
     portrait = orientation == "portrait"
     return brief_template().format(
         count=len(beats), beats=listing, catalogue=catalogue,
         casting=_casting_notes(cast),
         pose_budget=pose_budget,
-        duo_budget=NEW_INTERACTION_BUDGET,
+        duo_budget=MAX_DUOS,
         lo_elements=2, hi_elements=3 if portrait else 4,
         orientation_note=ORIENTATION_NOTES.get(
             orientation, ORIENTATION_NOTES["landscape"]))
@@ -254,7 +357,6 @@ def direct(script, cast, shot_seconds=5.0, model=None, temperature=0.6,
         model=model, temperature=temperature, max_tokens=16000)
     plan = validate(data, beats, cast,
                     max_sprites=2 if orientation == "portrait" else None)
-    commit_poses(cast, plan)
     return plan
 
 
@@ -267,100 +369,7 @@ def _clamp(value, lo, hi, default):
         return default
 
 
-def nearest(asset, known):
-    """Map a plausible-but-missing sprite onto one the cast really has.
-
-    Directors reach for poses that read well in the sentence - patrick_happy,
-    krabs_happy - whether or not they exist. Falling back to another pose of the
-    same character keeps the character in the shot, which matters far more than
-    which expression they wear. A name sharing no subject with the cast is
-    dropped.
-    """
-    stem = asset[:-4] if asset.endswith(".png") else asset
-    subject = stem.split("_", 1)[0]
-    if not subject:
-        return None
-    siblings = [k for k in known if k.startswith(subject + "_")]
-    if not siblings:
-        return None
-    for preferred in ("stand", "explain", "point"):
-        if f"{subject}_{preferred}.png" in siblings:
-            return f"{subject}_{preferred}.png"
-    return sorted(siblings)[0]
-
-
-POSE_NAME = __import__("re").compile(r"^[a-z][a-z0-9_]{1,23}$")
-
-
-def _pose_request(el, cast, known, shot_id, problems):
-    """Turn a director's `new_pose` into a pose this cast can draw, or None.
-
-    Everything about the request is checked against the cast, because the one
-    thing being handed to an image model here is a sentence the director wrote.
-    A malformed name would produce a sprite nothing can address; a pose that
-    already exists would quietly redraw it; a description naming a second
-    character would put that character on screen twice.
-    """
-    asset = el.get("asset") or ""
-    description = (el.get("new_pose") or "").strip()
-    if not description:
-        return None
-    stem = asset[:-4] if asset.endswith(".png") else asset
-    character, _, pose = stem.partition("_")
-    characters = cast.data.get("characters") or {}
-    if character not in characters:
-        problems.append(
-            f"shot {shot_id}: new pose {asset!r} is not <character>_<pose> for "
-            f"anyone in this cast, ignored")
-        return None
-    if not POSE_NAME.match(pose):
-        problems.append(f"shot {shot_id}: {pose!r} is not a usable pose name, ignored")
-        return None
-    if asset in known:
-        return None                       # already drawable; nothing to add
-    if len(description) > 200:
-        description = description[:200].rsplit(",", 1)[0]
-    others = [n for n in characters if n != character and n in description.lower()]
-    if others:
-        problems.append(
-            f"shot {shot_id}: new pose {asset!r} described {others[0]} too; "
-            "a sprite holds one figure, ignored")
-        return None
-    return character, pose, description
-
-
-def _interaction_request(el, cast, known, shot_id, problems):
-    """Turn a director's `new_interaction` into a two-figure sprite, or None."""
-    asset = el.get("asset") or ""
-    description = (el.get("new_interaction") or "").strip()
-    if not description:
-        return None
-    stem = asset[:-4] if asset.endswith(".png") else asset
-    if not stem.startswith("duo_"):
-        problems.append(
-            f"shot {shot_id}: an interaction must be named "
-            f"duo_<a>_<b>_<action>.png, not {asset!r}, ignored")
-        return None
-    members = cast.duo_members(asset)
-    if len(members) != 2 or members[0] == members[1]:
-        problems.append(
-            f"shot {shot_id}: {asset!r} does not name two different characters "
-            "in this cast, ignored")
-        return None
-    action = stem[len("duo_" + "_".join(members)) + 1:]
-    if not POSE_NAME.match(action):
-        problems.append(f"shot {shot_id}: {action!r} is not a usable "
-                        "interaction name, ignored")
-        return None
-    if asset in known:
-        return None
-    if len(description) > 240:
-        description = description[:240].rsplit(",", 1)[0]
-    return members, action, description
-
-
-def _elements(raw_elements, cast, known, shot_id, problems,
-              requests=None, budget=0, duos=None, duo_budget=0):
+def _elements(raw_elements, cast, shot_id, problems, drawings):
     elements, seen = [], set()
     for el in raw_elements or []:
         kind = el.get("type", "sprite")
@@ -390,46 +399,12 @@ def _elements(raw_elements, cast, known, shot_id, problems,
             if kind == "bubble":
                 item["tail"] = el.get("tail", "left")
         else:
-            asset = el.get("asset") or el.get("sprite") or ""
-            if asset not in known:
-                # A name the catalogue does not have is usually a
-                # hallucination, and snaps to a near pose. Two things make it a
-                # request instead: the director saying what the body should be
-                # doing, or naming two characters and what passes between them.
-                # Both are the case this format is otherwise bad at.
-                pair = (_interaction_request(el, cast, known, shot_id, problems)
-                        if duos is not None and duo_budget > 0 else None)
-                asked = (_pose_request(el, cast, known, shot_id, problems)
-                         if pair is None and requests is not None and budget > 0
-                         else None)
-                if pair:
-                    members, action, description = pair
-                    asset = f"duo_{'_'.join(members)}_{action}.png"
-                    known.add(asset)
-                    duo_budget -= 1
-                    duos.append({"asset": asset, "members": members,
-                                 "action": action, "description": description,
-                                 "shot": shot_id})
-                    problems.append(f"shot {shot_id}: new interaction "
-                                    f"{asset!r} - {description}")
-                elif asked:
-                    character, pose, description = asked
-                    asset = f"{character}_{pose}.png"
-                    known.add(asset)
-                    budget -= 1
-                    requests.append({"asset": asset, "character": character,
-                                     "pose": pose, "description": description,
-                                     "shot": shot_id})
-                    problems.append(
-                        f"shot {shot_id}: new pose {asset!r} - {description}")
-                else:
-                    swap = nearest(asset, known)
-                    if not swap:
-                        problems.append(
-                            f"shot {shot_id}: unknown sprite {asset!r}, dropped")
-                        continue
-                    problems.append(f"shot {shot_id}: {asset!r} -> {swap!r}")
-                    asset = swap
+            spec = _sprite_spec(el, cast, shot_id, problems)
+            if spec is None:
+                continue
+            asset, kind, who, shows, role = spec
+            drawings.setdefault(asset, {"asset": asset, "kind": kind,
+                                        "who": who, "shows": shows})
 
             anchor = el.get("anchor", "bottom")
             y = _clamp(el.get("y"), 0.05, 1.02, 0.97)
@@ -438,7 +413,7 @@ def _elements(raw_elements, cast, known, shot_id, problems,
             # director will hang a pile of gold coins at eye level like a wall
             # chart, so the cast says which props hang and everything else is
             # put on the ground whatever it asked for.
-            if cast.hangs(asset):
+            if role in ("board", "hanging"):
                 anchor = "center"
                 y = max(0.22, min(0.62, y))
                 # A board or chart is usually what the shot is *about*, and it
@@ -459,18 +434,12 @@ def _elements(raw_elements, cast, known, shot_id, problems,
                         "moved to the ground")
                 anchor, y = "bottom", 0.97
 
-            # Two poses of one character in a shot is always a mistake. Two
-            # different props is normal, so props key on their whole name
-            # rather than on the shared "prop_" prefix.
-            stem = asset.rsplit(".", 1)[0]
-            # An interaction sprite contains both its characters, so it claims
-            # both names: without that, a shot could hold the drawn-together
-            # pair *and* a separate sprite of one of them, and that character
-            # would be on screen twice.
-            members = cast.duo_members(asset)
-            subjects = (set(members) if members
-                        else {stem if stem.startswith("prop_")
-                              else stem.split("_", 1)[0]})
+            # One character twice in a shot is always a mistake, and a
+            # drawing of two characters claims both of them - otherwise a shot
+            # could hold the pair *and* a separate drawing of one of them, and
+            # that character would be on screen twice. Two different props in
+            # one shot is normal, so a prop only clashes with itself.
+            subjects = set(who) if who else {asset}
             clash = subjects & seen
             if clash:
                 problems.append(f"shot {shot_id}: {asset!r} repeats "
@@ -479,13 +448,20 @@ def _elements(raw_elements, cast, known, shot_id, problems,
             seen |= subjects
 
             item_h = _clamp(el.get("h"), 0.10, 0.85, 0.46)
-            if members and item_h < MIN_DUO_HEIGHT:
+            if kind == "duo" and item_h < MIN_DUO_HEIGHT:
                 problems.append(
                     f"shot {shot_id}: {asset!r} at h={item_h:.2f} puts two "
                     f"figures further away than the singles around them, "
                     f"raised to {MIN_DUO_HEIGHT}")
                 item_h = MIN_DUO_HEIGHT
             item = {"asset": asset,
+                    "role": role,
+                    # The description stays on the element, not only in the
+                    # `drawings` list. It is what makes a saved plan replayable
+                    # through a newer validator, and it is what a person edits
+                    # when they want a shot drawn differently.
+                    "who": list(who),
+                    "shows": shows,
                     "flip": bool(el.get("flip")),
                     "x": _clamp(el.get("x"), 0.03, 0.97, 0.5),
                     "y": y,
@@ -499,10 +475,10 @@ def _elements(raw_elements, cast, known, shot_id, problems,
             item["z"] = _clamp(el.get("z"), -5.0, 5.0, 1.0)
         elements.append(item)
 
-    return in_depth_order(elements, cast)
+    return in_depth_order(elements)
 
 
-def in_depth_order(elements, cast):
+def in_depth_order(elements):
     """Sort into draw order: walls, boards, characters, then furniture.
 
     Elements composite in list order, so list order *is* depth. A stable sort
@@ -526,17 +502,18 @@ def in_depth_order(elements, cast):
         asset = item.get("asset")
         if not asset:
             return 1.0
-        if cast.hangs(asset):
+        role = item.get("role", "prop")
+        if role in ("board", "hanging"):
             return 0.0
-        return 2.0 if cast.in_front(asset) else 1.0
+        return 2.0 if role == "furniture" else 1.0
 
     return sorted(elements, key=depth)
 
 
 def validate(data, beats, cast, max_sprites=None):
     """Attach the model's choices to the beats. Narration comes from `beats`."""
-    known = set(cast.catalogue())
     problems = []
+    drawings = {}
 
     by_id = {}
     for raw in data.get("shots") or data.get("scenes") or []:
@@ -545,7 +522,7 @@ def validate(data, beats, cast, max_sprites=None):
         except (TypeError, ValueError):
             continue
 
-    scenes, recent, requests, duos = [], [], [], []
+    scenes, recent = [], []
     for i, narration in enumerate(beats, 1):
         raw = by_id.get(i, {})
         if not raw:
@@ -560,9 +537,7 @@ def validate(data, beats, cast, max_sprites=None):
             framing = "close" if framing != "close" else "medium"
         recent.append(framing)
 
-        elements = _elements(raw.get("elements"), cast, known, i, problems,
-                             requests, NEW_POSE_BUDGET - len(requests),
-                             duos, NEW_INTERACTION_BUDGET - len(duos))
+        elements = _elements(raw.get("elements"), cast, i, problems, drawings)
         if max_sprites:
             sprites = [e for e in elements if "asset" in e]
             if len(sprites) > max_sprites:
@@ -578,7 +553,7 @@ def validate(data, beats, cast, max_sprites=None):
         # queue with no actor does not.
         has_character = any("asset" in e and not e["asset"].startswith("prop_")
                             for e in elements)
-        has_diagram = any("asset" in e and cast.hangs(e["asset"])
+        has_diagram = any(e.get("role") in ("board", "hanging")
                           for e in elements)
         if elements and not has_character and not has_diagram:
             borrowed = next(
@@ -589,7 +564,7 @@ def validate(data, beats, cast, max_sprites=None):
                 problems.append(
                     f"shot {i}: scenery with nobody in it, added "
                     f"{borrowed['asset']}")
-                elements = in_depth_order(elements + [borrowed], cast)
+                elements = in_depth_order(elements + [borrowed])
 
         if not any("asset" in e for e in elements):
             # An empty shot renders as a bare plate with a caption floating on
@@ -602,7 +577,7 @@ def validate(data, beats, cast, max_sprites=None):
                 problems.append(
                     f"shot {i}: nothing usable came back, holding shot {i - 1}'s setup")
                 elements = in_depth_order(
-                    carried + [e for e in elements if "asset" not in e], cast)
+                    carried + [e for e in elements if "asset" not in e])
             else:
                 problems.append(f"shot {i}: no usable elements and nothing to hold")
         if framing == "wide" and sum(
@@ -646,9 +621,9 @@ def validate(data, beats, cast, max_sprites=None):
             problems.append(f"shot {scene['id']}: framing raised to close for variety")
 
     for scene in scenes:
-        _waist_high(scene, cast, problems)
+        _waist_high(scene, problems)
         _draw_together(scene, problems)
-    _vary_poses(scenes, cast, problems)
+    _vary_poses(scenes, problems, drawings)
 
     ending = data.get("ending") or {}
     if isinstance(ending, str):
@@ -672,8 +647,9 @@ def validate(data, beats, cast, max_sprites=None):
         "ending": {"text": ending_text,
                    "highlight": (ending.get("highlight") or "").strip() or None},
         "scenes": scenes,
-        "new_poses": requests,
-        "new_interactions": duos,
+        # Everything this video needs drawn, once each. Nothing is looked up in
+        # a library and nothing survives to the next video.
+        "drawings": [drawings[name] for name in sorted(drawings)],
         "problems": problems,
     }
 
@@ -692,15 +668,14 @@ INTERACTION_SPAN = 0.18
 FURNITURE_SHARE = 0.62
 
 
-def _waist_high(scene, cast, problems):
+def _waist_high(scene, problems):
     """Shrink foreground furniture that would hide whoever stands at it."""
     people = [el for el in scene["elements"]
               if el.get("asset") and not el["asset"].startswith("prop_")]
     if not people:
         return
     for el in scene["elements"]:
-        asset = el.get("asset")
-        if not asset or not cast.in_front(asset):
+        if el.get("role") != "furniture":
             continue
         # Whoever this furniture is drawn over: the nearest character in x,
         # which is the one the director put it with.
@@ -710,7 +685,7 @@ def _waist_high(scene, cast, problems):
         ceiling = round(float(near.get("h", 0.46)) * FURNITURE_SHARE, 3)
         if float(el.get("h", 0.4)) > ceiling:
             problems.append(
-                f"shot {scene['id']}: {asset!r} at h={el.get('h')} would hide "
+                f"shot {scene['id']}: {el['asset']!r} at h={el.get('h')} would hide "
                 f"{near['asset']}, lowered to {ceiling}")
             el["h"] = ceiling
 
@@ -749,17 +724,20 @@ def _draw_together(scene, problems):
         f"{span:.2f} to {INTERACTION_SPAN:.2f} so the action reads")
 
 
-def _vary_poses(scenes, cast, problems):
-    """Stop one pose from carrying a whole video.
+def _vary_poses(scenes, problems, drawings):
+    """Stop one drawing from carrying a whole video.
 
-    Measured on a finished 32-shot video: krabs_stand appeared seven times, so
-    22% of the shots were the same picture, and nothing anywhere noticed. The
-    director picks per shot and never sees the whole, which is exactly the kind
-    of thing a pass over the finished list can fix and a prompt cannot.
+    Measured on a finished 32-shot video: the same picture of Mr. Krabs
+    appeared seven times, so 22% of the shots were identical, and nothing
+    noticed. The director writes one shot at a time and never sees the whole,
+    which is exactly what a pass over the finished list can fix.
 
-    Only the surplus moves, and only onto a pose of the same character that the
-    video is leaning on least, so the swap costs nothing already generated and
-    the character stays who they are.
+    It used to fix it by swapping in another pose from the catalogue. There is
+    no catalogue now - two shots share a picture only because the director
+    described them in the same words - so the surplus is *re-described*
+    instead, using what that shot's own beat says is happening in it. A drawing
+    that repeats is a drawing whose description ignored the sentence, and the
+    beat is where the sentence was already read.
     """
     import math
     if len(scenes) < 6:
@@ -770,72 +748,40 @@ def _vary_poses(scenes, cast, problems):
     for scene in scenes:
         for el in scene["elements"]:
             asset = el.get("asset")
-            if (asset and not asset.startswith("prop_")
-                    and not asset.startswith("duo_")):
+            if asset and not asset.startswith("prop_"):
                 counts[asset] = counts.get(asset, 0) + 1
 
     for asset, seen in sorted(counts.items(), key=lambda kv: -kv[1]):
         if seen <= limit:
             continue
-        character = asset.rsplit(".", 1)[0].split("_", 1)[0]
-        poses = ((cast.data.get("characters") or {})
-                 .get(character, {}).get("poses", {}))
-        # Learned poses are excluded as targets. They were drawn for one
-        # sentence - "holding out a pay envelope" - and are used once, which is
-        # exactly what makes a least-used rule reach for them. Spreading an
-        # action across unrelated shots is a worse error than the repetition.
-        siblings = [f"{character}_{pose}.png" for pose in poses
-                    if not cast.is_learned(f"{character}_{pose}.png")]
-        if len(siblings) < 2:
+        spec = drawings.get(asset)
+        if not spec or not spec["who"]:
             continue
-        original = poses.get(asset.rsplit(".", 1)[0].split("_", 1)[1], "")
         # Later shots give way first: the first few uses established the
         # character, the tail is where it turns into wallpaper.
         surplus = [sc for sc in scenes
                    if any(e.get("asset") == asset for e in sc["elements"])][limit:]
         for scene in surplus:
-            here = {e.get("asset") for e in scene["elements"]}
-            options = [sib for sib in siblings
-                       if sib != asset and sib not in here]
-            if not options:
+            beat = scene.get("beat") or {}
+            extra = ", ".join(str(beat.get(k)).strip() for k in ("action", "emotion")
+                              if (beat.get(k) or "").strip())
+            if not extra or extra.lower() in spec["shows"].lower():
                 continue
-            # Least-used first, then whichever reads closest to the pose being
-            # replaced, so a standing shot becomes another standing shot rather
-            # than jumping to someone sitting behind a desk.
-            def fit(candidate):
-                other = poses.get(candidate.rsplit(".", 1)[0].split("_", 1)[1], "")
-                shared = len(set(original.split()) & set(other.split()))
-                return (counts.get(candidate, 0), -shared, candidate)
-
-            swap = min(options, key=fit)
+            shows = f"{spec['shows']}, {extra}"[:DESCRIPTION_MAX]
+            fresh = _sprite_name(spec["kind"], spec["who"], shows)
+            if fresh == asset or any(e.get("asset") == fresh
+                                     for e in scene["elements"]):
+                continue
+            drawings.setdefault(fresh, {"asset": fresh, "kind": spec["kind"],
+                                        "who": list(spec["who"]), "shows": shows})
             for el in scene["elements"]:
                 if el.get("asset") == asset:
-                    el["asset"] = swap
-                    el["rel"] = cast.relative_height(swap)
+                    el["asset"] = fresh
                     break
             counts[asset] -= 1
-            counts[swap] = counts.get(swap, 0) + 1
-            problems.append(f"shot {scene['id']}: {asset} appeared {seen} times, "
-                            f"varied to {swap}")
-
-
-def commit_poses(cast, plan):
-    """Write the poses a plan asked for into the cast's sidecar.
-
-    Separate from `validate` on purpose. Validation is called from the build,
-    from migrate_plan, and from the tests, and it used to write to disk as a
-    side effect of being asked whether a plan was well-formed - so replaying an
-    old plan silently taught the cast new poses. The build calls this once, on
-    the plan it is actually going to make.
-    """
-    for request in plan.get("new_poses") or []:
-        cast.learn_pose(request["character"], request["pose"],
-                        request["description"])
-    for request in plan.get("new_interactions") or []:
-        cast.learn_interaction(request["members"], request["action"],
-                               request["description"])
-    return (len(plan.get("new_poses") or [])
-            + len(plan.get("new_interactions") or []))
+            counts[fresh] = counts.get(fresh, 0) + 1
+            problems.append(f"shot {scene['id']}: the same drawing was used "
+                            f"{seen} times, re-described from its beat")
 
 
 def used_sprites(plan):
@@ -844,21 +790,30 @@ def used_sprites(plan):
 
 
 def offline_plan(script, cast, shot_seconds=5.0):
-    """A storyboard without the model: alternating characters, no props.
+    """A storyboard without the model: one character per beat, no props.
 
     Not what you would ship, but it keeps the render path exercisable when Ark
     is unreachable, and it makes the shape of a plan obvious.
     """
-    known = sorted(cast.catalogue())
-    people = [n for n in known if not n.startswith("prop_")] or known
+    people = list(cast.data.get("characters") or {})
     framings = ["medium", "close", "wide"]
-    scenes = []
+    scenes, drawings = [], {}
     for i, beat in enumerate(split_script(script, shot_seconds)):
-        sprite = people[i % len(people)] if people else None
-        scenes.append({
-            "id": i + 1, "narration": beat, "framing": framings[i % 3],
-            "elements": ([{"asset": sprite, "x": 0.5, "y": 0.97, "h": 0.46,
-                           "anchor": "bottom"}] if sprite else [])})
-    return {"title": "", "ending": {"text": scenes[-1]["narration"] if scenes else "",
-                                    "highlight": None},
-            "scenes": scenes, "problems": ["offline plan: no director was used"]}
+        elements = []
+        if people:
+            who = [people[i % len(people)]]
+            shows = "standing squarely, talking to the viewer"
+            asset = _sprite_name("figure", who, shows)
+            drawings.setdefault(asset, {"asset": asset, "kind": "figure",
+                                        "who": who, "shows": shows})
+            elements.append({"asset": asset, "role": "figure", "x": 0.5,
+                             "y": 0.97, "h": 0.46, "anchor": "bottom",
+                             "rel": cast.relative_height(asset)})
+        scenes.append({"id": i + 1, "narration": beat,
+                       "framing": framings[i % 3], "elements": elements})
+    return {"title": "", "setting": "",
+            "ending": {"text": scenes[-1]["narration"] if scenes else "",
+                       "highlight": None},
+            "scenes": scenes,
+            "drawings": [drawings[n] for n in sorted(drawings)],
+            "problems": ["offline plan: no director was used"]}

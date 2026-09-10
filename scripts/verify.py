@@ -311,12 +311,11 @@ def check_composition(report, storyboard, project_dir, lay):
                + (f", thinnest shots {thin[:4]}" if thin else ""))
 
 
-def check_layout(report, storyboard, project_dir, lay, cast=None):
+def check_layout(report, storyboard, project_dir, lay):
     import checks as checks_mod
     import render as render_mod
     assets = render_mod.Assets(project_dir)
-    findings = checks_mod.inspect(storyboard, assets, lay, repair=False,
-                                  cast=cast)
+    findings = checks_mod.inspect(storyboard, assets, lay, repair=False)
     report.add(not findings, "shot layout",
                "no collisions or overflow" if not findings
                else f"{len(findings)} issue(s): {findings[0]}")
@@ -346,8 +345,7 @@ def run(project, verbose=False):
     check_sprites(report, project.cast.dir)
     check_plan_carried(report, storyboard, project.out / "plan.json")
     check_composition(report, storyboard, project.out, project.layout)
-    findings = check_layout(report, storyboard, project.out, project.layout,
-                            cast=project.cast)
+    findings = check_layout(report, storyboard, project.out, project.layout)
 
     code = report.render()
     if findings and verbose:

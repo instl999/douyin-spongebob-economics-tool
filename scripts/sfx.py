@@ -194,7 +194,7 @@ def plan(storyboard, durations, cast=None, look=None):
         elif _has(scene, lambda el: el.get("type") in ("label", "bubble")):
             moment = "label"
         elif cast is not None and _has(
-                scene, lambda el: el.get("asset") and cast.writable(el["asset"])):
+                scene, lambda el: el.get("role") == "board"):
             moment = "board"
 
         if moment:

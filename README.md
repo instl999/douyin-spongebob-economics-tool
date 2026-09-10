@@ -77,8 +77,9 @@ python scripts/build.py projects/efficiency_wage.json
 ```
 
 One fixed background plate — the style's own, or a room generated from the
-script's subject when the script does not name one — with AI-generated cut-out
-characters and props composited on top of it, acting out each sentence. Shots
+script's subject when the script does not name one — with cut-out characters
+and props generated *for that line of narration* and composited on top of it,
+acting out each sentence. Nothing is reused between videos. Shots
 hold still and dissolve into one another. Narration, subtitles, title and closing cards,
 music, encoding and quality control all happen in one command.
 
@@ -310,7 +311,7 @@ predicted result
   total       86.5s at 1.00x speed
 
 what this will generate
-  sprites     up to 5 new image(s); 60 already in the library
+  drawings    one per element, made for this script and not reused
   background  reuse the cached plate
   narration   15 clips
 ```
@@ -395,7 +396,7 @@ take the other six down with it.
 | Change the background plate every shot sits on | `"background"` → `"prompt"` in the same file |
 | Stop deriving a backdrop from the script and always use the style's plate | `"fallback_setting": false` in the project JSON |
 | Pin label outlines instead of measuring them against the plate | `casts/styles.json` → `look.text.label_outline`, e.g. `[255, 255, 255]` |
-| Create a brand-new style | copy `casts/_template.json` to `casts/<key>.json`, fill it in following the `_hint_*` comments, validate with `python scripts/build.py --check`, then generate the library with `python scripts/build_library.py <key> --plates` |
+| Create a brand-new style | copy `casts/_template.json` to `casts/<key>.json`, fill it in following the `_hint_*` comments, validate with `python scripts/build.py --check`, then draw its references with `python scripts/build_library.py <key> --plates` |
 
 ### The configuration file
 
@@ -477,7 +478,8 @@ Seven casts ship:
 
 All of them follow the same shape as `bikini_bottom`: a completely different
 visual world is one JSON file and one command, with no code changed.
-Its sprite library is generated once (see below) and reused by every video.
+Its character references are drawn once (see below); every other picture is
+drawn per video from the script.
 
 ### Starting a new style
 
@@ -538,7 +540,7 @@ Tall scenery framing the picture makes every character look small and lost.
 | Build (checks the result automatically) | `python scripts/build.py <project>` |
 | Check a finished video on its own | `python scripts/verify.py <project> --verbose` |
 | Re-run after editing the plan | `python scripts/build.py <project> --from storyboard` |
-| Generate a cast's whole library | `python scripts/build_library.py <style key or cast path> --plates` |
+| Draw a cast's character references | `python scripts/build_library.py <style key or cast path> --plates` |
 | Apply new validation rules to an old plan | `python scripts/migrate_plan.py out/<name>/plan.json <style key or cast path>` |
 | Cut out a single image by hand | `python scripts/matting.py in.jpg out.png` |
 | Ask whether each shot acts out its line | `python scripts/critique.py out/<name>` |
@@ -614,7 +616,7 @@ as a fault in the pipeline rather than in your input — because it is.
 |---|---|
 | `build.py` | Stage orchestration, caching, invalidation, error handling |
 | `plan.py` | Splits the script in code; asks the model only to dress each shot; validates everything it returns |
-| `assets.py` | Generates, mattes and caches the sprite library; the verified title card |
+| `assets.py` | Generates and mattes each video's drawings and the cast's character references; the verified title card |
 | `matting.py` | Chroma cutout, edge decontamination, autocrop |
 | `checks.py` | Collision and overflow detection, with auto-repair |
 | `render.py` | Plates, group dissolves, framing, captions, frame stream |
@@ -629,7 +631,7 @@ as a fault in the pipeline rather than in your input — because it is.
 | `selftest.py` | Offline checks (style registry, matting, layout, draft export); needs no credentials |
 | `preview.py` | Contact sheet |
 | `new_project.py` | Settings in, project file out, with a cost and length estimate |
-| `build_library.py` | Generate a cast's whole sprite catalogue in one go |
+| `build_library.py` | Draw the one reference image each character needs |
 | `styles.py` | The art-style registry: which styles exist, which is default |
 | `migrate_plan.py` | Replay an old plan through the current validator |
 | `config.py` | Credentials, endpoints, model ids |
@@ -649,45 +651,52 @@ sentence.
 
 Two things make that possible, and both were missing:
 
-**It can see what each sprite shows.** The catalogue used to be a list of bare
-filenames, so poses were chosen by guessing at their names. Asked for someone
-being handed a pay packet it picked `krabs_stand` and `sponge_happy`, because
-nothing told it that `krabs_greedy` is claws clasped and eyes gleaming while
-`krabs_point` is a raised claw mid-explanation. It now gets each pose's
-description, grouped by character, and chooses on that.
-
-**It can ask for a pose that does not exist.** A cast is mostly postures —
-standing, thinking, pleased — and most scripts describe things nobody in it is
-doing. When no pose performs the action, the director requests one:
+**Every picture is drawn for the line it illustrates.** There is no sprite
+library. The director does not pick a filename off a shelf; it describes what
+the drawing shows, and that drawing is generated for this video and never
+reused by another:
 
 ```json
-{"asset": "sponge_take_envelope.png",
- "new_pose": "both hands reaching to take the envelope, huge open grin"}
+{"who": "sponge",
+ "shows": "both hands out taking a pay envelope, beaming, delighted",
+ "x": 0.62, "y": 0.97, "h": 0.46}
 ```
 
-The request is checked against the cast (a real character, a well-formed new
-pose name, one figure only), generated once, and recorded in
-`casts/<style>/learned_poses.json` so every later video reuses it. There is a
-budget of 8 per video: uncapped, a director asks for a bespoke pose per shot,
-the catalogue stops being a catalogue, and the next video pays again. Past the
-cap, requests fall back to the nearest existing pose.
+A shared catalogue was the reason every output looked like the last one.
+Measured across eight finished videos: the same pile of gold coins appeared in
+five of them, and eight fixed drawings carried most of every script. Worse, the
+director's job was reduced to pattern-matching filenames — asked for someone
+being handed a pay packet it reached for a standing boss and a happy worker,
+because that is what the shelf had.
 
-On a script whose second line is 蟹老板把工资信封递过来，他双手接过, the
-director now asks for `krabs_hand_envelope` — *one claw holding out a paper pay
-envelope, grudging expression* — and `sponge_take_envelope` — *both hands
-reaching to take the envelope, huge open grin, eyes crinkled with joy*. Before,
-that beat was two characters standing near a pile of coins.
+Given a script about wages rising, it now writes *"holding a tiny pay envelope,
+smiling greedily"* for one shot and *"holding a larger pay envelope, frowning
+but handing it over"* for the next, and the two frames genuinely contrast. No
+catalogue can do that, because the contrast is particular to those two
+sentences.
 
-**When the interaction is the sentence, both figures are drawn at once.** One
-character per sprite is what makes the library reusable, and it also means two
-sprites can never touch: the envelope is inside one PNG and the hands that take
-it are inside another. Placing them closer helps and does not fix it. So a beat
-whose point is an exchange can be drawn as a single sprite —
-`duo_krabs_sponge_handover.png` — with both characters pinned to their own
-anchor images so neither drifts. It claims both names, so neither can also
-appear separately in that shot, and the variety and proximity passes leave it
-alone. Budget of 4 per video, separate from and smaller than the pose budget:
-these are drawn for one beat and are much less reusable.
+**Identity comes from one reference, not from reuse.** Generated from a
+description alone the same character drifts between shots — measured at 82%
+palette match against its own design, versus 98% when every drawing is
+conditioned on a reference image. So exactly one drawing per character is
+committed, in `casts/<style>/anchors/`, and every picture in every video is
+drawn against it. That is the only thing that outlives a video.
+
+Setting up a style costs one image per character rather than a whole library:
+across the seven built-in styles, 23 images instead of 233.
+
+**Two elements described in the same words are drawn once.** The filename
+carries a hash of the description, so a talking-head script that asks for the
+same figure four times pays once — and re-running a stage redraws nothing.
+Where the director describes the *same* picture for too many shots, the surplus
+is re-described from that shot's own beat, since a drawing that repeats is one
+whose description ignored the sentence.
+
+**When the interaction is the sentence, both figures are drawn at once.** Two
+separate drawings can never touch: the envelope is inside one PNG and the hands
+that take it are inside another. Placing them closer helps and does not fix it.
+So naming two characters draws them together, pinned to both their anchors. The
+drawing claims both names, so neither can also appear separately in that shot.
 
 Two figures is twice the anatomy and half the attention per figure, and it
 shows — the first handover came back with a claw that was not attached to

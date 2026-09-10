@@ -11,6 +11,7 @@ This is the thing to run after installing, after editing anything, or when a
 build fails and it is not obvious whether the pipeline or the API is at fault.
 It spends nothing, so it can be run freely.
 """
+import ast
 import json
 import shutil
 import subprocess
@@ -149,11 +150,12 @@ def main():
     finally:
         styles_mod.registry = real_registry
 
-    # --- the director may ask for a pose the cast does not have -----------
-    # The catalogue is postures, not actions, so a sentence like "he is handed
-    # his pay" has nothing that performs it and used to settle for whoever
-    # looked closest. A request is accepted only if it names a real character,
-    # a well-formed new pose, and one figure.
+    # --- every drawing is made for one script, and only that script -------
+    # There used to be a shared catalogue of about sixty drawings that every
+    # video picked from, and that is why every video looked like the last one:
+    # measured across eight finished videos, one pile of gold coins appeared in
+    # five of them. The director describes pictures now and they are drawn per
+    # video. These pin the properties that makes that work.
     with tempfile.TemporaryDirectory() as tmp:
         casts = Path(tmp)
         cast_data = {
@@ -164,155 +166,76 @@ def main():
                           "relative_height": 1.0, "poses": {"stand": "standing"}},
                 "bob": {"look": "a man", "role": "the boss",
                         "relative_height": 1.0, "poses": {"stand": "standing"}}},
-            "props": {"desk": "a desk"},
         }
         (casts / "probe.json").write_text(json.dumps(cast_data), encoding="utf-8")
         probe = assets_mod.Cast.load(casts / "probe.json", root=casts)
 
-        def ask(asset, pose_text, shot=1):
-            return {"id": shot, "framing": "medium", "elements": [
-                {"asset": asset, "new_pose": pose_text,
-                 "x": 0.5, "y": 0.97, "h": 0.46}]}
+        def shot(elements, sid=1, framing="medium"):
+            return {"id": sid, "framing": framing, "elements": elements}
 
-        result = plan_mod.validate(
-            {"shots": [ask("alice_take_pay.png",
-                           "both hands out taking a pay envelope, beaming"),
-                       ask("alice_nope.png", "", 2),
-                       ask("carol_wave.png", "waving", 3),
-                       ask("alice_Take Pay.png", "taking pay", 4),
-                       ask("alice_hand_over.png",
-                           "handing an envelope to bob", 5)]},
-            ["一。", "二。", "三。", "四。", "五。"], probe)
-        added = {r["asset"] for r in result["new_poses"]}
-        suite.check("a described action becomes a new pose",
-                    added == {"alice_take_pay.png"},
-                    f"accepted {sorted(added)}")
-        plan_mod.commit_poses(probe, result)
-        suite.check("the pose is recorded for later videos",
-                    (probe.dir / "learned_poses.json").exists()
-                    and "take_pay" in probe.data["characters"]["alice"]["poses"])
-        reloaded = assets_mod.Cast.load(casts / "probe.json", root=casts)
-        suite.check("and is in the catalogue next time",
-                    "alice_take_pay.png" in reloaded.catalogue())
+        told = plan_mod.validate({"shots": [
+            shot([{"who": "alice", "shows": "both hands out taking a pay envelope",
+                   "x": 0.4, "h": 0.46}]),
+            shot([{"who": "alice", "shows": "both hands out taking a pay envelope",
+                   "x": 0.4, "h": 0.46}], 2),
+            shot([{"who": "alice", "shows": "slumped at a desk, exhausted",
+                   "x": 0.4, "h": 0.46}], 3),
+        ]}, ["一。", "二。", "三。"], probe)
+        names = [sc["elements"][0]["asset"] for sc in told["scenes"]]
+        suite.check("the same description is drawn once, a different one twice",
+                    names[0] == names[1] and names[2] != names[0]
+                    and len(told["drawings"]) == 2,
+                    f"{len(told['drawings'])} drawings for 3 elements")
 
-        # A requested pose that never reaches the disk must not take the
-        # character out of the shot with it. The first real run of this asked
-        # for two poses, hit a quota wall, and shot 2 rendered as an empty
-        # plate - worse than the generic casting the request improved on.
-        import build as build_mod
+        # The point of the whole change: a video must leave nothing behind for
+        # the next one to reuse, or the sameness comes straight back.
+        left_behind = sorted(p.name for p in casts.rglob("*")
+                             if p.is_file() and p.name != "probe.json")
+        suite.check("a described drawing never enters the cast",
+                    not left_behind
+                    and json.loads((casts / "probe.json").read_text(
+                        encoding="utf-8")) == cast_data,
+                    "nothing was written beside the cast file"
+                    if not left_behind else f"found {left_behind}")
 
-        class _FakeProject:
-            pass
+        # What survives is one reference per character. Without it the same
+        # character drifts between shots: 82% palette match against 98%.
+        suite.check("a character's reference has a home of its own",
+                    probe.anchor_path("alice").parent.name == "anchors"
+                    and probe.anchor_path("alice").name == "alice.jpg",
+                    str(probe.anchor_path("alice").relative_to(casts)))
 
-        stub = _FakeProject()
-        stub.out = casts / "out"
-        stub.out.mkdir(exist_ok=True)
-        for name in ("alice_stand.png", "bob_stand.png", "prop_desk.png"):
-            (stub.out / name).write_bytes(b"")
-        starved = {"scenes": [{"id": 1, "elements": [
-            {"asset": "alice_take_pay.png", "x": 0.3, "y": 0.97, "h": 0.46},
-            {"asset": "bob_hand_over.png", "x": 0.7, "y": 0.97, "h": 0.46},
-            {"asset": "prop_desk.png", "x": 0.5, "y": 0.97, "h": 0.3},
-        ]}]}
-        build_mod.log = lambda *a, **k: None
-        build_mod.reconcile_sprites(stub, starved, reloaded)
-        stood_in = [e["asset"] for e in starved["scenes"][0]["elements"]]
-        suite.check("a pose that failed to generate stands in, not vanishes",
-                    stood_in == ["alice_stand.png", "bob_stand.png",
-                                 "prop_desk.png"],
-                    f"{stood_in}")
+        junk = plan_mod.validate({"shots": [shot([
+            {"who": "carol", "shows": "waving"},
+            {"who": ["alice", "bob", "carol"], "shows": "all three arguing"},
+            {"who": "alice"},
+        ])]}, ["一。"], probe)
+        drawn = junk["scenes"][0]["elements"]
+        suite.check("a director's mistakes cost an element, not the run",
+                    len(drawn) == 2
+                    and plan_mod.LABEL_TONES is not None,
+                    f"{len(drawn)} of 3 elements survived: "
+                    f"{[e['asset'][:22] for e in drawn]}")
 
-        # ...and a stand-in must not put one character on screen twice.
-        clash = {"scenes": [{"id": 1, "elements": [
-            {"asset": "alice_stand.png", "x": 0.3, "y": 0.97, "h": 0.46},
-            {"asset": "alice_take_pay.png", "x": 0.7, "y": 0.97, "h": 0.46},
-        ]}]}
-        build_mod.reconcile_sprites(stub, clash, reloaded)
-        suite.check("a stand-in never doubles a character",
-                    [e["asset"] for e in clash["scenes"][0]["elements"]]
-                    == ["alice_stand.png"])
+        pair = plan_mod.validate({"shots": [shot([
+            {"who": ["alice", "bob"], "shows": "alice hands bob an envelope",
+             "x": 0.5, "h": 0.6},
+            {"who": "alice", "shows": "standing", "x": 0.2, "h": 0.46}])]},
+            ["一。"], probe)
+        kept = [e["asset"] for e in pair["scenes"][0]["elements"]]
+        suite.check("a two-figure drawing claims both its characters",
+                    len(kept) == 1 and kept[0].startswith("duo_alice_bob_"),
+                    f"kept {[k[:26] for k in kept]}")
 
-        # One pose must not carry a whole video. Measured on a real 32-shot
-        # build, krabs_stand appeared seven times - 22% of shots the same
-        # picture - and nothing noticed.
-        lib = assets_mod.Library(reloaded, log=lambda *a, **k: None)
-        suite.check("the anchor is the character's first pose",
-                    reloaded.anchor_pose("alice") == "stand"
-                    and lib._is_anchor("alice_stand.png")
-                    and not lib._is_anchor("alice_take_pay.png")
-                    and not lib._is_anchor("prop_desk.png"))
-        # Anchoring is a generation technique, not part of what a sprite is, so
-        # turning it on must not invalidate a library built without it.
-        fp = lib._fingerprint(reloaded.catalogue()["alice_stand.png"], "1920x1920")
-        suite.check("anchoring does not change the cache key",
-                    fp == lib._fingerprint(
-                        reloaded.catalogue()["alice_stand.png"], "1920x1920"))
-
-        for n in range(2, 8):
-            reloaded.data["characters"]["alice"]["poses"][f"p{n}"] = f"posture {n}"
-        crowded = [{"id": i, "narration": "句。", "framing": "medium",
-                    "elements": [{"asset": "alice_stand.png", "x": 0.5,
-                                  "y": 0.97, "h": 0.46, "rel": 1.0}]}
-                   for i in range(1, 17)]
-        notes = []
-        plan_mod._vary_poses(crowded, reloaded, notes)
-        used = [e["asset"] for s in crowded for e in s["elements"]]
-        top = max(used.count(a) for a in set(used))
-        # The target is one-in-eight, but a cast can simply not have enough
-        # poses to reach it: 16 shots over 7 usable poses cannot put fewer than
-        # 3 on the most-used one. Hold it to whichever bound is achievable, so
-        # the check stays honest if the cast grows or shrinks.
-        usable = [p for p in reloaded.data["characters"]["alice"]["poses"]
-                  if not reloaded.is_learned(f"alice_{p}.png")]
-        floor = max(-(-len(crowded) // len(usable)), 2, -(-len(crowded) // 8))
-        suite.check("no pose carries the whole video",
-                    top <= floor and len(set(used)) >= 5,
-                    f"16 identical shots became {len(set(used))} distinct poses, "
-                    f"most-used {top} (best possible {floor})")
-        suite.check("variety never reaches for a learned pose",
-                    not any(reloaded.is_learned(a) for a in used),
-                    "learned poses mean one specific action")
-
-        # Two figures in one sprite, for a beat that is an exchange. A shot
-        # cannot hold the pair and one of its members separately - that would
-        # put a character on screen twice.
-        duo = plan_mod.validate({"shots": [
-            {"id": 1, "framing": "medium", "elements": [
-                {"asset": "duo_alice_bob_handover.png",
-                 "new_interaction": "alice hands bob an envelope, he takes it",
-                 "x": 0.5, "y": 0.97, "h": 0.5},
-                {"asset": "alice_stand.png", "x": 0.2, "y": 0.97, "h": 0.46}]},
-            {"id": 2, "framing": "medium", "elements": [
-                {"asset": "duo_alice_alice_x.png",
-                 "new_interaction": "alice and alice", "x": 0.5}]},
-            {"id": 3, "framing": "medium", "elements": [
-                {"asset": "duo_alice_carol_x.png",
-                 "new_interaction": "with someone not in the cast", "x": 0.5}]},
-        ]}, ["一。", "二。", "三。"], reloaded)
-        made = {d["asset"] for d in duo["new_interactions"]}
-        shot1 = [e["asset"] for e in duo["scenes"][0]["elements"] if "asset" in e]
-        suite.check("an exchange can be drawn as one two-figure sprite",
-                    made == {"duo_alice_bob_handover.png"},
-                    f"accepted {sorted(made)}")
-        suite.check("a two-figure sprite claims both its characters",
-                    shot1 == ["duo_alice_bob_handover.png"],
-                    f"shot 1 kept {shot1}")
-        plan_mod.commit_poses(reloaded, duo)
-        again = assets_mod.Cast.load(casts / "probe.json", root=casts)
-        suite.check("and it joins the catalogue for later videos",
-                    "duo_alice_bob_handover.png" in again.catalogue()
-                    and again.duo_members("duo_alice_bob_handover.png")
-                    == ["alice", "bob"])
-
-        # Budget: past the cap, requests fall back to the old snapping.
-        many = [ask(f"bob_act{n}.png", f"doing thing number {n}", n)
-                for n in range(1, plan_mod.NEW_POSE_BUDGET + 4)]
-        capped = plan_mod.validate({"shots": many},
-                                   ["句。"] * len(many), reloaded)
-        suite.check("new poses are capped per video",
-                    len(capped["new_poses"]) == plan_mod.NEW_POSE_BUDGET,
-                    f"{len(capped['new_poses'])} of {len(many)} requested, "
-                    f"cap {plan_mod.NEW_POSE_BUDGET}")
+        roles = plan_mod.validate({"shots": [shot([
+            {"shows": "a whiteboard with a rising line chart", "x": 0.5, "h": 0.5},
+            {"shows": "a long shop counter", "x": 0.5, "h": 0.3},
+            {"shows": "a fat stack of gold coins", "x": 0.8, "h": 0.3}])]},
+            ["一。"], probe)
+        got = [e.get("role") for e in roles["scenes"][0]["elements"]]
+        suite.check("what an object is for is read off what it is",
+                    set(got) == {"board", "furniture", "prop"},
+                    f"whiteboard/counter/coins -> {got}")
 
     # --- composition: the frame was 90% empty -----------------------------
     # Measured across seven finished videos: foreground filled 8-10% of the
@@ -320,32 +243,33 @@ def main():
     # were used 4, 6 and 0 times in 87 shots.
     house = assets_mod.Cast.load(ROOT / "casts" / "bikini_bottom.json",
                                  root=ROOT / "casts")
+    WORKER = {"who": "sponge", "shows": "at a stove, working"}
     board = plan_mod.validate(
         {"shots": [{"id": 1, "framing": "medium", "elements": [
-            {"asset": "sponge_work.png", "x": 0.3, "h": 0.46},
-            {"asset": "prop_whiteboard.png", "x": 0.7, "h": 0.22,
+            dict(WORKER, x=0.3, h=0.46),
+            {"shows": "a whiteboard with a chart on it", "x": 0.7, "h": 0.22,
              "anchor": "center", "y": 0.4}]}]},
         ["一句。"], house)
-    heights = {e["asset"]: e["h"] for e in board["scenes"][0]["elements"]
-               if e.get("asset")}
+    plank = next(e for e in board["scenes"][0]["elements"]
+                 if e.get("role") == "board")
     suite.check("a board too small to read is raised",
-                heights.get("prop_whiteboard.png", 0) >= plan_mod.MIN_BOARD_HEIGHT,
-                f"0.22 -> {heights.get('prop_whiteboard.png')}")
+                plank["h"] >= plan_mod.MIN_BOARD_HEIGHT,
+                f"0.22 -> {plank['h']}")
 
     hide = plan_mod.validate(
         {"shots": [{"id": 1, "framing": "medium", "elements": [
-            {"asset": "sponge_work.png", "x": 0.5, "h": 0.46},
-            {"asset": "prop_kitchen_counter.png", "x": 0.5, "h": 0.44}]}]},
+            dict(WORKER, x=0.5, h=0.46),
+            {"shows": "a kitchen counter", "x": 0.5, "h": 0.44}]}]},
         ["一句。"], house)
     counter = next(e for e in hide["scenes"][0]["elements"]
-                   if e.get("asset") == "prop_kitchen_counter.png")
+                   if e.get("role") == "furniture")
     suite.check("furniture cannot swallow whoever stands behind it",
                 counter["h"] <= 0.46 * plan_mod.FURNITURE_SHARE + 1e-6,
                 f"0.44 -> {counter['h']} against a 0.46 character")
 
     thin_wide = plan_mod.validate(
         {"shots": [{"id": 1, "framing": "wide", "elements": [
-            {"asset": "sponge_work.png", "x": 0.5, "h": 0.46}]}]},
+            dict(WORKER, x=0.5, h=0.46)]}]},
         ["一句。"], house)
     suite.check("a wide shot with nothing in it is just a small shot",
                 thin_wide["scenes"][0]["framing"] != "wide",
@@ -353,18 +277,35 @@ def main():
 
     borrowed = plan_mod.validate(
         {"shots": [
-            {"id": 1, "framing": "medium", "elements": [
-                {"asset": "sponge_work.png", "x": 0.3, "h": 0.46}]},
+            {"id": 1, "framing": "medium", "elements": [dict(WORKER, x=0.3, h=0.46)]},
             {"id": 2, "framing": "medium", "elements": [
                 {"type": "panel", "x": 0.5, "w": 0.8, "ph": 0.6},
-                {"asset": "prop_krusty_krab.png", "x": 0.5, "h": 0.5}]}]},
+                {"shows": "a fast food restaurant building", "x": 0.5, "h": 0.5}]}]},
         ["一句。", "二句。"], house)
-    order = [e.get("asset") or e.get("type")
+    order = [e.get("role") or e.get("type")
              for e in borrowed["scenes"][1]["elements"]]
     suite.check("an element added after sorting still lands in depth order",
-                order[0] == "panel" and "sponge_work.png" in order[1:],
+                order[0] == "panel" and "figure" in order[1:],
                 f"{order} - a character inserted at index 0 renders behind "
                 f"the translucent wall")
+
+    # --- a function defined twice ----------------------------------------
+    # Python keeps the later definition and says nothing. Twice while pulling
+    # the shared library out, an edit left the old copy below the new one - and
+    # the old `_vary_poses` had a different signature, so it would have thrown
+    # on the first video with six shots while every short test passed.
+    twins = []
+    for module in sorted(p.name for p in (ROOT / "scripts").glob("*.py")):
+        tree = ast.parse((ROOT / "scripts" / module).read_text(encoding="utf-8-sig"))
+        seen = {}
+        for node in tree.body:
+            if isinstance(node, (ast.FunctionDef, ast.ClassDef)):
+                if node.name in seen:
+                    twins.append(f"{module}:{node.name} at {seen[node.name]} "
+                                 f"and {node.lineno}")
+                seen[node.name] = node.lineno
+    suite.check("nothing is defined twice in the same file", not twins,
+                twins[0] if twins else "the later one would win, silently")
 
     # --- a parameter accepted and then dropped ----------------------------
     # `panel_color` was threaded from the cast into compose_plate and never
@@ -372,7 +313,6 @@ def main():
     # the old colour, and the same silent-edit mistake had already happened
     # twice. A parameter a function accepts and never mentions again is almost
     # always a half-finished edit.
-    import ast
     dropped = []
     for module in ("render.py", "checks.py", "plan.py", "assets.py",
                    "textkit.py", "build.py", "verify.py", "styles.py"):
@@ -581,7 +521,8 @@ def main():
     # --- two figures should not be the smallest thing in the video --------
     paired = plan_mod.validate(
         {"shots": [{"id": 1, "framing": "medium", "elements": [
-            {"asset": "duo_krabs_sponge_handover.png", "x": 0.5, "h": 0.50}]}]},
+            {"who": ["krabs", "sponge"], "x": 0.5, "h": 0.50,
+             "shows": "krabs hands sponge an envelope and sponge takes it"}]}]},
         ["一句。"], house)
     duo = paired["scenes"][0]["elements"][0]
     close = look["framing"]["close"]

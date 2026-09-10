@@ -65,7 +65,7 @@ python scripts/selftest.py
 补充说明：
 
 - **时长不是随便定的。** 文案多长，视频就多长。选了目标时长，语速会在 0.85×–1.20× 之间自动拟合；超出这个范围就拟合不了，Step 2 会直接告诉你差多少字。**这时要回来问用户：是改文案，还是接受实际时长。不要自己删改文案。**
-- **画风的名单和默认项由 `casts/styles.json` 统一管理**（画风总配置）。比奇堡自带素材库；其余画风第一次用要先建素材库（下一步说明）。**要提前告诉用户这一步的量。**
+- **画风的名单和默认项由 `casts/styles.json` 统一管理**（画风总配置）。**没有素材库**：每一镜的画面都按当句台词现画，画完只属于这条片子，不会被下一条复用 —— 复用正是以前每条片子看起来都一样的原因。每个角色只留一张「定妆参考图」在 `casts/<画风>/anchors/`，用来保证同一个角色不走样。新画风第一次用只要画这几张参考图（一个角色一张）。**要提前告诉用户这条片子大概要画多少张。**
 - **画风选「新建一套」时**：复制 `casts/_template.json`（里面的 `_hint_*` 写清了每个字段该怎么填、坑在哪）成 `casts/<key>.json`，填好后先 `python scripts/build.py --check` 验一遍，再 `python scripts/build_library.py <key> --plates` 一次性把素材生成好。想要中文名就在 `casts/styles.json` 的 `styles` 里加一条 `{"<key>": {"label": "中文名", "note": "一句话"}}`。**要提前告诉用户这一步的量**：每张图约 20 秒，一套 30-60 张就是 10-20 分钟左右。素材只生成这一次，之后所有视频复用。
 - 用户已经明确说过的（比如「做成竖屏的」），就不用再问，但要在 Step 2 的确认摘要里复述一遍。
 
@@ -291,7 +291,7 @@ python scripts/draft.py out/my_video --install
 | 出片（含自动质检） | `python scripts/build.py <proj>` |
 | 单独质检 | `python scripts/verify.py <proj> --verbose` |
 | 改了 plan 后重出片 | `python scripts/build.py <proj> --from storyboard` |
-| 只建素材库 | `python scripts/build.py <proj> --stop-after assets` |
+| 只画素材、不出片 | `python scripts/build.py <proj> --stop-after assets` |
 | 单张抠图 | `python scripts/matting.py in.jpg out.png` |
 | **查每一镜有没有演出文案**（花钱，每镜一次视觉调用） | `python scripts/critique.py out/<name>` |
 | 重新生成音效库 | `python scripts/gen_sfx.py` |
@@ -325,7 +325,7 @@ scripts/
   build.py                   主入口，七阶段编排，收尾自动质检
   verify.py                   12 项自动质检，退出码可用来卡流程
   plan.py                    分句（代码做）+ 导演选素材（模型做）+ 校验
-  assets.py                  素材库：生成 → 抠图 → 缓存；标题书法字 + 视觉校验
+  assets.py                  按描述现画 → 抠图；角色定妆参考图；标题书法字 + 视觉校验
   matting.py                 品红抠图 + 边缘去色 + 自动裁切
   render.py                  渲染：固定底板、整镜溶解、景别缩放、字幕
   textkit.py                 字体、断行、描边字、标签、气泡、卡片

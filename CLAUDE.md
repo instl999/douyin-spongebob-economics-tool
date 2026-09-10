@@ -12,7 +12,7 @@ Do not confuse with `../AutoReel`, which targets DaVinci Resolve instead.
 python scripts/build.py projects/efficiency_wage.json   # full run
 python scripts/build.py --check                         # readiness, then exit
 python scripts/build.py <proj> --from render            # redo one stage onward
-python scripts/build_library.py clay --plates           # build a style's assets
+python scripts/build_library.py clay --plates           # a style's references
 ```
 
 Useful flags: `--stop-after <stage>`, `--out <dir>`, `--regenerate-assets`,
@@ -27,12 +27,25 @@ result is current**. Editing one pose regenerates one sprite; editing the
 storyboard re-renders without paying for narration again. `--from <stage>` redoes
 that stage, and later stages re-derive only what changed.
 
+## Drawings
+
+**There is no sprite library.** Every picture in a video is generated for that
+video from the director's description of the line it illustrates, and nothing
+is reused by the next video - that reuse is what made every output look alike
+(one pile of gold coins appeared in five videos out of eight). Two elements
+described in the same words are drawn once; identity is carried by one
+committed reference image per character in `casts/<style>/anchors/`, which is
+the only drawing that outlives a video.
+
+Cost is therefore per video, not per style: about one image per element, ~20s
+each, capped by `plan.MAX_DRAWINGS`.
+
 ## Styles
 
 Seven built in. `casts/styles.json` is the single source of truth for which
-styles exist, their labels, and the default (`bikini_bottom`, the only one
-shipping a prepopulated asset library). Other styles need `build_library.py`
-once, ~20s per image, then reused forever.
+styles exist, their labels, and the default (`bikini_bottom`). A style needs
+`build_library.py` once to draw its character references - one image per
+character, not a whole library.
 
 - Pick a style: the project JSON's `cast` field (a key like `"clay"`, or a path).
 - Change a style's art direction: `"style"` at the top of `casts/<style>.json`.

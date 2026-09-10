@@ -106,10 +106,10 @@ def build(args):
     out.write_text(json.dumps(project, ensure_ascii=False, indent=2),
                    encoding="utf-8")
 
-    # Worst-case image count: everything this cast can make that is not built.
-    catalogue = set(cast.catalogue())
-    built = {p.name for p in cast.sprites.glob("*.png")} if cast.sprites.exists() else set()
-    to_build = len(catalogue - built)
+    # Setup cost is one reference drawing per character, once for the whole
+    # style. Everything else is drawn per video, from the script.
+    characters = list(cast.data.get("characters") or {})
+    to_build = sum(1 for name in characters if not cast.anchor_path(name).exists())
     plate = cast.dir / f"background_{'1440x2560' if args.orientation == 'portrait' else '2560x1440'}.png"
 
     print(f"wrote {out.relative_to(ROOT)}\n")
@@ -126,8 +126,10 @@ def build(args):
     print(timing.describe(fit))
     print()
     print("what this will generate")
-    print(f"  sprites     up to {to_build} new image(s); "
-          f"{len(built)} already in the library")
+    print(f"  drawings    one per element, made for this script and not reused")
+    if to_build:
+        print(f"  references  {to_build} of {len(characters)} character(s) "
+              f"still to draw, once for the whole style")
     print(f"  background  {'reuse the cached plate' if plate.exists() else 'one new plate'}")
     print(f"  narration   {fit['estimate']['shots']} clips")
     print()

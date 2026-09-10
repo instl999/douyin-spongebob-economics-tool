@@ -5,11 +5,12 @@ Return exactly {count} shots, with these ids.
 
 {beats}
 
-# Sprites you may use
+# Who is in this cast
 
-Exact filenames; nothing else exists unless you ask for it (see below). The
-text after each name is what that sprite shows - choose on that, not on the
-name.
+Every picture in this video is drawn for it, from your description. Nothing is
+picked off a shelf and nothing carries over from another video, so there is no
+list of existing drawings to choose from - there is only this cast, and what
+you say each one is doing.
 
 {catalogue}
 
@@ -55,71 +56,78 @@ about it. Cast the *action*, then let the object and the feeling follow from it.
 - Change who is on screen when the subject changes. One lone character with
   nothing happening is a wasted shot
 
-## When no pose performs the action - ask for one
+## Describe every drawing
 
-The catalogue is mostly postures: standing, thinking, pleased, worried. Most
-scripts describe things nobody in it is doing. **This is the normal case, not
-an edge case, and asking is the normal response to it.**
+An element is a description of a picture, not the name of one. Say who is in it
+and what the picture shows:
 
-Run this test on every shot, before you cast it:
-
-> Read the pose descriptions for the character in `subject`. Does any of them
-> describe a body performing `action`? Not the right mood - the right *action*.
-
-If none does, ask for the pose:
-
-{{"asset": "sponge_take_pay.png",
-  "new_pose": "both hands out taking a pay envelope, beaming, delighted",
+{{"who": "sponge",
+  "shows": "both hands out taking a pay envelope, beaming, delighted",
   "x": 0.62, "y": 0.97, "h": 0.46}}
 
-"蟹老板把工资信封递过来，他双手接过" fails the test twice. No krabs pose
-describes handing something over, and no sponge pose describes taking something
-with both hands. `krabs_stand` plus `sponge_happy` plus a pile of coins is two
-people standing near money - it is the failure this whole section exists to
-prevent. Ask for `krabs_hand_over` and `sponge_take_pay` and the shot performs
-the sentence.
+- **who** is one character name from the cast above. Leave it out entirely and
+  you get an object instead - a prop, drawn on its own
+- **shows** is what the drawing depicts: what the hands, arms, posture and face
+  are doing, and what is being held. Do not describe costume, colour or art
+  style - those come from the cast and are already settled. One figure per
+  drawing unless you are asking for two on purpose (below)
 
-- the filename must be `<character>_<pose>.png` for a character in the cast,
-  and `<pose>` must be new, lowercase, no spaces
-- `new_pose` describes the **body**: what the hands, arms, posture and face are
-  doing. Do not describe clothing, colour or art style - those come from the
-  cast. Do not name other characters; one figure only
-- Do **not** ask when the difference is only mood and a pose already performs
-  the action. `sponge_sad` covers any dejected standing
-- You have {pose_budget} requests for the whole video. A script about people
-  doing things should use most of them. Spend them on the shots where the
-  action *is* the point, and settle on the shots that are only commentary
-- Anything you ask for is drawn once and then belongs to this cast, so prefer
-  a pose that other scripts would also use ("take_pay") over one welded to this
-  sentence ("take_pay_from_krabs_on_friday")
+"蟹老板把工资信封递过来，他双手接过" is not two people standing near money. It
+is one figure holding an envelope out and another taking it with both hands,
+and because you describe both of those, that is what gets drawn.
 
-## When the interaction *is* the sentence - ask for both figures at once
+**Describe each shot afresh.** Two shots that you describe in the same words
+become the same picture - which is sometimes right, and is what made the old
+version of this tool put an identical shot of the boss in seven of thirty-two
+frames. If the sentence has moved on, say what has changed.
 
-Every sprite holds one character, which is what makes them reusable, and it
-also means two of them can never actually touch. The envelope is inside one
-picture and the hands that take it are inside another; standing them close
-helps, but nothing makes the claw meet the hand. For a sentence whose whole
-point is that A does something *to* B, ask for the pair drawn together:
+### Objects
 
-{{"asset": "duo_krabs_sponge_handover.png",
-  "new_interaction": "Mr. Krabs holds out a pay envelope and SpongeBob takes it with both hands, beaming, the envelope passing between them",
-  "x": 0.5, "y": 0.97, "h": 0.5}}
+Leave `who` out and describe the thing:
 
-- the filename is `duo_<a>_<b>_<action>.png`, both characters from the cast,
-  named in the order they appear left to right
-- `new_interaction` describes **what passes between them** - the object
-  changing hands, the pointing and the reacting, who is doing and who is
-  receiving. Do not describe costume or art style; those come from the cast
-- it counts as **both** characters, so do not also place either of them
-  separately in that shot
-- give it `h` 0.58-0.66 and put it at x 0.5. Two figures share the height one
-  character gets, and this shot is nearly always "medium" while the reactions
-  either side of it are "close" - at the same `h` the pair ends up the smallest
-  thing in the video, which is backwards for the shot that carries the action.
-  Anything below 0.58 is raised for you
-- you have {duo_budget} of these for the whole video. Spend them on the beats
-  where the sentence is an exchange - paying, handing over, arguing face to
-  face, one showing another something - and use a pose for everything else
+{{"shows": "a fat stack of gold coins", "x": 0.72, "y": 0.97, "h": 0.30}}
+
+Add `"role"` when the object is not simply standing on the ground:
+
+- `"board"` - a whiteboard, chart, diagram or poster. Hangs at eye level, and
+  emphasis text placed on it snaps to its middle
+- `"furniture"` - a counter, desk or table. Drawn *over* the legs of whoever is
+  at it, which is most of what makes a shot look like a place rather than
+  cut-outs on a lawn. Any shot set at a workplace wants one
+- `"hanging"` - a clock, a sign, anything on a wall
+
+Left out, it is guessed from your description, and the guess is only as good as
+the words: say "a whiteboard showing a rising line" and it hangs; say "a chart"
+and it may not.
+
+### When the interaction *is* the sentence
+
+Two separate figures can never actually touch: the envelope is inside one
+drawing and the hands that take it are inside another. For a sentence whose
+whole point is that one does something *to* the other, ask for both in one
+drawing by naming two:
+
+{{"who": ["krabs", "sponge"],
+  "shows": "Krabs holds out a pay envelope and SpongeBob takes it with both hands, beaming, the envelope passing between them",
+  "x": 0.5, "y": 0.97, "h": 0.60}}
+
+- name them left to right, and do not also place either of them separately in
+  that shot - the drawing already contains both
+- **shows** has to say what passes between them, who gives and who receives.
+  One figure holding a thing and another touching it reads either way round
+- give it `h` 0.58-0.66. Two figures share the height one character gets, and
+  this shot is nearly always "medium" while the reactions either side are
+  "close", so at the same `h` the pair ends up the smallest thing in the video
+  - backwards, for the shot that carries the action. Below 0.58 is raised for you
+- you have {duo_budget} of these. Two figures is twice the anatomy and half the
+  attention per figure, so spend them on the beats that are genuinely an
+  exchange and describe everything else one figure at a time
+
+### How many
+
+You have **{pose_budget} drawings** for the whole video, and every one of them
+is drawn from scratch. Two elements described in the same words count once.
+Past the cap, elements are dropped.
 
 {orientation_note}
 
@@ -237,11 +245,12 @@ characters.
                 "object": "pay envelope", "emotion": "delighted",
                 "relation": "krabs hands it to sponge"}},
       "elements": [
-        {{"asset": "krabs_point.png", "x": 0.30, "y": 0.97, "h": 0.46}},
-        {{"asset": "sponge_take_pay.png",
-          "new_pose": "both hands out taking a pay envelope, beaming, delighted",
-          "x": 0.66, "y": 0.97, "h": 0.46}},
+        {{"who": ["krabs", "sponge"],
+          "shows": "Krabs holds out a pay envelope and SpongeBob takes it with both hands, beaming, the envelope passing between them",
+          "x": 0.50, "y": 0.97, "h": 0.60}},
+        {{"shows": "a long shop counter", "role": "furniture",
+          "x": 0.50, "y": 0.97, "h": 0.34}},
         {{"type": "label", "text": "发工资", "tone": "money",
-          "x": 0.48, "y": 0.40, "anchor": "center"}}
+          "x": 0.22, "y": 0.24, "anchor": "center"}}
       ]}}
   ]}}

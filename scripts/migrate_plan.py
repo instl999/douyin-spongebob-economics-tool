@@ -28,6 +28,20 @@ def migrate(plan_path, cast_path):
     _, cast_file = styles_mod.resolve(cast_path)
     cast = assets_mod.Cast.load(cast_file)
 
+    stale = [scene.get("id", i) for i, scene in enumerate(original["scenes"], 1)
+             if any("asset" in el and not el.get("shows")
+                    for el in scene.get("elements") or [])]
+    if stale:
+        raise SystemExit(
+            f"{plan_path} was written when sprites were picked from a shared "
+            f"library.\n"
+            f"Its elements name drawings instead of describing them "
+            f"(shots {stale[:5]}).\n"
+            "There is nothing to replay them through: what each picture "
+            "should show was never written down.\n"
+            "Re-plan it instead, with\n"
+            "    python scripts/build.py <project> --from plan")
+
     beats = [scene["narration"] for scene in original["scenes"]]
     # The whole plan goes back in, not a copy of the three fields this script
     # happened to know about. That allowlist silently dropped every field the

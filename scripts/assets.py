@@ -132,87 +132,16 @@ class Cast:
         self.name = data.get("name", "cast")
         self.style = data.get("style", "")
         self.dir = self.root / self.name
-        self.sprites = self.dir / "sprites"
 
     @classmethod
     def load(cls, path, root=None):
         path = Path(path)
         data = json.loads(path.read_text(encoding="utf-8-sig"))
         cast = cls(data, root or path.parent)
-        cast._merge_learned()
         return cast
 
-    # --- poses the director asked for -------------------------------------
 
-    @property
-    def learned_path(self):
-        return self.dir / "learned_poses.json"
 
-    def _merge_learned(self):
-        """Fold in poses earlier videos asked for, so they can be reused.
-
-        Kept in a sidecar rather than written back into the cast file. The cast
-        file is hand-authored and the one thing a user is expected to edit;
-        a program that rewrites it while they have it open is a good way to
-        lose their work, and a generated pose mixed in with their own gives
-        them no way to tell which is which.
-        """
-        if not self.learned_path.exists():
-            return
-        try:
-            learned = json.loads(self.learned_path.read_text(encoding="utf-8-sig"))
-        except (json.JSONDecodeError, OSError):
-            return
-        characters = self.data.setdefault("characters", {})
-        for char_name, poses in (learned.get("poses") or {}).items():
-            char = characters.get(char_name)
-            if not char:
-                continue          # the cast was edited; the pose has no owner
-            # Hand-written poses win: a user who redefines a name means it.
-            for pose, description in poses.items():
-                char.setdefault("poses", {}).setdefault(pose, description)
-
-    def is_learned(self, filename):
-        """Whether this pose was requested for one beat rather than authored.
-
-        A learned pose means one specific thing - "holding out a pay envelope"
-        - so it belongs to the shot that asked for it and nowhere else. The
-        hand-written poses in a cast file are postures and moods, which are
-        interchangeable in a way that an action is not.
-        """
-        stem = filename[:-4] if filename.endswith(".png") else filename
-        character, _, pose = stem.partition("_")
-        if not self.learned_path.exists():
-            return False
-        try:
-            learned = json.loads(self.learned_path.read_text(encoding="utf-8-sig"))
-        except (json.JSONDecodeError, OSError):
-            return False
-        return pose in ((learned.get("poses") or {}).get(character) or {})
-
-    def learn_pose(self, character, pose, description):
-        """Record a new pose for this cast. Returns its sprite filename."""
-        char = (self.data.get("characters") or {}).get(character)
-        if not char:
-            raise ValueError(f"{character!r} is not a character in this cast")
-        char.setdefault("poses", {})[pose] = description
-        self.learned_path.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            stored = json.loads(self.learned_path.read_text(encoding="utf-8-sig"))
-        except (json.JSONDecodeError, OSError, FileNotFoundError):
-            stored = {}
-        stored.setdefault("_README", [
-            "Poses the director asked for while making a video, because no pose "
-            "in the cast file expressed what the narration described.",
-            "Generated once, then reused by every later video.",
-            "Safe to delete: anything still wanted is simply asked for again.",
-            "Editing casts/<style>.json wins over anything in here.",
-        ])
-        stored.setdefault("poses", {}).setdefault(character, {})[pose] = description
-        self.learned_path.write_text(
-            json.dumps(stored, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8")
-        return f"{character}_{pose}.png"
 
     # --- prompt construction ---------------------------------------------
     def sprite_prompt(self, description, rules=SPRITE_RULES):
@@ -248,35 +177,7 @@ class Cast:
                 break
         return members if len(members) == 2 else []
 
-    @property
-    def interactions(self):
-        """Two-figure sprites this cast has learned: {name: description}."""
-        if not self.learned_path.exists():
-            return {}
-        try:
-            stored = json.loads(self.learned_path.read_text(encoding="utf-8-sig"))
-        except (json.JSONDecodeError, OSError):
-            return {}
-        return dict(stored.get("interactions") or {})
 
-    def learn_interaction(self, members, action, description):
-        """Record a two-figure sprite. Returns its filename."""
-        characters = self.data.get("characters") or {}
-        for name in members:
-            if name not in characters:
-                raise ValueError(f"{name!r} is not a character in this cast")
-        filename = f"{DUO_PREFIX}{'_'.join(members)}_{action}.png"
-        self.learned_path.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            stored = json.loads(self.learned_path.read_text(encoding="utf-8-sig"))
-        except (json.JSONDecodeError, OSError, FileNotFoundError):
-            stored = {}
-        stored.setdefault("interactions", {})[filename] = description
-        self.learned_path.write_text(
-            json.dumps(stored, ensure_ascii=False, indent=2) + "\n",
-
-            encoding="utf-8")
-        return filename
 
     def relative_height(self, filename):
         """How tall this sprite is relative to the cast's baseline character.
@@ -302,36 +203,8 @@ class Cast:
         value = self.data.get("panel_color") or (176, 196, 205)
         return tuple(int(v) for v in value)[:3]
 
-    def writable(self, filename):
-        """Whether this prop is a surface meant to be written on.
 
-        The distinction the layout needs is not "does text overlap something"
-        but "does text overlap the *wrong* thing". A label centred on a blank
-        whiteboard is the whole point of the whiteboard; the same label across
-        a character's face is the defect.
-        """
-        stem = filename[:-4] if filename.endswith(".png") else filename
-        if not stem.startswith("prop_"):
-            return False
-        return stem[len("prop_"):] in set(self.data.get("writable") or [])
 
-    def in_front(self, filename):
-        """Whether this prop is drawn over the characters rather than behind.
-
-        A table the character stands behind has to overlap their legs, or the
-        shot reads as two cut-outs placed side by side rather than as a scene.
-        """
-        stem = filename[:-4] if filename.endswith(".png") else filename
-        if not stem.startswith("prop_"):
-            return False
-        return stem[len("prop_"):] in set(self.data.get("foreground") or [])
-
-    def hangs(self, filename):
-        """Whether this sprite belongs in the air rather than on the ground."""
-        stem = filename[:-4] if filename.endswith(".png") else filename
-        if not stem.startswith("prop_"):
-            return False           # characters always stand
-        return stem[len("prop_"):] in set(self.data.get("hanging") or [])
 
     def setting_prompt(self, description):
         """A themed backdrop for one video, in this cast's art style."""
@@ -417,13 +290,33 @@ class Cast:
             return named
         return next(iter(poses), None)
 
+    def anchor_path(self, character):
+        """Where this character's reference image lives. Tracked, not scratch.
+
+        It used to be read out of `raw/`, which is the pre-matting scratch dir
+        and is gitignored - so a fresh clone had no anchors at all and silently
+        generated everything unanchored, at 82% palette match instead of 98%.
+        That was survivable only while the sprite library itself was committed
+        and nothing needed generating. Now that every image in a video is drawn
+        fresh, this one file per character is the only thing holding a
+        character together, so it has a home of its own and is committed.
+        """
+        return self.dir / "anchors" / f"{character}.jpg"
+
     def anchor_file(self, character):
-        """The raw generated image to condition on, if it has been made."""
+        """The image to condition on, if it has been made."""
+        settled = self.anchor_path(character)
+        if settled.exists():
+            return settled
+        # Libraries built before anchors had their own directory keep theirs
+        # among the scratch images. Read it there rather than redrawing a
+        # character that already has a settled design.
         pose = self.anchor_pose(character)
-        if not pose:
-            return None
-        raw = self.dir / "raw" / f"{character}_{pose}.jpg"
-        return raw if raw.exists() else None
+        if pose:
+            raw = self.dir / "raw" / f"{character}_{pose}.jpg"
+            if raw.exists():
+                return raw
+        return None
 
     def anchored_prompt(self, description):
         """Prompt for a pose generated against the character's anchor.
@@ -453,56 +346,16 @@ class Cast:
             "style exactly as the references show them",
             DUO_RULES, CHROMA_PROMPT] if p)
 
-    def brief(self):
-        """What each sprite depicts, for the director to choose between.
 
-        `catalogue` returns the full generation prompt - style, costume, chroma
-        rules - which is what an image model needs and the wrong thing entirely
-        to choose from. The director was given bare filenames instead and so
-        picked poses by guessing at their names: asked for someone being handed
-        a pay packet it chose `krabs_stand` and `sponge_happy`, because nothing
-        told it that `krabs_greedy` is claws clasped and gleaming while
-        `krabs_point` is a raised claw mid-explanation.
-
-        Returns {"characters": {name: (role, {file: what the body is doing})},
-                 "props": {file: what the object is}}.
-        """
-        characters = {}
-        for name, char in (self.data.get("characters") or {}).items():
-            poses = {f"{name}_{pose}.png": desc
-                     for pose, desc in (char.get("poses") or {}).items()}
-            characters[name] = (char.get("role", ""), poses)
-        props = {f"prop_{name}.png": desc
-                 for name, desc in (self.data.get("props") or {}).items()}
-        return {"characters": characters, "props": props,
-                "interactions": dict(self.interactions)}
-
-    def catalogue(self):
-        """Every asset this cast can produce: {filename: prompt}."""
-        out = {}
-        for name, char in (self.data.get("characters") or {}).items():
-            look = char.get("look", "")
-            for pose, pose_desc in (char.get("poses") or {}).items():
-                out[f"{name}_{pose}.png"] = self.sprite_prompt(
-                    f"{look}, {pose_desc}")
-        for name, desc in (self.data.get("props") or {}).items():
-            out[f"prop_{name}.png"] = self.prop_prompt(desc)
-        for filename, desc in self.interactions.items():
-            members = self.duo_members(filename)
-            if members:
-                out[filename] = self.duo_prompt(members, desc)
-        return out
 
 
 class Library:
-    """Builds and caches the sprites for one cast."""
+    """Draws what one video needs, and the references a cast keeps."""
 
     def __init__(self, cast, log=print):
         self.cast = cast
         self._anchor_cache = {}
         self.log = log
-        self.sprites = cast.sprites
-        self.sprites.mkdir(parents=True, exist_ok=True)
         self.raw = cast.dir / "raw"
         self.raw.mkdir(parents=True, exist_ok=True)
         self.manifest_path = cast.dir / "manifest.json"
@@ -517,90 +370,8 @@ class Library:
     def _fingerprint(prompt, size):
         return hashlib.sha256(f"{size}\n{prompt}".encode("utf-8")).hexdigest()[:16]
 
-    def is_current(self, filename, prompt, size):
-        entry = self.manifest.get(filename)
-        return (entry and entry.get("fingerprint") == self._fingerprint(prompt, size)
-                and (self.sprites / filename).exists())
 
-    def build_sprite(self, filename, prompt, size, force=False, lock=None,
-                     anchor=None, candidates=1):
-        """Generate + matte one sprite unless the cache already has it.
 
-        `lock` guards the shared manifest when several of these run at once.
-        The manifest is written by the caller afterwards rather than on every
-        sprite, so a parallel build does not have threads racing to rewrite the
-        same file sixty times.
-
-        `anchor` is a reference image of this character in another pose. It is
-        a generation technique, not part of what the sprite is meant to be, so
-        the cache still keys on the plain prompt: turning anchoring on does not
-        invalidate a library that was built without it.
-        """
-        if not force and self.is_current(filename, prompt, size):
-            return self.sprites / filename, False
-        raw_path = self.raw / (Path(filename).stem + ".jpg")
-        draw = (lambda out: ark.generate_image(anchor["prompt"], out, size=size,
-                                               reference_images=anchor["uris"])
-                if anchor else ark.generate_image(prompt, out, size=size))
-        if candidates > 1:
-            self._draw_best(draw, raw_path, candidates, anchor, prompt)
-        else:
-            draw(raw_path)
-        info = matting.process_file(raw_path, self.sprites / filename)
-        entry = {
-            "fingerprint": self._fingerprint(prompt, size),
-            "prompt": prompt, "size": size, "key": info["mode"],
-            "anchored": bool(anchor),
-            "coverage": round(info["coverage"], 4),
-            "pixels": list(info["size"]), "built": time.strftime("%Y-%m-%d %H:%M:%S"),
-        }
-        if lock is not None:
-            with lock:
-                self.manifest[filename] = entry
-        else:
-            self.manifest[filename] = entry
-            self._save_manifest()
-        return self.sprites / filename, True
-
-    def _draw_best(self, draw, out_path, candidates, anchor, prompt):
-        """Draw the same sprite a few times and keep the one that reads best.
-
-        Only worth it where a sprite is both hard to get right and rare enough
-        that drawing it twice is affordable - which is exactly a two-figure
-        interaction. The first handover came back with a claw detached from its
-        owner; the second attempt at the same prompt did not.
-
-        The judgement is comparative, never absolute. Asked whether one picture
-        is good, this model says no to almost anything; asked which of two is
-        better, it is useful.
-        """
-        wanted = (anchor or {}).get("prompt") or prompt
-        drafts = []
-        for index in range(candidates):
-            draft = out_path.with_name(f"{out_path.stem}.try{index}.jpg")
-            try:
-                draw(draft)
-                drafts.append(draft)
-            except Exception:
-                if not drafts and index == candidates - 1:
-                    raise            # every attempt failed; let the caller see
-        if not drafts:
-            raise RuntimeError(f"no candidate could be drawn for {out_path.name}")
-        best = drafts[0]
-        if len(drafts) > 1:
-            try:
-                answer = ark.compare_images(drafts, COMPARE_PROMPT.format(
-                    description=wanted[:400], count=len(drafts)))
-                pick = next((int(ch) for ch in answer if ch.isdigit()
-                             and 1 <= int(ch) <= len(drafts)), 1)
-                best = drafts[pick - 1]
-                self.log(f"    kept candidate {pick} of {len(drafts)}")
-            except Exception as exc:
-                self.log(f"    could not compare candidates ({str(exc)[:60]}); "
-                         f"keeping the first")
-        best.replace(out_path)
-        for draft in drafts:
-            draft.unlink(missing_ok=True)
 
     def build_background(self, out_path, size, force=False):
         """The one plate the whole video sits on. Not matted.
@@ -661,6 +432,64 @@ class Library:
         self._save_manifest()
         return out_path, True
 
+    def build_anchor(self, character, size, force=False):
+        """Draw the one reference image that defines a character. (path, made).
+
+        This is the only drawing that outlives a video. Everything else is made
+        for one script and thrown away, which is the point - a shared library
+        is why every video used to open on the same picture. But identity has
+        to come from somewhere: generated from the description alone, the same
+        character drifts between shots of a single video, measured at 82%
+        palette match against 98% when every drawing is conditioned on one
+        reference. So: one file per character, committed, and nothing else.
+        """
+        char = (self.cast.data.get("characters") or {}).get(character) or {}
+        look = (char.get("look") or "").strip()
+        if not look:
+            raise ValueError(f"{character} has no `look` to draw from")
+        out_path = self.cast.anchor_path(character)
+        if out_path.exists() and not force:
+            return out_path, False
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        prompt = self.cast.sprite_prompt(
+            f"{look}, standing squarely facing the viewer, arms relaxed at the "
+            "sides, neutral friendly expression, the definitive reference "
+            "drawing of this character")
+        ark.generate_image(prompt, out_path, size=size)
+        self._anchor_cache.pop(character, None)
+        return out_path, True
+
+    def build_drawing(self, spec, out_dir, size, force=False):
+        """Draw one described element for one video. Returns (path, made).
+
+        The filename already carries a hash of what was asked for, so the file
+        being there *is* the cache - re-running a stage redraws nothing, and
+        two shots that described the same picture share it. Nothing is written
+        to the cast, so nothing reaches the next video.
+        """
+        out_dir = Path(out_dir)
+        out_path = out_dir / spec["asset"]
+        if out_path.exists() and not force:
+            return out_path, False
+        who, shows = list(spec.get("who") or []), spec["shows"]
+        uris = [uri for uri in (self._anchor_uri(name) for name in who) if uri]
+        if len(who) == 2:
+            prompt = (self.cast.anchored_duo_prompt(who, shows) if uris
+                      else self.cast.duo_prompt(who, shows))
+        elif who:
+            prompt = (self.cast.anchored_prompt(shows) if uris
+                      else self.cast.sprite_prompt(
+                          f"{(self.cast.data['characters'][who[0]]).get('look','')}, {shows}"))
+        else:
+            prompt, uris = self.cast.prop_prompt(shows), []
+        raw_path = out_dir / "raw" / (out_path.stem + ".jpg")
+        raw_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        ark.generate_image(prompt, raw_path, size=size,
+                           reference_images=uris or None)
+        matting.process_file(raw_path, out_path)
+        return out_path, True
+
     def build_title_card(self, text, out_path, size, force=False, attempts=2):
         """Generate brush-calligraphy lettering, and check that it reads right.
 
@@ -703,120 +532,8 @@ class Library:
         out_path.unlink(missing_ok=True)
         return None, "lettering never matched; drawing it instead"
 
-    def build_all(self, size, only=None, force=False, workers=4):
-        """Build the whole catalogue (or just `only`). Returns a small report.
 
-        Generation is the slow part of a new cast - 28 images took 12 minutes
-        serially, all of it waiting on the service - so requests go out in
-        parallel. Four is deliberately modest: the point is to overlap the
-        waiting, not to hammer a rate limit into failing half the library.
-        """
-        from concurrent.futures import ThreadPoolExecutor
-        import threading
 
-        catalogue = self.cast.catalogue()
-        if only:
-            wanted = set(only)
-            catalogue = {k: v for k, v in catalogue.items() if k in wanted}
-            for name in sorted(wanted - set(catalogue)):
-                self.log(f"  ! {name} is not in the cast - skipping")
-
-        todo = sorted(catalogue.items())
-        total = len(todo)
-        built, cached, failed = [], [], []
-        lock = threading.Lock()
-        counter = {"n": 0}
-
-        def one(item):
-            filename, prompt = item
-            try:
-                _, made = self.build_sprite(filename, prompt, size, force=force,
-                                            lock=lock,
-                                            anchor=self._anchor_for(filename),
-                                            candidates=(
-                                                DUO_CANDIDATES
-                                                if self.cast.duo_members(filename)
-                                                else 1))
-            except Exception as exc:            # keep going; report at the end
-                with lock:
-                    counter["n"] += 1
-                    failed.append((filename, str(exc)))
-                    self.log(f"  [{counter['n']}/{total}] {filename}  FAILED: {exc}")
-                return
-            with lock:
-                counter["n"] += 1
-                (built if made else cached).append(filename)
-                entry = self.manifest.get(filename, {})
-                flag = ""
-                if made and not (0.02 < entry.get("coverage", 1.0) < 0.95):
-                    flag = "  <-- odd cutout coverage, check this one"
-                self.log(f"  [{counter['n']}/{total}] {filename}  "
-                         f"{'generated' if made else 'cached'}{flag}")
-
-        # Anchors first, and alone. Every other pose of a character is drawn
-        # against its anchor, so the anchor has to exist before the rest go out
-        # - and if they all went out together, whichever won the race would be
-        # a different character from the others.
-        anchors = [t for t in todo if self._is_anchor(t[0])]
-        rest = [t for t in todo if not self._is_anchor(t[0])]
-
-        def run(batch):
-            if not batch:
-                return
-            if workers > 1 and len(batch) > 1:
-                with ThreadPoolExecutor(max_workers=workers) as pool:
-                    list(pool.map(one, batch))
-            else:
-                for item in batch:
-                    one(item)
-
-        run(anchors)
-        run(rest)
-        self._save_manifest()
-        return {"built": built, "cached": cached, "failed": failed}
-
-    def _is_anchor(self, filename):
-        """Whether this sprite is the one the character's others are drawn from."""
-        stem = filename[:-4] if filename.endswith(".png") else filename
-        if stem.startswith("prop_"):
-            return False           # a prop has no other poses to stay in step with
-        if stem.startswith(DUO_PREFIX):
-            return False           # an interaction is never anyone's anchor
-        character, _, pose = stem.partition("_")
-        return pose and pose == self.cast.anchor_pose(character)
-
-    def _anchor_for(self, filename):
-        """The reference image for this sprite, or None to generate it plainly.
-
-        Returns None for props, for the anchor itself, and whenever the anchor
-        has not been drawn yet - a missing anchor makes a sprite slightly less
-        consistent, which is the old behaviour and much better than refusing to
-        draw it.
-        """
-        stem = filename[:-4] if filename.endswith(".png") else filename
-        if stem.startswith("prop_") or self._is_anchor(filename):
-            return None
-
-        members = self.cast.duo_members(filename)
-        if members:
-            # Two figures, so two references: each character is pinned to its
-            # own anchor, which is the whole reason a drawn-together sprite can
-            # still look like the cast rather than like two new people.
-            uris = [u for u in (self._anchor_uri(m) for m in members) if u]
-            description = self.cast.interactions.get(filename)
-            if len(uris) != len(members) or not description:
-                return None
-            return {"uris": uris,
-                    "prompt": self.cast.anchored_duo_prompt(members, description)}
-
-        character, _, pose = stem.partition("_")
-        uri = self._anchor_uri(character)
-        description = ((self.cast.data.get("characters") or {})
-                       .get(character, {}).get("poses", {}).get(pose))
-        if not uri or not description:
-            return None
-        return {"uris": [uri],
-                "prompt": self.cast.anchored_prompt(description)}
 
     def _anchor_uri(self, character):
         """The character's anchor image as a data URI, read once."""
@@ -830,25 +547,5 @@ class Library:
         return self._anchor_cache[character]
 
 
-    def available(self):
-        return sorted(p.name for p in self.sprites.glob("*.png"))
 
 
-def link_into(project_dir, cast, names=None):
-    """Copy the sprites a project uses into its own directory.
-
-    Copying rather than referencing keeps a finished project self-contained, so
-    it still renders after the cast library is edited or moved.
-    """
-    import shutil
-    project_dir = Path(project_dir)
-    project_dir.mkdir(parents=True, exist_ok=True)
-    copied = []
-    for src in sorted(cast.sprites.glob("*.png")):
-        if names and src.name not in names:
-            continue
-        dst = project_dir / src.name
-        if not dst.exists() or dst.stat().st_mtime < src.stat().st_mtime:
-            shutil.copy2(src, dst)
-        copied.append(src.name)
-    return copied

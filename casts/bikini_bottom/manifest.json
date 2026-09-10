@@ -375,7 +375,7 @@
     "fingerprint": "244cb651578720e6",
     "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, Bikini Bottom undersea meadow seen straight on. Low horizon two thirds down the frame. Upper two thirds: calm teal water fading to pale cyan, decorated only with thin pale outlines of five-petal flower shapes, small and sparse. Lower third: an open bright green grass field stretching the full width, gently rolling, small white flowers. Small purple coral bushes hug the ground at the extreme left and right edges only. Wide open empty middle with nothing in it., wide establishing background plate, no characters, no people, no text, no watermark, nothing in the foreground, empty stage with clear space in the lower half",
     "size": "2560x1440",
-    "built": "2026-09-06 19:54:50"
+    "built": "2026-09-09 18:52:56"
   },
   "background::1440x2560": {
     "fingerprint": "a6b0e578842444d1",
@@ -400,7 +400,7 @@
     "prompt": "中文书法艺术字『什么是效率工资』，狂草毛笔字，鲜红色字体带灰白色立体投影，笔画有飞白和枯笔质感，纯黑色背景，横向排列一行，字体清晰完整准确",
     "size": "2560x1440",
     "verified": "什么是效率工资",
-    "built": "2026-08-29 22:14:51"
+    "built": "2026-09-09 18:57:18"
   },
   "squid_annoyed.png": {
     "fingerprint": "f44d1f7c40a2bb4b",
@@ -839,5 +839,17 @@
     "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, inside the Krusty Krab restaurant front counter area, a flat frontal view of an interior wall or backdrop, seen straight on, no perspective vanishing point, no characters, no people, no creatures, no text, no watermark, nothing in the foreground, the middle and lower area plain and uncluttered so figures can stand in front of it, detail only near the top and edges",
     "size": "2560x1440",
     "built": "2026-09-06 19:58:11"
+  },
+  "setting::1d91649093806bc5": {
+    "fingerprint": "1d91649093806bc5",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, Krusty Krab back kitchen with a work counter, a flat frontal view of an interior wall or backdrop, seen straight on, no perspective vanishing point, no characters, no people, no creatures, no text, no watermark, nothing in the foreground, the middle and lower area plain and uncluttered so figures can stand in front of it, detail only near the top and edges",
+    "size": "2560x1440",
+    "built": "2026-09-09 18:41:38"
+  },
+  "setting::9d34e651d1817df9": {
+    "fingerprint": "9d34e651d1817df9",
+    "prompt": "SpongeBob SquarePants original 2D hand-drawn cartoon style, clean thick black outlines, flat cel shading, bright saturated palette, exactly as drawn in the television series, The Krusty Krab back kitchen, behind the service counter, a flat frontal view of an interior wall or backdrop, seen straight on, no perspective vanishing point, no characters, no people, no creatures, no text, no watermark, nothing in the foreground, the middle and lower area plain and uncluttered so figures can stand in front of it, detail only near the top and edges",
+    "size": "2560x1440",
+    "built": "2026-09-09 18:57:48"
   }
 }

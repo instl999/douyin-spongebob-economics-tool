@@ -169,21 +169,13 @@ def stage_plan(project, force=False):
 
     for problem in result.get("problems", []):
         log(f"  ! {problem}")
-    log(f"  {len(result['scenes'])} shots, "
-        f"{len(plan_mod.used_sprites(result))} distinct sprites")
-    # New poses are the one thing here that spends money and changes the cast,
-    # so they are reported as their own line rather than buried in `problems`.
-    for req in result.get("new_poses") or []:
-        log(f"  + new pose {req['asset']} (shot {req['shot']}): "
-            f"{req['description']}")
-    for req in result.get("new_interactions") or []:
-        log(f"  + new interaction {req['asset']} (shot {req['shot']}): "
-            f"{req['description']}")
-    if result.get("new_poses") or result.get("new_interactions"):
-        added = (len(result.get("new_poses") or [])
-                 + len(result.get("new_interactions") or []))
-        log(f"    {added} sprite(s) added to this cast - drawn once, "
-            f"reused by later videos")
+    drawings = result.get("drawings") or []
+    log(f"  {len(result['scenes'])} shots, {len(drawings)} drawings to make")
+    # Drawings are the whole bill now - nothing comes from a library - so what
+    # this video is about to spend is listed rather than buried in `problems`.
+    for spec in drawings:
+        who = "+".join(spec["who"]) if spec["who"] else "prop"
+        log(f"  + {who:16} {spec['shows'][:66]}")
     target.write_text(json.dumps(result, ensure_ascii=False, indent=2),
                       encoding="utf-8")
     return result
@@ -198,12 +190,33 @@ def stage_assets(project, plan, force=False):
     _, made = library.build_background(background, lay.image_size, force=force)
     log(f"  background.png  {'generated' if made else 'cached'}")
 
-    wanted = set(plan_mod.used_sprites(plan))
-    if wanted:
-        report = library.build_all(assets_mod.SPRITE_SIZE, only=wanted, force=force)
-        if report["failed"]:
-            for name, err in report["failed"]:
-                log(f"  ! {name}: {err}")
+    # One reference per character, drawn once and committed. It is the only
+    # thing that survives a video, and without it the same character drifts
+    # from shot to shot - which is worse than the sameness that dropping the
+    # library was meant to cure.
+    for name in sorted({who for spec in plan.get("drawings") or []
+                        for who in spec.get("who") or []}):
+        try:
+            _, made = library.build_anchor(name, assets_mod.SPRITE_SIZE)
+            if made:
+                log(f"  anchor          drew {name} - this cast's reference")
+        except Exception as exc:
+            log(f"  ! no anchor for {name} ({type(exc).__name__}); "
+                f"{name} will be drawn from description alone")
+
+    drawings = plan.get("drawings") or []
+    failed = []
+    for i, spec in enumerate(drawings, 1):
+        try:
+            _, made = library.build_drawing(spec, project.out,
+                                            assets_mod.SPRITE_SIZE, force=force)
+        except Exception as exc:
+            failed.append((spec["asset"], f"{type(exc).__name__}: {exc}"))
+            continue
+        log(f"  [{i}/{len(drawings)}] {spec['asset']}  "
+            f"{'drawn' if made else 'already here'}")
+    for name, err in failed:
+        log(f"  ! {name}: {err}")
     title_text = project.get("title") or plan.get("title") or ""
     if title_text and project.get("ai_title", True):
         card, note = library.build_title_card(
@@ -225,7 +238,6 @@ def stage_assets(project, plan, force=False):
             log(f"  ! backdrop could not be generated "
                 f"({type(exc).__name__}): {str(exc)[:90]}")
 
-    assets_mod.link_into(project.out, cast, names=wanted)
     reconcile_sprites(project, plan, cast)
     return background
 
@@ -233,14 +245,17 @@ def stage_assets(project, plan, force=False):
 def reconcile_sprites(project, plan, cast):
     """Stand in an existing pose for any sprite that did not reach the disk.
 
-    A pose the director asked for can fail to arrive - a quota wall, a content
-    filter, a dropped connection - and the renderer's answer to a missing PNG
-    is to skip that element. That is the wrong answer here. A shot that asked
-    for two new poses and got neither lost both its characters and rendered as
-    an empty plate, which is worse than the generic casting the request was
-    meant to improve on. A near pose is always better than nobody.
+    A drawing can fail to arrive - a quota wall, a content filter, a dropped
+    connection - and the renderer's answer to a missing PNG is to skip that
+    element. That is the wrong answer here: a shot that asked for two figures
+    and got neither renders as an empty plate.
+
+    The stand-in used to come from the shared catalogue. There is no catalogue
+    now, so it comes from this video's own drawings - another picture of the
+    same character, which is a closer match than a library pose ever was,
+    since both were drawn for this script.
     """
-    present = {n for n in cast.catalogue() if (project.out / n).exists()}
+    present = {path.name for path in project.out.glob("*.png")}
     for scene in plan.get("scenes") or []:
         kept, subjects = [], set()
         for el in scene.get("elements") or []:
@@ -250,7 +265,10 @@ def reconcile_sprites(project, plan, cast):
                     subjects.add(_subject_of(asset))
                 kept.append(el)
                 continue
-            swap = plan_mod.nearest(asset, present)
+            subject = _subject_of(asset)
+            swap = next((name for name in sorted(present)
+                         if name != asset and not name.startswith("prop_")
+                         and _subject_of(name) == subject), None)
             # The stand-in may be a pose of someone already in the shot, and
             # one character twice is a worse picture than one character once.
             if swap and _subject_of(swap) not in subjects:
@@ -494,8 +512,7 @@ def stage_storyboard(project, plan, voice_index):
     import checks as checks_mod
     import render as render_mod
     findings = checks_mod.inspect(
-        storyboard, render_mod.Assets(project.out), lay, repair=True,
-        cast=project.cast)
+        storyboard, render_mod.Assets(project.out), lay, repair=True)
     for line in findings:
         log(f"  {line}")
 

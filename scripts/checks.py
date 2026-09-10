@@ -76,7 +76,7 @@ def _overlap(a, b):
     return dx * dy if dx > 0 and dy > 0 else 0.0
 
 
-def _place_text(scene, assets, lay, framing, W, H, caption_top, cast):
+def _place_text(scene, assets, lay, framing, W, H, caption_top):
     """Keep text off faces, and on the boards that exist to carry it.
 
     Measured across five finished videos, 15% of labels landed on top of a
@@ -98,7 +98,7 @@ def _place_text(scene, assets, lay, framing, W, H, caption_top, cast):
         box = _extent(el, assets, lay, framing)
         if not box:
             continue
-        if cast is not None and cast.writable(el["asset"]):
+        if el.get("role") == "board":
             surfaces.append((el, box))
         else:
             blockers.append((el, box))
@@ -284,7 +284,7 @@ def _repair_scene(scene, assets, lay, framing, W):
     return findings
 
 
-def _report_scene(scene, assets, lay, framing, W, H, caption_top, cast):
+def _report_scene(scene, assets, lay, framing, W, H, caption_top):
     """What is still wrong with one shot, changing nothing."""
     findings = []
     sid = scene.get("id", "?")
@@ -313,7 +313,7 @@ def _report_scene(scene, assets, lay, framing, W, H, caption_top, cast):
             findings.append(f"shot {sid}: {_name(el)} hangs into the caption")
 
     blockers = [(el, box) for el, box in sprites
-                if not (cast is not None and cast.writable(el.get("asset", "")))]
+                if el.get("role") != "board"]
     for el in elements:
         if el.get("type") not in ("label", "bubble"):
             continue
@@ -334,7 +334,7 @@ def _report_scene(scene, assets, lay, framing, W, H, caption_top, cast):
     return findings
 
 
-def inspect(storyboard, assets, lay, repair=True, cast=None):
+def inspect(storyboard, assets, lay, repair=True):
     """Walk every shot. Returns a list of human-readable findings.
 
     With repair on, this loops until the shots stop changing, so what it
@@ -357,9 +357,9 @@ def inspect(storyboard, assets, lay, repair=True, cast=None):
             # Text goes last: it is placed around wherever the sprites ended
             # up, so it has to run after the row is final.
             findings.extend(_place_text(scene, assets, lay, framing, W, H,
-                                        caption_top, cast))
+                                        caption_top))
         findings.extend(_report_scene(scene, assets, lay, framing, W, H,
-                                      caption_top, cast))
+                                      caption_top))
     return findings
 
 
