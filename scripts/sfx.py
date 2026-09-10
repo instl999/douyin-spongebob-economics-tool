@@ -58,11 +58,45 @@ EMOTION_WORDS = [
 ]
 
 
-def library():
-    """{name: path} for every effect on disk."""
+# Generated cues are written as wav. The opening cue is a supplied file and
+# ships as it was given, so the library reads both rather than making anyone
+# convert their own sound effect to suit the folder.
+CUE_SUFFIXES = (".wav", ".mp3")
+
+
+def duplicate_cues():
+    """Cue names present in more than one format, with the one that wins.
+
+    Every generated cue is a wav and the supplied opening cue is an mp3, so
+    the two never collide on purpose. A collision is a leftover - and a silent
+    one: the loser simply stops being used. That is how a stale converted copy
+    of the opening cue kept shadowing the file actually shipped, with the same
+    name, the same sound, and no way to tell from the build which was playing.
+    """
     if not SFX_DIR.is_dir():
         return {}
-    return {f.stem: f for f in sorted(SFX_DIR.glob("*.wav"))}
+    seen = {}
+    for suffix in CUE_SUFFIXES:
+        for path in sorted(SFX_DIR.glob(f"*{suffix}")):
+            seen.setdefault(path.stem, []).append(path)
+    chosen = library()
+    return {name: (paths, chosen.get(name))
+            for name, paths in seen.items() if len(paths) > 1}
+
+
+def library():
+    """{name: path} for every effect on disk.
+
+    A wav wins over an mp3 of the same name, so a generated cue is never
+    shadowed by a stale download sitting beside it.
+    """
+    if not SFX_DIR.is_dir():
+        return {}
+    found = {}
+    for suffix in reversed(CUE_SUFFIXES):
+        for path in sorted(SFX_DIR.glob(f"*{suffix}")):
+            found[path.stem] = path
+    return dict(sorted(found.items()))
 
 
 def _has(scene, predicate):
@@ -135,8 +169,18 @@ def carried(storyboard):
             when, name = float(entry[0]), str(entry[1])
         except (TypeError, ValueError, IndexError):
             continue
-        if name in have:
+        if name not in have:
+            continue
+        # An optional third element is that one cue's own gain, overriding the
+        # global one. The title card's stinger needs it: an opening accent sits
+        # about 6 dB above the level a coin drop under narration wants, and
+        # raising `sfx_volume` to suit it would raise every other cue too.
+        try:
+            gain = float(entry[2])
+        except (TypeError, ValueError, IndexError):
             out.append((when, name, have[name]))
+        else:
+            out.append((when, name, have[name], gain))
     return out
 
 
@@ -220,8 +264,8 @@ def plan(storyboard, durations, cast=None, look=None):
 def describe(cues):
     """One line for the build log: how many, how varied."""
     counts = {}
-    for _, name, _ in cues:
-        counts[name] = counts.get(name, 0) + 1
+    for cue in cues:                       # a cue may carry a fourth element
+        counts[cue[1]] = counts.get(cue[1], 0) + 1
     listing = ", ".join(f"{name}x{n}" if n > 1 else name
                         for name, n in sorted(counts.items()))
     return f"{len(counts)} distinct: {listing}"

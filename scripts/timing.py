@@ -14,7 +14,6 @@ to every clip, and it is not a rounding detail - across fifteen shots it is
 seven seconds of the running time, which is the difference between hitting a
 target and missing it.
 """
-import math
 
 SECONDS_PER_CHAR = 0.1610
 CLIP_OVERHEAD = 0.484

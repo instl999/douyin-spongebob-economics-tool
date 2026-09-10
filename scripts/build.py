@@ -25,6 +25,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import console  # noqa: F401  UTF-8 stdout; see console.py
+
 import assets as assets_mod
 import audio as audio_mod
 import config
@@ -286,6 +288,48 @@ def _subject_of(asset):
     return stem if stem.startswith("prop_") else stem.split("_", 1)[0]
 
 
+TITLE_SFX_LEAD = audio_mod.TITLE_SFX_LEAD
+# A name in the sfx library, not a path: that is what a cue is. `""` in a
+# project's `opening_sfx` turns it off.
+# The supplied opening cue, by name in assets/sfx. It is shipped, not
+# generated: gen_sfx builds every other cue in that folder, and this one is a
+# specific sound the videos are known by.
+OPENING_SFX = "opening_dong"
+# Unity. The opening cue plays exactly as supplied - no gain, no normalising,
+# no levelling against the narration. Earlier versions tuned this (0.7, then
+# 0.42 once the cue was generated at -12 dB) and both were wrong for the same
+# reason: the cue is the user's own file and is meant to sound the way it
+# sounds.
+OPENING_GAIN = 1.0
+
+
+# The longest the card may hold before shot 1. The director brief asks for a
+# title of ten characters or fewer, and this file's own findings say what that
+# is worth: a prompt is a request, check the output. A thirty-character title
+# reads for five seconds, and nothing stopped the card growing to fit it.
+MAX_TITLE_SLOT = 4.5
+
+
+def title_voice_fits(spoken, tail, lead=TITLE_SFX_LEAD, cap=MAX_TITLE_SLOT):
+    """Whether reading the title aloud leaves shot 1 starting in time."""
+    return lead + spoken + tail <= cap
+
+
+def title_slot(configured, spoken, tail, lead=TITLE_SFX_LEAD, cap=MAX_TITLE_SLOT):
+    """How long the title card holds once it has a line to read.
+
+    The configured length is a floor, not the answer. A title is read aloud
+    now, and any title past about eight characters does not fit in the 2.6 s
+    the card used to hold for - it would cut to shot 1 mid-word.
+
+    It is not an unbounded ceiling either. Callers drop the voice-over rather
+    than let the card run past `cap`; this clamps as a second line of defence.
+    """
+    if spoken <= 0:
+        return configured
+    return min(max(configured, lead + spoken + tail), max(configured, cap))
+
+
 def stage_voice(project, plan, force=False, speed=None):
     voice = project.get("voice", {}) or {}
     speaker = voice.get("speaker")
@@ -295,9 +339,15 @@ def stage_voice(project, plan, force=False, speed=None):
              if index_path.exists() and not force else {})
 
     degraded = 0
-    for i, scene in enumerate(plan["scenes"], 1):
-        key = str(i)
-        text = scene["narration"]
+    # The title card is read aloud like any other line. It used to hold a
+    # silent slot in the narration track, so the video opened on two and a half
+    # seconds of nothing while the card sat there.
+    title_text = project.get("title") or plan.get("title") or ""
+    jobs = [("title", title_text)] if title_text else []
+    jobs += [(str(i), scene["narration"])
+             for i, scene in enumerate(plan["scenes"], 1)]
+
+    for key, text in jobs:
         cached = index.get(key)
         # A shot that fell back to silence is cached like any other, so without
         # this a transient network fault becomes a permanent hole: every later
@@ -307,13 +357,15 @@ def stage_voice(project, plan, force=False, speed=None):
         if (cached and not stale and cached.get("text") == text
                 and Path(cached["path"]).exists()):
             continue
+        label = "title" if key == "title" else f"shot {key}"
         if stale:
-            log(f"  shot {i}: retrying (was silent from an earlier failure)")
-        out = project.out / "voice" / f"scene_{i:02d}.mp3"
+            log(f"  {label}: retrying (was silent from an earlier failure)")
+        out = project.out / "voice" / (
+            "title.mp3" if key == "title" else f"scene_{int(key):02d}.mp3")
         try:
             result = tts_mod.synth(text, out, speaker=speaker, speed=speed)
         except tts_mod.TTSError as exc:
-            log(f"  ! shot {i}: {exc}")
+            log(f"  ! {label}: {exc}")
             log("    falling back to an estimated duration for this shot")
             result = tts_mod._silent(text, out)
         if result["degraded"]:
@@ -321,7 +373,7 @@ def stage_voice(project, plan, force=False, speed=None):
         index[key] = {"text": text, "path": str(result["path"]),
                       "duration": result["duration"],
                       "words": result["words"], "degraded": result["degraded"]}
-        log(f"  shot {i:>2}: {result['duration']:5.2f}s"
+        log(f"  {label:>8}: {result['duration']:5.2f}s"
             f"{'  (estimated - no TTS)' if result['degraded'] else ''}")
 
     index_path.write_text(json.dumps(index, ensure_ascii=False, indent=2),
@@ -440,7 +492,26 @@ def stage_storyboard(project, plan, voice_index):
     title_text = project.get("title") or plan.get("title") or ""
     title_seconds = float(project.get("title_seconds", 2.6)) if title_text else 0.0
     if title_seconds:
-        pieces.append((None, title_seconds))
+        # The card holds for as long as its own line needs, never less than the
+        # configured minimum. Reading it aloud inside a fixed 2.6 s would clip
+        # any title longer than about eight characters, and the card would cut
+        # to shot 1 mid-word.
+        entry = voice_index.get("title", {})
+        spoken = float(entry.get("duration") or 0.0)
+        audio_path = entry.get("path")
+        if spoken and not title_voice_fits(spoken, tail):
+            # Too long to read before shot 1 has to start. The card stays; only
+            # its voice goes. Clamping instead would cut the title mid-word.
+            log(f"  title voice dropped: {spoken:.1f}s of speech would hold the "
+                f"card past {MAX_TITLE_SLOT}s - ask the director for a shorter title")
+            spoken, audio_path = 0.0, None
+        title_seconds = title_slot(title_seconds, spoken, tail)
+        pieces.append((audio_path if audio_path and Path(audio_path).exists()
+                       else None, title_seconds, TITLE_SFX_LEAD))
+        # Deliberately NOT an SRT cue, even though it is now spoken. The draft
+        # imports the SRT as a native subtitle track, so a cue here printed the
+        # title a second time in small white text under the calligraphy card
+        # that already says it. The card is the title's caption.
         clock += title_seconds
 
     for i, scene in enumerate(plan["scenes"], 1):
@@ -528,6 +599,26 @@ def stage_storyboard(project, plan, voice_index):
         [round(when, 3), name] for when, name, _ in sfx_mod.plan(
             storyboard, [s["duration"] for s in scenes],
             cast=project.cast, look=look)]
+
+    # The title card's stinger is a cue at t=0 like any other, recorded here
+    # rather than laid into the mix separately. `carried` is read by BOTH the
+    # mix and the draft writer, so a cue that lives anywhere else is a cue the
+    # two can disagree about - which is the failure the cue list was moved onto
+    # the storyboard to prevent in the first place.
+    opening = project.get("opening_sfx", OPENING_SFX)
+    for name, (paths, winner) in sfx_mod.duplicate_cues().items():
+        others = ", ".join(p.name for p in paths if p != winner)
+        log(f"  ! cue '{name}' exists more than once; using {winner.name} "
+            f"and ignoring {others}")
+    if title_text and opening and opening not in sfx_mod.library():
+        # Supplied, never synthesised. There is no fallback to generate one:
+        # the opening cue is a specific sound the videos are known by, and a
+        # stand-in that merely resembles it is worse than saying it is missing.
+        log(f"  ! opening cue '{opening}' is not in assets/sfx - the video "
+            f"will open without one")
+    if title_text and opening and opening in sfx_mod.library():
+        storyboard["sound_cues"].insert(
+            0, [0.0, opening, float(project.get("opening_volume", OPENING_GAIN))])
 
     (project.out / "storyboard.json").write_text(
         json.dumps(storyboard, ensure_ascii=False, indent=2), encoding="utf-8")

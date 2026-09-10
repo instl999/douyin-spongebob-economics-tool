@@ -62,6 +62,15 @@ TTS_URL = _env(
 TTS_SPEAKER = _env("VOLC_TTS_SPEAKER", "zh_male_yuanboxiaoshu_uranus_bigtts")
 
 
+# --- Stock footage --------------------------------------------------------
+# Only needed for the footage-driven track. Pexels answers some networks
+# without a key and then 401s on the next call, so treat the key as required -
+# https://www.pexels.com/api/ issues one free. Wikimedia Commons needs no key
+# at all and is the archival half of the pair.
+PEXELS_API_KEY = _env("PEXELS_API_KEY")
+FOOTAGE_PROVIDERS = _env("FOOTAGE_PROVIDERS", "pexels+commons")
+
+
 # --- Local tools ----------------------------------------------------------
 FFMPEG = _env("FFMPEG_BIN", "ffmpeg")
 FFPROBE = _env("FFPROBE_BIN", "ffprobe")
@@ -75,6 +84,10 @@ def have_tts():
     return bool(TTS_KEY)
 
 
+def have_pexels():
+    return bool(PEXELS_API_KEY)
+
+
 def describe():
     """One-line-per-capability readiness report, used by `build.py --check`."""
     rows = [
@@ -83,5 +96,10 @@ def describe():
         ("TTS  (narration)", have_tts(),
          "set ARK_API_KEY" if not have_tts()
          else f"{TTS_RESOURCE_ID} / {TTS_SPEAKER}"),
+        # Not fatal: only the footage track needs it, and Commons still works
+        # without it. Reported as optional.
+        ("Pexels (stock footage, optional)", have_pexels(),
+         "set PEXELS_API_KEY for modern B-roll; Commons archival works without it"
+         if not have_pexels() else FOOTAGE_PROVIDERS),
     ]
     return rows

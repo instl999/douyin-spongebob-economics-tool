@@ -784,9 +784,6 @@ def _vary_poses(scenes, problems, drawings):
                             f"{seen} times, re-described from its beat")
 
 
-def used_sprites(plan):
-    return sorted({el["asset"] for scene in plan["scenes"]
-                   for el in scene["elements"] if "asset" in el})
 
 
 def offline_plan(script, cast, shot_seconds=5.0):

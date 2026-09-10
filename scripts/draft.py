@@ -37,6 +37,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import console  # noqa: F401  UTF-8 stdout; see console.py
+
+import audio as audio_mod
+
 from PIL import Image
 
 import render as render_mod
@@ -198,12 +202,14 @@ class DraftBuilder:
 
     def _add_background(self, script, segments):
         """The plate under the shots, and the black cards either side of them."""
-        body_start = body_end = None
+        # Only whether the body exists matters here; the plate is laid one
+        # segment per shot below, so the body's end was left over from when it
+        # was a single span and nothing has read it since.
+        body_start = None
         for seg in segments:
             if seg.kind == "scene":
                 if body_start is None:
                     body_start = seg.start
-                body_end = seg.end
                 continue
             card = self._card_png(seg.data, seg.kind)
             script.add_segment(
@@ -402,9 +408,19 @@ class DraftBuilder:
             return
         index = json.loads(index_path.read_text(encoding="utf-8-sig"))
         for seg in segments:
-            if seg.kind != "scene":
+            # The title card is voiced too, and its clip starts after the
+            # stinger rather than at the card's own start. Skipping every
+            # non-scene segment here left the draft's title silent while the
+            # rendered MP4 beside it spoke - the two disagreeing is worse than
+            # either being wrong, because the draft is the deliverable.
+            if seg.kind == "title":
+                lead = audio_mod.TITLE_SFX_LEAD
+                entry = index.get("title")
+            elif seg.kind == "scene":
+                lead = 0.0
+                entry = index.get(str(seg.data.get("id", seg.index + 1)))
+            else:
                 continue
-            entry = index.get(str(seg.data.get("id", seg.index + 1)))
             if not entry:
                 continue
             # Strictly the path the voice stage recorded. A sibling .wav is not
@@ -418,11 +434,12 @@ class DraftBuilder:
             # that overran would push everything after it out of sync. Clamp to
             # the file as well: a degraded retry can come back short, and
             # asking for more than exists is an error rather than silence.
-            length = min(_us(seg.duration),
+            length = min(_us(seg.duration - lead),
                          _us(entry.get("duration", seg.duration)),
                          material.duration)
             script.add_segment(
-                AudioSegment(material, Timerange(_us(seg.start), length)), "配音")
+                AudioSegment(material, Timerange(_us(seg.start + lead), length)),
+                "配音")
 
     def _add_sfx(self, script):
         """The same cues the mix uses, on their own track.
@@ -438,12 +455,17 @@ class DraftBuilder:
         # the cut and a coin a quarter-second later - and a Jianying track
         # holds one segment at a time. Alternating lanes is what an editor
         # does; the alternative is truncating the sound, which is audible.
-        for when, _name, path in cues:
+        for cue in cues:
+            when, path = cue[0], cue[2]
+            # A cue may carry its own gain; the draft has to honour the same
+            # one the mix used, or the stinger is loud in the MP4 and quiet in
+            # the draft beside it.
+            level = float(cue[3]) if len(cue) > 3 else gain
             material = jy.AudioMaterial(str(path))
             start = _us(when)
             script.add_segment(
                 AudioSegment(material, Timerange(start, material.duration),
-                             volume=gain),
+                             volume=level),
                 self._lane(script, TrackType.audio, "音效",
                            start, start + material.duration))
 

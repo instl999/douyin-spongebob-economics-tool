@@ -18,7 +18,6 @@ import time
 from pathlib import Path
 
 import ark
-import config
 import matting
 
 # Magenta is a safer key than green here: the palette is full of greens - grass,

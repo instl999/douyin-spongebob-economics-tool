@@ -13,7 +13,6 @@ It spends nothing, so it can be run freely.
 """
 import ast
 import json
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -21,6 +20,8 @@ import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import console  # noqa: F401  UTF-8 stdout; see console.py
 
 import numpy as np
 from PIL import Image, ImageDraw
@@ -601,6 +602,105 @@ def main():
         audio_mod.mux(video, track, final)
         suite.check("muxes audio", final.exists())
 
+        # --- the opening: a spoken title over a stinger --------------------
+        # The title card used to hold a silent slot, so the video opened on two
+        # and a half seconds of nothing. Three things have to line up now, and
+        # each is checked by measuring the audio rather than by trusting the
+        # call: the card is long enough for its own line, the voice waits for
+        # the stinger, and the stinger is actually there.
+        import build as build_mod
+        import config  # bound later in main(); needed here first
+
+        lead = audio_mod.TITLE_SFX_LEAD
+        suite.check("opening: a long title lengthens its card",
+                    build_mod.title_slot(2.6, 1.0, 0.35) == 2.6
+                    and abs(build_mod.title_slot(2.6, 3.5, 0.35)
+                            - (lead + 3.5 + 0.35)) < 1e-6,
+                    f"{build_mod.title_slot(2.6, 3.5, 0.35):.2f}s for a 3.5s title")
+        # ...but not without limit. The director brief asks for ten characters
+        # or fewer and that is a request; a thirty-character title reads for
+        # five seconds and would hold the card that long before shot 1.
+        suite.check("opening: a title too long to read loses its voice",
+                    not build_mod.title_voice_fits(5.3, 0.35)
+                    and build_mod.title_voice_fits(2.1, 0.35)
+                    and build_mod.title_slot(2.6, 30.0, 0.35)
+                    <= build_mod.MAX_TITLE_SLOT,
+                    f"cap {build_mod.MAX_TITLE_SLOT}s")
+
+        spoken = work / "title_voice.wav"
+        subprocess.run(
+            [config.FFMPEG, "-y", "-v", "error", "-f", "lavfi",
+             "-i", "sine=f=440:d=1.2", "-ar", "44100", "-ac", "2",
+             str(spoken)], check=True)
+        slot = build_mod.title_slot(2.6, 1.2, 0.35)
+        opening_narration = audio_mod.build_narration(
+            [(spoken, slot, lead), (None, 1.0)], work / "opening.wav")
+
+        def rms_db(path, start, length):
+            raw = work / "seg.raw"
+            subprocess.run(
+                [config.FFMPEG, "-y", "-v", "error", "-ss", f"{start:.3f}",
+                 "-i", str(path), "-t", f"{length:.3f}", "-ac", "1",
+                 "-ar", "8000", "-f", "s16le", str(raw)], check=True)
+            data = np.fromfile(raw, dtype="<i2").astype(float) / 32768
+            if not len(data):
+                return -120.0
+            return 20 * np.log10(max(float(np.sqrt((data ** 2).mean())), 1e-6))
+
+        quiet = rms_db(opening_narration, 0.0, lead - 0.05)
+        voiced = rms_db(opening_narration, lead + 0.1, 0.6)
+        suite.check("opening: the title's voice waits for the stinger",
+                    quiet < -60 < voiced,
+                    f"{quiet:.0f} dB before the lead, {voiced:.0f} dB after")
+
+        import sfx as sfx_mod
+        cue_path = sfx_mod.library().get(build_mod.OPENING_SFX)
+        suite.check("opening: the stinger is in the cue library",
+                    cue_path is not None, build_mod.OPENING_SFX)
+        # gen_sfx.py states its own invariant - everything here is generated,
+        # so there is no licensing question and the library rebuilds from one
+        # command. A downloaded cue was committed here by mistake and broke
+        # that; this is the check that would have caught it.
+        import gen_sfx
+        # Every cue is generated except the opening one, which is supplied.
+        # gen_sfx says so in its own docstring, and the exception is the point:
+        # a synthesised stand-in for the sound these videos open on is worse
+        # than none, so nothing may quietly substitute for it.
+        shipped = sorted(set(sfx_mod.library()) - set(gen_sfx.GENERATORS))
+        suite.check("opening: the cue is supplied, everything else is generated",
+                    shipped == [build_mod.OPENING_SFX],
+                    f"shipped: {shipped or 'nothing'}")
+        suite.check("opening: nothing can synthesise the cue behind our backs",
+                    build_mod.OPENING_SFX not in gen_sfx.GENERATORS)
+        # A leftover copy in the other format shadows the shipped one silently:
+        # same name, same sound, no way to tell from the build which is
+        # playing. This actually happened to the installed skill directory.
+        duplicates = sfx_mod.duplicate_cues()
+        suite.check("opening: no cue is shadowed by a copy in another format",
+                    not duplicates,
+                    ", ".join(sorted(duplicates)) or "26 cues, no collisions")
+        if cue_path:
+            cue = [(0.0, build_mod.OPENING_SFX, cue_path, 0.7)]
+            on = audio_mod.mix(opening_narration, work / "cue_on.wav",
+                               slot + 1.0, bgm=None, cues=cue)
+            off = audio_mod.mix(opening_narration, work / "cue_off.wav",
+                                slot + 1.0, bgm=None)
+            suite.check("opening: the stinger lands on the first frame",
+                        rms_db(off, 0.0, 0.35) < -60 < rms_db(on, 0.0, 0.35),
+                        f"{rms_db(off, 0.0, 0.35):.0f} dB without, "
+                        f"{rms_db(on, 0.0, 0.35):.0f} dB with")
+            # A cue's own gain overrides cue_volume. Without it the stinger is
+            # mixed at the library level, which is set for a coin drop under
+            # narration rather than for the accent that opens the video.
+            loud = rms_db(on, 0.0, 0.35)
+            soft = rms_db(audio_mod.mix(
+                opening_narration, work / "cue_soft.wav", slot + 1.0,
+                bgm=None, cues=[(0.0, "x", cue_path)], cue_volume=0.34),
+                0.0, 0.35)
+            suite.check("opening: a cue can carry its own gain",
+                        loud > soft + 3,
+                        f"{loud:.0f} dB at 0.7 against {soft:.0f} dB at 0.34")
+
         # The draft is written blind - Jianying is not installed on most
         # machines that build one - so the only thing that can be checked is
         # that its own numbers rebuild the frames the renderer drew.
@@ -728,6 +828,12 @@ def main():
         bad = report.failures()
         suite.check("the verifier passes its own render", not bad,
                     "; ".join(n for _, n, _ in bad))
+
+    # The footage track's checks live in their own module. Two sessions work on
+    # this repo at once; a single thousand-line test file is where their work
+    # is guaranteed to collide.
+    import selftest_footage
+    selftest_footage.run(suite, lay)
 
     print()
     if suite.failures:

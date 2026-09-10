@@ -20,12 +20,15 @@ three are cheap:
   of broadband click. Without it the sound fades in and feels soft.
 
 Everything here is generated, so there is no licensing question and the whole
-library rebuilds from one command. Sounds are grouped by what they are *for*,
+library rebuilds from one command. The one exception is the opening cue, which
+is supplied rather than synthesised - see `build.OPENING_SFX`. Sounds are grouped by what they are *for*,
 because that is how sfx.py chooses between them.
 """
 import argparse
 import wave
 from pathlib import Path
+
+import console  # noqa: F401  UTF-8 stdout; see console.py
 
 import numpy as np
 from scipy import signal
