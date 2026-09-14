@@ -18,15 +18,16 @@
 
 | 画风 key | 中文名 | 适用 | 规模 |
 |---|---|---|---|
-| `bikini_bottom` | 比奇堡 | 卡通经济学科普（**默认画风**，自带素材库） | 5 角色 26 道具 60 素材 |
-| `watercolor_anime` | 水彩动漫 | 手绘水彩动画电影质感，暖阳海边小镇 | 3 角色 14 道具 |
-| `clay` | 黏土定格 | 橡皮泥定格动画质感，雪夜森林小屋 | 3 角色 14 道具 |
-| `neon_cyberpunk` | 赛博霓虹 | 霓虹雨夜都市，赛博朋克动漫 | 3 角色 14 道具 |
-| `retro_editorial` | 复古欧式插画 | 雨夜街角咖啡馆，中古编辑插画质感 | 3 角色 14 道具 |
-| `retro_pulp` | 复古公路海报 | 70 年代丝网印刷海报，沙漠日落公路 | 3 角色 15 道具 |
-| `flat_geo` | 极简几何商务 | 扁平几何色块，剪影人物，科技商务风 | 3 角色 13 道具 |
+| `bikini_bottom` | 比奇堡 | 卡通经济学科普（**默认画风**） | 5 角色 |
+| `watercolor_anime` | 水彩动漫 | 手绘水彩动画电影质感，暖阳海边小镇 | 3 角色 |
+| `clay` | 黏土定格 | 橡皮泥定格动画质感，雪夜森林小屋 | 3 角色 |
+| `neon_cyberpunk` | 赛博霓虹 | 霓虹雨夜都市，赛博朋克动漫 | 3 角色 |
+| `retro_editorial` | 复古欧式插画 | 雨夜街角咖啡馆，中古编辑插画质感 | 3 角色 |
+| `retro_pulp` | 复古公路海报 | 70 年代丝网印刷海报，沙漠日落公路 | 3 角色 |
+| `flat_geo` | 极简几何商务 | 扁平几何色块，剪影人物，科技商务风 | 3 角色 |
 
-除比奇堡自带素材库外，其余画风首次使用先生成素材库（约 20 秒/张，一次生成、永久复用）：
+画面按当句台词现画，不存素材库。每个画风只需要一次性画好「角色定妆参考图」
+（一个角色一张，约 20 秒/张）—— 这是唯一跨片子保留的图，靠它保证角色不走样：
 
 ```bash
 python scripts/build_library.py clay --plates
@@ -501,25 +502,24 @@ and generate nothing.
   "style":       "art direction, applied to every generated image",
   "background":  { "prompt": "the one plate every shot sits on" },
   "characters":  { "krabs": { "look": "...", "role": "...",
-                              "relative_height": 0.95,
-                              "poses": { "stand": "..." } } },
-  "props":       { "oven": "..." },
-  "hanging":     ["whiteboard", "clock"],
-  "foreground":  ["desk", "counter"],
-  "writable":    ["whiteboard", "chart_up"],
+                              "relative_height": 0.95 } },
   "panel_color": [176, 196, 205]
 }
 ```
 
-- `hanging` — props that float at eye level rather than standing on the ground
-- `foreground` — furniture drawn over the legs of whoever stands at it
-- `writable` — surfaces a label belongs *on*: boards, charts, menus, signage.
-  A label landing on one is snapped to its centre so the number sits on the
-  chart instead of floating beside it
+- `look` — the character's fixed appearance. The reference drawing is made from
+  it, and every later drawing of them is conditioned on that reference
+- `role` — what they *mean* in the argument, not who they are. It is all the
+  director is told about who is available
+- `relative_height` — height against the other characters, 0.3–3.0. The
+  director sets one height per shot and cannot keep the cast in proportion
+  across shots; this makes the relationship a fact of the cast instead
 - `panel_color` — the slab used to build a room over the fixed plate
 
-All three lists are checked against the actual prop names by
-`build.py --check`, so a typo reports itself instead of silently doing nothing.
+There is no list of poses or props. What a drawing shows is decided per shot,
+from the narration — see **Directing** below. Whether an object hangs, stands
+in front, or is a board a label belongs *on* is a `role` the director puts on
+that element, read from the description when it says nothing.
 
 The **background prompt is worth more time than anything else** — the horizon
 decides whether characters look planted or adrift. Say where the ground line

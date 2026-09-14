@@ -5,10 +5,17 @@
     "touching. Delete the _README and _hint keys when you are done; anything",
     "starting with an underscore is ignored.",
     "",
+    "There is no sprite library. Every picture in a video is drawn from the",
+    "director's description of the line it illustrates, for that video, and is",
+    "not reused by the next one - reuse is what made every video look like the",
+    "last. So this file does not list poses or props: it says who exists and",
+    "what they look like, and the script decides the rest.",
+    "",
     "Then run:  python scripts/build_library.py <yourfile-stem> --plates",
-    "That generates every sprite once. Later videos using this cast composite",
-    "the same PNGs and generate nothing, which is what stops characters",
-    "drifting from one video to the next.",
+    "That draws one reference image per character - the only drawing that",
+    "outlives a video, and what stops a character drifting between shots.",
+    "A build draws any that are missing anyway; running it up front just gets",
+    "the wait out of the way.",
     "",
     "Optional: add an entry to casts/styles.json (the art-style registry) to",
     "give this style a display label or make it the default. Registering is",
@@ -17,12 +24,9 @@
     "Check it first:  python scripts/build.py --check  (validates the registry",
     "and every cast)"
   ],
-
   "name": "my_cast",
-  "_hint_name": "Lowercase, no spaces. Names the sprite folder: casts/<name>/sprites/",
-
+  "_hint_name": "Lowercase, no spaces. Names the style's folder: casts/<name>/, which holds its character references.",
   "description": "One line on what this cast is for and who plays what.",
-
   "style": "REPLACE ME - the art direction, applied to every generated image",
   "_hint_style": [
     "The single most important field. Name a specific, recognisable look and",
@@ -31,7 +35,6 @@
     "        washes, visible paper grain, gentle outlines, muted palette'",
     "Weak:  'nice cartoon style, colourful'"
   ],
-
   "background": {
     "prompt": "REPLACE ME - the one plate every shot sits on"
   },
@@ -45,84 +48,27 @@
     "Tall scenery at the edges frames the shot and makes every character look",
     "small and lost. Ask for an empty stage, not a nice picture."
   ],
-
   "characters": {
     "hero": {
       "role": "what this character MEANS in the argument, not who they are",
-      "_hint_role": "e.g. 'the boss and the capital', 'asks the naive question'. The director casts from these.",
-
-      "look": "REPLACE ME - the character's fixed appearance, repeated in every pose",
+      "_hint_role": "e.g. 'the boss and the capital', 'asks the naive question'. This is all the director is told about who is available, so say what they MEAN in the argument.",
+      "look": "REPLACE ME - the character's fixed appearance, in every drawing",
       "_hint_look": [
-        "Written once, prepended to every pose prompt. Be exhaustive and",
-        "concrete: body shape, colours, clothing, distinguishing features.",
-        "Anything vague here drifts differently in each pose."
+        "The most important field about a character. It is what the reference",
+        "drawing is made from, and the reference is what every later drawing of",
+        "them is conditioned on. Be exhaustive and concrete: body shape, colours,",
+        "clothing, distinguishing features. Do not describe a pose or a mood -",
+        "the director writes those per shot."
       ],
-
       "relative_height": 1.0,
       "_hint_relative_height": [
         "Height relative to the other characters, 0.3-3.0. Pick one character",
         "as 1.0 and size the rest against them. The director sets one height",
         "per shot and cannot keep the cast in proportion across shots; this",
         "makes the relationship a fact of the cast instead."
-      ],
-
-      "poses": {
-        "stand": "standing upright facing the viewer, neutral expression",
-        "point": "standing and pointing forward with one raised hand, explaining",
-        "think": "standing with a hand on the chin, considering something",
-        "happy": "standing with both arms raised, delighted"
-      },
-      "_hint_poses": [
-        "Aim for 8-10 per main character. Four is enough to work and few",
-        "enough to see repeats across fifteen shots. Describe the BODY, not",
-        "the scene - no props, no floor, no background; those are separate",
-        "sprites the director places beside the character."
       ]
     }
   },
-
-  "props": {
-    "example_object": "a single plain object, described concretely, seen from the front"
-  },
-  "_hint_props": [
-    "Each is ONE inanimate object. The generator is already told 'no",
-    "characters, no hands' because asked for 'a stack of plates' in a",
-    "character style it helpfully draws someone holding them - and a prop",
-    "with a character baked in puts that character on screen twice.",
-    "",
-    "Include a few blank surfaces - a whiteboard, a card, a signpost. Text is",
-    "drawn over them with PIL, which is always correct, whereas asking the",
-    "image model for Chinese text gives you plausible-looking nonsense."
-  ],
-
-  "hanging": [],
-  "_hint_hanging": [
-    "Prop names (without the prop_ prefix) that hang at eye level: boards,",
-    "charts, maps, clocks, signage. Everything not listed is put on the",
-    "ground whatever the director asks for, because left to itself a director",
-    "will hang a pile of gold coins at eye level like a wall chart."
-  ],
-
-  "foreground": [],
-  "_hint_foreground": [
-    "Prop names that draw OVER the characters: tables, counters, sinks, desks",
-    "- anything a character stands or works behind. This overlap is most of",
-    "what makes a shot read as a scene rather than as cut-outs side by side."
-  ],
-
-  "writable": [],
-  "_hint_writable": [
-    "Prop names that are surfaces meant to be written on: whiteboards, charts,",
-    "chalkboard menus, signage, clock faces. A label that lands on one of",
-    "these is snapped to its centre, so the number sits ON the chart instead",
-    "of floating beside it; a label that lands on a character is moved away.",
-    "Leave a prop out and text will never be placed on it - which is right for",
-    "tables, vehicles and scenery, and wrong for anything board-shaped.",
-    "",
-    "Names that do not match a prop are reported by --check rather than",
-    "silently ignored, so a typo here tells you about itself."
-  ],
-
   "_hint_look": [
     "Not a field in this file. Everything about how the finished video looks -",
     "caption size and position, shot tightness, label colours, dissolve length,",

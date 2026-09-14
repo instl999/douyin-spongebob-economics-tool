@@ -238,12 +238,118 @@ def main():
                     set(got) == {"board", "furniture", "prop"},
                     f"whiteboard/counter/coins -> {got}")
 
+    house = assets_mod.Cast.load(ROOT / "casts" / "bikini_bottom.json",
+                                 root=ROOT / "casts")
+
+    # --- `--from assets` must not mean "redraw everything" -----------------
+    # It used to: forcing was right when the cache keyed on a prompt
+    # fingerprint inside a shared library. A drawing's filename now carries a
+    # hash of what was asked for, so an edited description is already a
+    # different file, and forcing only buys identical pictures at full price -
+    # measured, twelve images to replace the two that had changed.
+    src = (ROOT / "scripts" / "build.py").read_text(encoding="utf-8-sig")
+    suite.check("restarting at the assets stage does not redraw what is there",
+                'if "assets" in forced and not args.regenerate_assets:' in src,
+                "--regenerate-assets is the flag that ignores the cache")
+
+    # --- a drawing cannot be lettered --------------------------------------
+    # Image models cannot spell. Asked for a whiteboard "labeled nominal and
+    # real wage" one came back with `omi...wage` across it in two alphabets.
+    # The words belong in a label, which is real text in the draft - so the
+    # request is taken out of the description and the object is drawn blank.
+    # "staring at an open payslip" must survive: it names no words.
+    cases = [
+        ("whiteboard divided into two sections labeled nominal and real wage",
+         "whiteboard divided into two sections"),
+        ("points at two labeled sections on a whiteboard behind him",
+         "points at two sections on a whiteboard behind him"),
+        ("a chart titled Q3 revenue by region", "a chart"),
+        ("a poster 写着 涨价", "a poster"),
+        ("leans forward staring at an open payslip, mouth open in surprise",
+         "leans forward staring at an open payslip, mouth open in surprise"),
+        ("a plain wooden counter", "a plain wooden counter"),
+    ]
+    wrong = [(before, plan_mod._unlettered(before, 1, []))
+             for before, want in cases
+             if plan_mod._unlettered(before, 1, []) != want]
+    suite.check("a request for lettering is taken out of a drawing", not wrong,
+                f"{len(cases)} phrasings" if not wrong
+                else f"{wrong[0][0][:32]!r} -> {wrong[0][1][:32]!r}")
+
+    # --- a drawing that never arrives --------------------------------------
+    # Generation fails sometimes, and the renderer's answer to a missing PNG is
+    # to skip the element - so the shot renders as an empty plate. The stand-in
+    # is matched on who the drawing shows: every pair's filename begins "duo_",
+    # so matching on the name put Krabs and SpongeBob in for Patrick and
+    # Squidward.
+    import build as build_mod
+    with tempfile.TemporaryDirectory() as tmp:
+        out = Path(tmp)
+        for name in ("duo_krabs_sponge_handover_aaaaaa.png",
+                     "duo_krabs_sponge_arguing_bbbbbb.png",
+                     "duo_patrick_squid_arguing_cccccc.png",
+                     "sponge_standing_dddddd.png"):
+            Image.new("RGBA", (8, 8)).save(out / name)
+        missing = "duo_patrick_squid_paying_eeeeee.png"
+        board = {"drawings": [
+            {"asset": "duo_krabs_sponge_handover_aaaaaa.png", "kind": "duo",
+             "who": ["krabs", "sponge"], "shows": "a handover"},
+            {"asset": "duo_krabs_sponge_arguing_bbbbbb.png", "kind": "duo",
+             "who": ["krabs", "sponge"], "shows": "an argument"},
+            {"asset": "duo_patrick_squid_arguing_cccccc.png", "kind": "duo",
+             "who": ["patrick", "squid"], "shows": "an argument"},
+            {"asset": missing, "kind": "duo",
+             "who": ["patrick", "squid"], "shows": "a payment"}],
+            "scenes": [{"id": 1, "elements": [
+                {"asset": missing, "who": ["patrick", "squid"],
+                 "x": 0.5, "y": 0.97, "h": 0.6}]}]}
+
+        class _Out:
+            out = None
+        project = _Out()
+        project.out = out
+        build_mod.reconcile_sprites(project, board, house)
+        stood = board["scenes"][0]["elements"]
+        suite.check("a drawing that failed is replaced by the same characters",
+                    len(stood) == 1
+                    and stood[0]["asset"].startswith("duo_patrick_squid_"),
+                    f"-> {stood[0]['asset'] if stood else 'dropped'}")
+
+    # --- the drawing budget is a cap, not a suggestion --------------------
+    # The brief tells the director it has one and that elements past it are
+    # dropped. For a while nothing enforced that: the numbers reached the
+    # prompt and went no further. Every picture is generated now, so an
+    # uncapped director is real money and twenty seconds each.
+    greedy = [{"id": i, "framing": "medium",
+               "elements": [{"who": "sponge", "x": 0.5, "h": 0.46,
+                             "shows": f"doing distinct thing number {i}"}]}
+              for i in range(1, plan_mod.MAX_DRAWINGS + 9)]
+    capped = plan_mod.validate({"shots": greedy}, ["句。"] * len(greedy), house)
+    bare = [sc["id"] for sc in capped["scenes"]
+            if not any("asset" in e for e in sc["elements"])]
+    suite.check("a video cannot draw more than its budget",
+                len(capped["drawings"]) == plan_mod.MAX_DRAWINGS and not bare,
+                f"{len(greedy)} asked, {len(capped['drawings'])} drawn, "
+                f"{len(bare)} shot(s) left empty")
+
+    # Degrading beats dropping: past the pair cap the beat is still acted, by
+    # one figure instead of two, rather than leaving the frame bare.
+    crowd = [{"id": i, "framing": "medium",
+              "elements": [{"who": ["krabs", "sponge"], "x": 0.5, "h": 0.6,
+                            "shows": f"exchange number {i}"}]}
+             for i in range(1, plan_mod.MAX_DUOS + 4)]
+    pairs = plan_mod.validate({"shots": crowd}, ["句。"] * len(crowd), house)
+    kinds = [d["kind"] for d in pairs["drawings"]]
+    suite.check("past the pair cap a beat is drawn with one figure, not none",
+                kinds.count("duo") == plan_mod.MAX_DUOS
+                and kinds.count("figure") == len(crowd) - plan_mod.MAX_DUOS,
+                f"{len(crowd)} asked -> {kinds.count('duo')} pairs + "
+                f"{kinds.count('figure')} singles")
+
     # --- composition: the frame was 90% empty -----------------------------
     # Measured across seven finished videos: foreground filled 8-10% of the
     # frame, the top 24-37% was dead, and the three features that would fix it
     # were used 4, 6 and 0 times in 87 shots.
-    house = assets_mod.Cast.load(ROOT / "casts" / "bikini_bottom.json",
-                                 root=ROOT / "casts")
     WORKER = {"who": "sponge", "shows": "at a stove, working"}
     board = plan_mod.validate(
         {"shots": [{"id": 1, "framing": "medium", "elements": [
@@ -427,6 +533,19 @@ def main():
     not_lost = _pick(_busy((30, 32, 38), (140, 145, 150)), "neutral")
     suite.check("an outline never vanishes into the letters it outlines",
                 not_lost == white, f"dark plate, near-black label -> {not_lost}")
+
+    # Contrast with the fill is a gate rather than one term among three, or the
+    # two trade off: on a wooden wall that shipped a near-black label outlined
+    # in black, 1.26:1 between the letters and the edge meant to define them.
+    # These are the conditions that shipped it: dark wood with a near-white
+    # fixture across it, where black reads well against the wood and white
+    # reads badly against the fixture, so on a traded-off score black wins.
+    wood = _pick(_busy((90, 68, 42), (250, 250, 250)), "neutral")
+    fill = render_mod.LABEL_TONES["neutral"]
+    suite.check("an outline that loses to its own fill is not chosen",
+                render_mod._contrast(wood, fill) >= render_mod.MIN_INK_CONTRAST,
+                f"dark wood, near-black label -> {wood}, "
+                f"{render_mod._contrast(wood, fill):.1f}:1 against the letters")
 
     # The renderer and the draft exporter both draw labels and both used to
     # hardcode white. One measurement carried in the storyboard is what stops

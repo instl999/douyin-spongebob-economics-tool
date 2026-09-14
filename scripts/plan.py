@@ -31,32 +31,24 @@ ENDING_MAX_CHARS = 24
 # too, rather than being silently rewritten to "neutral" by the validator.
 LABEL_TONES = tuple(styles_mod.look()["label_tones"])
 
-# How many poses one video may add to its cast. Every one is an image that gets
-# generated and paid for, so this is a spending limit as much as a style rule -
-# but it is also what keeps the catalogue a catalogue. Left uncapped a director
-# asks for a bespoke pose per shot, the library stops being reusable, and the
-# next video pays all over again. Past the cap, requests fall back to the
-# nearest existing pose exactly as an unknown sprite name always has.
 # How much of a description survives into a prompt. Long enough for a body,
 # a face and a held object; short enough that the model does not start
 # illustrating subordinate clauses.
 DESCRIPTION_MAX = 220
 
 # How many separate pictures one video may ask for. Nothing is reused between
-# videos any more, so this is the whole bill: at roughly twenty seconds and one
-# image each, a cap is the difference between a video and an afternoon. Past it
-# the extra elements are dropped, cheapest-looking first.
+# videos, so this is the whole bill: at roughly twenty seconds and one image
+# each, a cap is the difference between a video and an afternoon. Past it an
+# element reuses an earlier drawing of the same character, and is dropped only
+# when there is none - see `_within_budget`.
 MAX_DRAWINGS = 40
+
+# Two figures in one drawing is twice the anatomy and half the attention per
+# figure, and it shows. They exist because a handover assembled from two
+# separate cut-outs never actually connects - which makes them the only way
+# some sentences can be shown at all, and also the reason not to reach for one
+# when a single figure would do. Past this a beat is drawn with one figure.
 MAX_DUOS = 6
-
-NEW_POSE_BUDGET = 8
-
-# Two-figure sprites are drawn for one beat and are far less reusable than a
-# pose, so they get their own, smaller allowance. They exist because a handover
-# assembled from two separate cut-outs never actually connects - which makes
-# them the only way some sentences can be shown at all, and also the reason not
-# to reach for one when a pose would do.
-NEW_INTERACTION_BUDGET = 4
 
 # Hanging boards, charts and calendars are the only thing that ever occupies
 # the upper half of the frame, and they were arriving at roughly two thirds of
@@ -264,6 +256,53 @@ def _sprite_name(kind, who, shows):
     return f"prop_{_slug(shows)}_{key}.png"
 
 
+# Ways a description asks for lettering inside the picture, split by what the
+# marker does to the sentence. A clause marker introduces the words and takes
+# the rest of the sentence with it; an adjective marker only qualifies the noun
+# beside it. Deliberately excludes "reading" and "marked", which appear
+# innocently - "staring at an open payslip" must survive untouched.
+LETTERING_CLAUSE = re.compile(
+    r"\b(that says?|that reads?|saying|titled|captioned|"
+    r"with the (?:words?|text|caption))\b|写着|标着|标有|写有", re.IGNORECASE)
+LETTERING_KEEP = 25
+LETTERING_WORD = re.compile(r"\blabell?ed\b", re.IGNORECASE)
+
+
+def _unlettered(shows, shot_id, problems):
+    """Take the words back out of a drawing and leave the object.
+
+    Image models cannot letter. Asked for a whiteboard "divided into two
+    sections labeled nominal and real wage" one came back with `omi...wage`
+    across the middle in two languages, and that is the best this ever gets -
+    the cast's own prompt rules already say "no text" and the description
+    outvotes them.
+
+    It is also unnecessary. Words on a board are a *label*, which this pipeline
+    sets in a real typeface, spells correctly, and exports to the draft as
+    editable text - and a label dropped on a `board` is snapped to its middle
+    already. So the object is drawn blank and the words go on top.
+    """
+    clause = LETTERING_CLAUSE.search(shows)
+    word = LETTERING_WORD.search(shows)
+    if clause:
+        cleaned, cut = shows[:clause.start()], shows[clause.start():]
+    elif word:
+        cut = shows[word.start():]
+        # "two labeled sections" qualifies the noun; dropping the tail would
+        # take the noun with it. "...sections labeled nominal and real" is the
+        # lettering itself, and the whole tail goes.
+        cleaned = (shows[:word.start()] + shows[word.end():]
+                   if word.start() < LETTERING_KEEP else shows[:word.start()])
+    else:
+        return shows
+    cleaned = " ".join(cleaned.split()).strip(" ,;")
+    if len(cleaned) < 6:
+        return shows
+    problems.append(f"shot {shot_id}: a drawing cannot be lettered, so "
+                    f"{cut[:28]!r} was dropped - put the words in a label")
+    return cleaned
+
+
 def _role_for(el, kind, shows):
     """Whether this sprite hangs, stands in front, or just stands."""
     named = (el.get("role") or "").strip().lower()
@@ -308,6 +347,7 @@ def _sprite_spec(el, cast, shot_id, problems):
         return None
     if len(shows) > DESCRIPTION_MAX:
         shows = shows[:DESCRIPTION_MAX].rsplit(",", 1)[0]
+    shows = _unlettered(shows, shot_id, problems)
 
     kind = "duo" if len(who) == 2 else "figure" if who else "prop"
     return (_sprite_name(kind, who, shows), kind, who, shows,
@@ -332,11 +372,11 @@ def _roster_text(cast):
 
 def build_prompt(beats, cast, orientation="landscape",
                  pose_budget=MAX_DRAWINGS):
-    catalogue = _roster_text(cast)
+    roster = _roster_text(cast)
     listing = chr(10).join(f"{i}. {text}" for i, text in enumerate(beats, 1))
     portrait = orientation == "portrait"
     return brief_template().format(
-        count=len(beats), beats=listing, catalogue=catalogue,
+        count=len(beats), beats=listing, roster=roster,
         casting=_casting_notes(cast),
         pose_budget=pose_budget,
         duo_budget=MAX_DUOS,
@@ -367,6 +407,48 @@ def _clamp(value, lo, hi, default):
         return max(lo, min(hi, float(value)))
     except (TypeError, ValueError):
         return default
+
+
+def _within_budget(spec, drawings, shot_id, problems):
+    """Hold the video to its drawing budget. Returns a spec, or None to drop.
+
+    The brief tells the director it has a cap and that elements past it are
+    dropped. Nothing enforced that: the numbers reached the prompt and no
+    further, so the cap was a suggestion to a model and the bill was whatever
+    it felt like asking for. Every picture is generated now, so that is real
+    money and twenty seconds each.
+
+    Degrading beats dropping wherever there is something to degrade to. A pair
+    past the duo cap becomes one figure doing the same thing, and an element
+    past the drawing cap reuses another drawing of the same character from
+    earlier in this video - which is the old shared catalogue, except scoped to
+    one script, and a far better floor than an empty frame.
+    """
+    asset, kind, who, shows, role = spec
+    if asset in drawings:
+        return spec                      # already paid for; free to place again
+
+    if kind == "duo" and sum(
+            1 for d in drawings.values() if d["kind"] == "duo") >= MAX_DUOS:
+        who, kind = who[:1], "figure"
+        asset = _sprite_name(kind, who, shows)
+        problems.append(f"shot {shot_id}: past {MAX_DUOS} two-figure drawings, "
+                        f"drawn as {who[0]} alone")
+        if asset in drawings:
+            return asset, kind, who, shows, role
+
+    if len(drawings) < MAX_DRAWINGS:
+        return asset, kind, who, shows, role
+
+    stand_in = next((name for name, d in reversed(list(drawings.items()))
+                     if d["who"] == who and d["kind"] == kind), None)
+    if stand_in:
+        problems.append(f"shot {shot_id}: past {MAX_DRAWINGS} drawings, reused "
+                        f"an earlier one of {'+'.join(who)}")
+        return stand_in, kind, who, drawings[stand_in]["shows"], role
+    problems.append(f"shot {shot_id}: past {MAX_DRAWINGS} drawings, "
+                    f"{shows[:44]!r} dropped")
+    return None
 
 
 def _elements(raw_elements, cast, shot_id, problems, drawings):
@@ -400,6 +482,8 @@ def _elements(raw_elements, cast, shot_id, problems, drawings):
                 item["tail"] = el.get("tail", "left")
         else:
             spec = _sprite_spec(el, cast, shot_id, problems)
+            if spec is not None:
+                spec = _within_budget(spec, drawings, shot_id, problems)
             if spec is None:
                 continue
             asset, kind, who, shows, role = spec

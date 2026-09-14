@@ -215,8 +215,8 @@ python scripts/draft.py out/my_video --install
 | 标签用哪个色 | 标签的 `tone`：`good` / `bad` / `money` / 不写就是深灰；**具体颜色**在 `styles.json` 的 `look.label_tones` |
 | 精确的前后遮挡 | 元素上写 `z`（数字，小的在后），只在三层默认排序不够用时才写 |
 | 某一镜的构图 | `out/<name>/plan.json` 的 `x` / `y` / `h` / `framing` |
-| **某一镜「没演出文案的意思」** | 看 `plan.json` 里那一镜的 `beat`：`action` 错了是理解错了，`action` 对但选的姿势不对是选角错了。改 `elements`，或在 `casts/<cast>.json` 的 `poses` 里补一个真正在做这个动作的姿势 |
-| **导演自己加的姿势** | `casts/<cast>/learned_poses.json`；每条视频最多加 8 个，画一次以后所有视频复用。删掉就是下次再问一遍 |
+| **某一镜「没演出文案的意思」** | 看 `plan.json` 里那一镜的 `beat`：`action` 错了是理解错了；`action` 对但画面不对，就是那一镜的 `shows` 写得不够具体。直接改 `plan.json` 里那个元素的 `shows`（画面描述就存在元素上），再 `--from assets` 重画那一张 |
+| **想换某张画** | 改 `plan.json` 里那个元素的 `shows`，文件名跟着描述的哈希走，所以改了描述就会重画一张，没改的一张都不会重画 |
 | **镜头运动（推镜）** | `casts/styles.json` → `look.motion`；**只在剪映工程里有，MP4 预览是静止的**。默认只推特写、5%、上限 8%。这是唯一没法在本地验证的功能，第一次打开工程要专门看一眼，不对就 `enabled: false` |
 | **音效** | `look.sound.cues`：每个「时刻」给一组音效，每次挑**最久没用过**的那个，所以不会一个声音响七遍。音效由 `python scripts/gen_sfx.py` 合成，共 25 个 |
 | **某个情绪配错了音** | 音效是按导演写的 `beat.emotion` 选的（`sfx.py` 的 `EMOTION_WORDS` 是中英文关键词表）。配错了先看 `plan.json` 里那一镜的 emotion 写了什么 |

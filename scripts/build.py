@@ -245,47 +245,51 @@ def stage_assets(project, plan, force=False):
 
 
 def reconcile_sprites(project, plan, cast):
-    """Stand in an existing pose for any sprite that did not reach the disk.
+    """Stand in another drawing for any that did not reach the disk.
 
     A drawing can fail to arrive - a quota wall, a content filter, a dropped
     connection - and the renderer's answer to a missing PNG is to skip that
     element. That is the wrong answer here: a shot that asked for two figures
     and got neither renders as an empty plate.
 
-    The stand-in used to come from the shared catalogue. There is no catalogue
-    now, so it comes from this video's own drawings - another picture of the
-    same character, which is a closer match than a library pose ever was,
-    since both were drawn for this script.
+    The stand-in used to come from the shared catalogue. There is none now, so
+    it comes from this video's own drawings - another picture of the same
+    character, which is a closer match than a library pose ever was, since both
+    were drawn for this script.
+
+    Matched on who a drawing *shows*, which the element carries, rather than on
+    its filename. Every pair's name begins "duo_", so parsing the name put a
+    drawing of Krabs and SpongeBob in for one of Patrick and Squidward.
     """
     present = {path.name for path in project.out.glob("*.png")}
+    shows = {d["asset"]: tuple(d.get("who") or ())
+             for d in plan.get("drawings") or []}
     for scene in plan.get("scenes") or []:
-        kept, subjects = [], set()
+        kept, on_screen = [], set()
         for el in scene.get("elements") or []:
             asset = el.get("asset")
+            who = tuple(el.get("who") or shows.get(asset) or ())
             if not asset or asset in present:
-                if asset:
-                    subjects.add(_subject_of(asset))
+                on_screen |= set(who)
                 kept.append(el)
                 continue
-            subject = _subject_of(asset)
+            if not who:
+                # A prop is only itself. Another object drawn for a different
+                # sentence is not a substitute for this one.
+                log(f"  ! {asset} was not drawn, and a prop has no stand-in")
+                continue
+            # One character twice in a shot is a worse picture than one once.
             swap = next((name for name in sorted(present)
-                         if name != asset and not name.startswith("prop_")
-                         and _subject_of(name) == subject), None)
-            # The stand-in may be a pose of someone already in the shot, and
-            # one character twice is a worse picture than one character once.
-            if swap and _subject_of(swap) not in subjects:
-                log(f"  ! {asset} was not generated, standing in {swap}")
-                subjects.add(_subject_of(swap))
-                kept.append(dict(el, asset=swap,
+                         if name != asset and shows.get(name) == who
+                         and not (set(who) & on_screen)), None)
+            if swap:
+                log(f"  ! {asset} was not drawn, standing in {swap}")
+                on_screen |= set(who)
+                kept.append(dict(el, asset=swap, shows=shows.get(swap, ""),
                                  rel=cast.relative_height(swap)))
             else:
-                log(f"  ! {asset} was not generated and has no stand-in, dropped")
+                log(f"  ! {asset} was not drawn and has no stand-in, dropped")
         scene["elements"] = kept
-
-
-def _subject_of(asset):
-    stem = asset[:-4] if asset.endswith(".png") else asset
-    return stem if stem.startswith("prop_") else stem.split("_", 1)[0]
 
 
 TITLE_SFX_LEAD = audio_mod.TITLE_SFX_LEAD
@@ -900,6 +904,14 @@ def run_build():
     # Forcing the whole tail would regenerate every sprite on any edit,
     # which is minutes of API calls to reproduce identical files.
     forced = [args.from_stage] if args.from_stage else []
+    # `--from assets` means start there, not redraw everything. A drawing's
+    # filename carries a hash of what was asked for, so an edited description
+    # is already a different file and gets drawn; forcing only buys an
+    # identical picture at full price, which is what `--from assets` used to
+    # do - twelve images to replace two that had actually changed.
+    # `--regenerate-assets` is the flag that means ignore the cache.
+    if "assets" in forced and not args.regenerate_assets:
+        forced.remove("assets")
     if args.regenerate_assets:
         forced.append("assets")
 

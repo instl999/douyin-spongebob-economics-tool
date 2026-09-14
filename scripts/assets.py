@@ -241,8 +241,6 @@ class Cast:
         for name, char in characters.items():
             if not char.get("look"):
                 issues.append(f"character {name!r} has no `look`")
-            if not (char.get("poses") or {}):
-                issues.append(f"character {name!r} has no poses")
             height = char.get("relative_height", 1.0)
             if not isinstance(height, (int, float)) or not 0.3 <= height <= 3.0:
                 issues.append(
@@ -250,44 +248,11 @@ class Cast:
                     "expected a number between 0.3 and 3.0")
             if "_" in name:
                 issues.append(
-                    f"character name {name!r} contains an underscore, which is "
-                    "the separator for poses - sprite names would be ambiguous")
-
-        props = set(self.data.get("props") or {})
-        for key in ("hanging", "foreground", "writable"):
-            listed = self.data.get(key) or []
-            if not isinstance(listed, list):
-                issues.append(f"`{key}` must be a list of prop names")
-                continue
-            for entry in listed:
-                if entry not in props:
-                    issues.append(
-                        f"`{key}` lists {entry!r}, which is not a prop in this "
-                        "cast - it will have no effect")
-        overlap = set(self.data.get("hanging") or []) & set(self.data.get("foreground") or [])
-        if overlap:
-            issues.append(
-                f"{sorted(overlap)} are in both `hanging` and `foreground`; "
-                "`hanging` wins, so the `foreground` entry does nothing")
+                    f"character name {name!r} contains an underscore, which "
+                    "separates the name from the description in a drawing's "
+                    "filename - the two would be ambiguous")
         return issues
 
-    def anchor_pose(self, character):
-        """The pose that defines what this character looks like.
-
-        Every sprite is generated from a text prompt, independently, so the
-        same character drifts between poses - the description says "a stout
-        boss in a brown waistcoat" and the model settles a slightly different
-        face, build and palette each time. One pose is generated first and then
-        used as a reference image for the rest, which pins the design. The cast
-        may name it; otherwise the first pose listed is it, since cast files
-        put the neutral standing pose first by convention.
-        """
-        char = (self.data.get("characters") or {}).get(character) or {}
-        poses = char.get("poses") or {}
-        named = char.get("anchor")
-        if named in poses:
-            return named
-        return next(iter(poses), None)
 
     def anchor_path(self, character):
         """Where this character's reference image lives. Tracked, not scratch.
@@ -305,17 +270,7 @@ class Cast:
     def anchor_file(self, character):
         """The image to condition on, if it has been made."""
         settled = self.anchor_path(character)
-        if settled.exists():
-            return settled
-        # Libraries built before anchors had their own directory keep theirs
-        # among the scratch images. Read it there rather than redrawing a
-        # character that already has a settled design.
-        pose = self.anchor_pose(character)
-        if pose:
-            raw = self.dir / "raw" / f"{character}_{pose}.jpg"
-            if raw.exists():
-                return raw
-        return None
+        return settled if settled.exists() else None
 
     def anchored_prompt(self, description):
         """Prompt for a pose generated against the character's anchor.

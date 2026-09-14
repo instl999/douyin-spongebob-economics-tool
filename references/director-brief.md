@@ -12,7 +12,7 @@ picked off a shelf and nothing carries over from another video, so there is no
 list of existing drawings to choose from - there is only this cast, and what
 you say each one is doing.
 
-{catalogue}
+{roster}
 
 # Casting
 
@@ -80,6 +80,23 @@ and because you describe both of those, that is what gets drawn.
 become the same picture - which is sometimes right, and is what made the old
 version of this tool put an identical shot of the boss in seven of thirty-two
 frames. If the sentence has moved on, say what has changed.
+
+### Never ask for words inside a drawing
+
+Image models cannot letter. Asked for a whiteboard "divided into two sections
+labeled nominal and real wage", one came back with `omi...wage` smeared across
+the middle in two alphabets - and that is the best this ever gets.
+
+Describe the object blank and put the words in a **label**, which is set in a
+real typeface, spelled correctly, and exported to the draft as editable text:
+
+{{"shows": "a large blank whiteboard", "role": "board", "x": 0.62, "y": 0.42, "h": 0.5}},
+{{"type": "label", "text": "名义工资", "tone": "neutral", "x": 0.62, "y": 0.36}}
+
+A label dropped on a `board` is snapped to its middle for you, so the words sit
+on the board rather than beside it. Anything that reads as a request for
+lettering - "labeled", "titled", "that says" - is taken back out of the
+description before the drawing is made.
 
 ### Objects
 

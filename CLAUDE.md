@@ -23,9 +23,15 @@ Useful flags: `--stop-after <stage>`, `--out <dir>`, `--regenerate-assets`,
 `plan → assets → voice → storyboard → render → audio → mux → draft`
 
 Every stage caches into the project's output dir and **skips itself when its
-result is current**. Editing one pose regenerates one sprite; editing the
-storyboard re-renders without paying for narration again. `--from <stage>` redoes
-that stage, and later stages re-derive only what changed.
+result is current**. Editing one shot's `shows` redraws that one picture;
+editing the storyboard re-renders without paying for narration again.
+`--from <stage>` redoes that stage, and later stages re-derive only what
+changed.
+
+`--from assets` deliberately does **not** force: a drawing's filename carries a
+hash of its description, so an edited description is already a different file.
+`--regenerate-assets` is the flag that ignores the cache, and on this track
+that is the whole bill again.
 
 ## Drawings
 

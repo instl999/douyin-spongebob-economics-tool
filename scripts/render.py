@@ -144,6 +144,11 @@ def _contrast(a, b):
 # Anywhere between those two works; the gap is what makes the rule safe.
 BUSY_GROUND = 2.0
 
+# The floor an outline has to clear against the letters it outlines. 3:1 is the
+# published minimum for large text, and an outline is exactly that: the edge
+# that says where the glyph stops.
+MIN_INK_CONTRAST = 3.0
+
 
 def outline_against(plate, el, image, lay, options):
     """Which of `options` to outline this label in, given what is behind it.
@@ -184,11 +189,19 @@ def outline_against(plate, el, image, lay, options):
     ink = tuple(el.get("color") or
                 LABEL_TONES.get(el.get("tone", "neutral"), LABEL_TONES["neutral"]))
 
-    def score(option):
-        return min(_contrast(option, dim), _contrast(option, bright),
-                   _contrast(option, ink))
+    def against_ground(option):
+        return min(_contrast(option, dim), _contrast(option, bright))
 
-    return tuple(max(options, key=score))
+    # Contrast with the fill is a gate, not one term among three. Scored as a
+    # minimum alongside the ground, the two can trade off, and on a dark wooden
+    # wall that shipped a near-black label outlined in black: measured 1.26:1
+    # between the letters and the edge meant to define them, which is not an
+    # outline at all. Whatever is left of the ground contrast, an outline that
+    # disappears into its own letterform has failed at its first job.
+    usable = [o for o in options if _contrast(o, ink) >= MIN_INK_CONTRAST]
+    if usable:
+        return tuple(max(usable, key=against_ground))
+    return tuple(max(options, key=lambda o: _contrast(o, ink)))
 
 
 def plate_for(assets, name, lay):
