@@ -65,6 +65,23 @@ def _us(seconds):
     return int(round(float(seconds) * SEC))
 
 
+def _span(start, end):
+    """A Jianying timerange from two boundaries, never from a length.
+
+    Rounding a start and a duration separately lets one segment end a
+    microsecond after the next begins, and Jianying rejects the whole track for
+    overlapping. It only shows on durations that are not round numbers, which
+    is every duration once the video runs at a speed like 1.5x: shot 1 ran to
+    4498667 while shot 2 began at 4498666, and the export died on a video that
+    had just rendered perfectly.
+
+    So the boundaries are rounded, once each, and the length is their
+    difference - which also guarantees consecutive segments meet exactly.
+    """
+    a, b = _us(start), _us(end)
+    return Timerange(a, max(0, b - a))
+
+
 def _digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -111,6 +128,12 @@ class DraftBuilder:
         self.assets = render_mod.Assets(self.project)
         self.panel_color = self.sb.get("panel_color")
         self.look = styles_mod.look(carried=video.get("look"))
+        # The one duration in this file that is not read off a segment. The
+        # storyboard's `look` has already been put on the video's clock by
+        # build.py, so its element fade is the right ceiling here too - a flat
+        # 0.3 s was a third of a short shot at 1.5x.
+        self.element_fade = float(
+            (self.look.get("timing") or {}).get("element_fade", 0.28))
         self.text_config = self.look.get("text") or {}
         self._frames = {}
         self._lanes = {}
@@ -213,8 +236,7 @@ class DraftBuilder:
                 continue
             card = self._card_png(seg.data, seg.kind)
             script.add_segment(
-                VideoSegment(VideoMaterial(str(card)),
-                             Timerange(_us(seg.start), _us(seg.duration))),
+                VideoSegment(VideoMaterial(str(card)), _span(seg.start, seg.end)),
                 "背景")
         if body_start is None:
             return
@@ -227,8 +249,7 @@ class DraftBuilder:
         for seg in segments:
             if seg.kind != "scene":
                 continue
-            piece = VideoSegment(plate,
-                                 Timerange(_us(seg.start), _us(seg.duration)))
+            piece = VideoSegment(plate, _span(seg.start, seg.end))
             self._push_in(piece, seg, 0.0, 0.0)
             script.add_segment(piece, "背景")
 
@@ -257,11 +278,10 @@ class DraftBuilder:
                                       seg.duration * 0.8))
                 segment = VideoSegment(
                     VideoMaterial(str(path)),
-                    Timerange(_us(seg.start + appear),
-                              _us(seg.duration - appear)),
+                    _span(seg.start + appear, seg.end),
                     clip_settings=clip)
                 if appear > 0:
-                    segment.add_fade(_us(min(0.3, appear)), 0)
+                    segment.add_fade(_us(min(self.element_fade, appear)), 0)
                 self._push_in(segment, seg, clip.transform_x, clip.transform_y,
                               offset=appear)
                 # A dissolve is only meaningful where two segments actually
@@ -351,8 +371,7 @@ class DraftBuilder:
         appear = max(0.0, min(float(el.get("appear", 0.0) or 0.0),
                               seg.duration * 0.8))
         segment = TextSegment(
-            text, Timerange(_us(seg.start + appear),
-                            _us(seg.duration - appear)),
+            text, _span(seg.start + appear, seg.end),
             style=TextStyle(size=size, align=1, bold=True,
                             color=tuple(c / 255 for c in colour)),
             # Whatever the renderer measured against the plate, so a label
@@ -414,8 +433,24 @@ class DraftBuilder:
             # rendered MP4 beside it spoke - the two disagreeing is worse than
             # either being wrong, because the draft is the deliverable.
             if seg.kind == "title":
-                lead = audio_mod.TITLE_SFX_LEAD
-                entry = index.get("title")
+                # The storyboard decides whether the title is spoken at all,
+                # and this file does not get a second opinion. A title too long
+                # to read before shot 1 keeps its type and loses its voice, and
+                # that rule lives in build.py - so consulting the voice index
+                # here found the clip still sitting there and spoke a title the
+                # MP4 beside it was silent for, truncated into a card sized for
+                # no speech. The draft is the deliverable; the two disagreeing
+                # is worse than either being wrong.
+                #
+                # `lead` comes from the same place for the same reason: it is a
+                # baseline number that build.py divides by the video's speed,
+                # so the constant would put the draft's title 0.45s in while
+                # the MP4's sat at 0.30s.
+                card = self.sb.get("title_card") or {}
+                if not card.get("voice"):
+                    continue
+                lead = float(card.get("lead", audio_mod.TITLE_SFX_LEAD))
+                entry = {"path": card["voice"]}
             elif seg.kind == "scene":
                 lead = 0.0
                 entry = index.get(str(seg.data.get("id", seg.index + 1)))
@@ -434,11 +469,12 @@ class DraftBuilder:
             # that overran would push everything after it out of sync. Clamp to
             # the file as well: a degraded retry can come back short, and
             # asking for more than exists is an error rather than silence.
-            length = min(_us(seg.duration - lead),
+            slot = _span(seg.start + lead, seg.end)
+            length = min(slot.duration,
                          _us(entry.get("duration", seg.duration)),
                          material.duration)
             script.add_segment(
-                AudioSegment(material, Timerange(_us(seg.start + lead), length)),
+                AudioSegment(material, Timerange(slot.start, length)),
                 "配音")
 
     def _add_sfx(self, script):

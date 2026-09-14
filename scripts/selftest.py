@@ -67,6 +67,349 @@ def synthetic_assets(directory):
         sprite.save(directory / name)
 
 
+def offline_project(work, speed, plan, name):
+    """A Project on disk, with a plate and sprites, ready for stage_storyboard.
+
+    Shared by the two check groups below because both need the same twelve
+    lines of scaffolding and neither is about the scaffolding. What they do
+    with the voice index afterwards is where they differ, and that stays in
+    each.
+    """
+    import build as build_mod
+    import shutil
+
+    work.mkdir(parents=True, exist_ok=True)
+    synthetic_assets(work)
+    project_path = work / "project.json"
+    project_path.write_text(json.dumps(
+        {"name": name, "speed": speed, "out": str(work / "out"),
+         "script_text": "".join(s["narration"] for s in plan["scenes"])},
+        ensure_ascii=False), encoding="utf-8")
+    project = build_mod.Project(project_path)
+    for asset in ("background.png", "a.png", "b.png", "prop_c.png"):
+        shutil.copy(work / asset, project.out / asset)
+    return project
+
+
+def speed_checks(suite):
+    """The global speed moves the whole video, not only the voice.
+
+    Every check here compares a 1.0x build against the same build at 1.5x and
+    asserts the *ratio*, never an absolute number. That is deliberate: the
+    failure this setting exists to prevent is one part of the video keeping its
+    old length while the rest speeds up, and a ratio is the only thing that
+    catches it wherever it happens. Anything that fails to divide shows up as a
+    total that is not 1/1.5 of the other.
+    """
+
+    import build as build_mod
+    import render as render_mod
+    import timing
+    import tts as tts_mod
+
+    suite.check("speed: 1.5x is the default and 1.0x the baseline",
+                timing.DEFAULT_SPEED == 1.5 and timing.BASELINE_SPEED == 1.0,
+                f"default {timing.DEFAULT_SPEED}x")
+    suite.check("speed: nonsense settings fall back rather than divide by zero",
+                timing.clamp(0) == timing.DEFAULT_SPEED
+                and timing.clamp("fast") == timing.DEFAULT_SPEED
+                and timing.clamp(99) == timing.MAX_SPEED
+                and timing.clamp(0.01) == timing.MIN_SPEED)
+
+    # Narration and everything around it must divide by the SAME number, for
+    # any input at all. Two guards on one parameter - `max(speed, 0.1)` in one
+    # place and `clamp` in the other - is how a video ends up with its voice on
+    # one clock and its pads on another, which is the whole failure this
+    # setting exists to remove, reached from inside the module that defines it.
+    gaps = []
+    for odd in (0.25, 0.5, 1.0, 1.5, 2.0, 9.0, 0, "nonsense"):
+        try:
+            narration = timing.clip_seconds("一二三四五六七八九十", 1.0)                 / timing.clip_seconds("一二三四五六七八九十", odd)
+            pad = timing.scale(0.35, 1.0) / timing.scale(0.35, odd)
+        except (TypeError, ValueError, ZeroDivisionError) as exc:
+            # Reported, not raised. A guard that throws on a setting a project
+            # file can legally contain is a failure of this check, and a
+            # selftest that dies instead of saying so tells nobody which check
+            # it died in.
+            gaps.append(f"{odd!r}: {type(exc).__name__}")
+            continue
+        if abs(narration - pad) > 1e-9:
+            gaps.append(f"{odd!r}: {narration:.4f} vs {pad:.4f}")
+    suite.check("speed: narration and pads divide by the same number",
+                not gaps, "; ".join(gaps))
+
+    # The estimate is what a user is told before anything is paid for, so it
+    # has to shrink by the whole factor. It used to divide the narration and
+    # leave the cards, which under-reported every speed above 1.0.
+    script = "一二三四五六七八九十。" * 8
+    slow = timing.estimate(script, speed=1.0)
+    fast = timing.estimate(script, speed=1.5)
+    suite.check("speed: the predicted length scales in full",
+                abs(fast["total"] * 1.5 - slow["total"]) < 0.05
+                and abs(fast["cards"] * 1.5 - slow["cards"]) < 0.01,
+                f"{slow['total']:.1f}s -> {fast['total']:.1f}s")
+
+    # A storyboard end to end, at two speeds, from narration already the length
+    # the service would return at each. Everything that is NOT the narration -
+    # tail pads, both cards, the dissolve, the caption fades - has to have
+    # moved with it.
+    plan = {
+        "title": "标题",
+        "scenes": [
+            {"narration": "第一句话在这里说完。", "framing": "medium",
+             "elements": [{"type": "sprite", "asset": "a.png", "x": 0.32,
+                           "y": 0.95, "rel": 0.6},
+                          {"type": "label", "text": "重点", "x": 0.72,
+                           "y": 0.42, "tone": "neutral"}]},
+            {"narration": "第二句话稍微长一点点。", "framing": "close",
+             "elements": [{"type": "sprite", "asset": "b.png", "x": 0.5,
+                           "y": 0.95, "rel": 0.6}]},
+        ],
+        "ending": {"text": "结语在这里", "highlight": ""},
+    }
+
+    def storyboard_at(speed, work):
+        project = offline_project(work, speed, plan, "speed")
+        # What the service would hand back at this speed. Faked here only
+        # because the selftest is offline; the shape is what the voice stage
+        # writes, and the point of the check is what the *timeline* does with
+        # it - a shot is cut to the clip it actually got.
+        index = {"title": {"duration": 0.9 / speed, "path": "", "words": []}}
+        for i, scene in enumerate(plan["scenes"], 1):
+            index[str(i)] = {"duration": (2.4 + 0.3 * i) / speed,
+                             "path": "", "words": []}
+        return build_mod.stage_storyboard(project, plan, index)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        sb_slow, _, total_slow = storyboard_at(1.0, Path(tmp) / "slow")
+        sb_fast, _, total_fast = storyboard_at(1.5, Path(tmp) / "fast")
+
+        # A speed like 1.5x turns every duration into a repeating decimal, and
+        # the draft is written in whole microseconds. Rounding a start and a
+        # length separately let shot 1 end one microsecond after shot 2 began,
+        # and Jianying rejects a whole track for overlapping - so the export
+        # died on a video that had just rendered perfectly. Nothing above
+        # catches it: the storyboard is correct, and only the conversion is
+        # not. This exports one for real.
+        import draft as draft_mod
+        out = Path(tmp) / "fast" / "out"
+        (out / "storyboard.json").write_text(
+            json.dumps(sb_fast, ensure_ascii=False), encoding="utf-8")
+        try:
+            draft_mod.DraftBuilder(out, name="speed").build(out / "jianying")
+            exported, why = True, f"{total_fast:.6f}s of repeating decimals"
+        except Exception as exc:                       # noqa: BLE001 - reported
+            exported, why = False, f"{type(exc).__name__}: {exc}"
+        suite.check("speed: an odd-length timeline still exports a draft",
+                    exported, why)
+
+        # ...and the invariant underneath it, swept over every speed a user can
+        # set. One export survives one particular set of numbers; the bug is a
+        # property of the arithmetic, so this asserts the property. Rounding a
+        # length instead of a boundary fails here on hundreds of boundaries.
+        gaps, spans = set(), 0
+        for rate in (1.25, 1.5, 1.75, 2.0):
+            clock, bounds = 0.0, [0.0]
+            for i in range(1, 200):
+                clock += (1.7 + 0.13 * i) / rate     # repeating decimals
+                bounds.append(clock)
+            made = [draft_mod._span(x, y) for x, y in zip(bounds, bounds[1:])]
+            spans += len(made)
+            gaps |= {y.start - (x.start + x.duration)
+                     for x, y in zip(made, made[1:])}
+        suite.check("speed: draft segments meet exactly, never overlap",
+                    gaps == {0}, f"{spans} spans, gaps {sorted(gaps)}")
+
+    suite.check("speed: the whole timeline shortens by the factor",
+                abs(total_fast * 1.5 - total_slow) < 0.02,
+                f"{total_slow:.2f}s -> {total_fast:.2f}s")
+    suite.check("speed: the dissolve scales with it",
+                abs(sb_fast["video"]["dissolve"] * 1.5
+                    - sb_slow["video"]["dissolve"]) < 1e-6,
+                f"{sb_slow['video']['dissolve']:.3f}s -> "
+                f"{sb_fast['video']['dissolve']:.3f}s")
+    fades_slow = sb_slow["video"]["look"]["timing"]
+    fades_fast = sb_fast["video"]["look"]["timing"]
+    suite.check("speed: the caption and element fades scale with it",
+                all(abs(fades_fast[k] * 1.5 - fades_slow[k]) < 1e-6
+                    for k in ("caption_fade", "element_fade")),
+                f"caption {fades_slow['caption_fade']:.3f}s -> "
+                f"{fades_fast['caption_fade']:.3f}s")
+    suite.check("speed: both cards scale with it",
+                abs(sb_fast["title_card"]["duration"] * 1.5
+                    - sb_slow["title_card"]["duration"]) < 1e-6
+                and abs(sb_fast["ending_card"]["duration"] * 1.5
+                        - sb_slow["ending_card"]["duration"]) < 1e-6,
+                f"title {sb_slow['title_card']['duration']:.2f}s -> "
+                f"{sb_fast['title_card']['duration']:.2f}s")
+    # The subtitle is what a viewer would watch drift. Its spans are cut from
+    # the same shot durations the picture is, so this asserts the two are one
+    # clock rather than two that happen to agree.
+    caps_slow = [c for s in sb_slow["scenes"] for c in s["captions"]]
+    caps_fast = [c for s in sb_fast["scenes"] for c in s["captions"]]
+    suite.check("speed: subtitles stay on the shots they belong to",
+                len(caps_slow) == len(caps_fast)
+                and all(abs(f["end"] * 1.5 - s["end"]) < 0.02
+                        for s, f in zip(caps_slow, caps_fast)),
+                f"{len(caps_fast)} caption spans")
+    suite.check("speed: no subtitle outlives its own shot",
+                all(c["end"] <= s["duration"] + 1e-6
+                    for s in sb_fast["scenes"] for c in s["captions"]))
+
+    # The renderer has to take the paced fades off the storyboard. Left on the
+    # module constants it would draw 1.0x fades over a 1.5x cut.
+    with tempfile.TemporaryDirectory() as tmp:
+        work = Path(tmp)
+        synthetic_assets(work)
+        renderer = render_mod.Renderer(sb_fast, work)
+    suite.check("speed: the renderer reads the storyboard's fades, not its own",
+                abs(renderer.caption_fade * 1.5 - render_mod.CAPTION_FADE) < 1e-6
+                and abs(renderer.element_fade * 1.5
+                        - render_mod.ELEMENT_FADE) < 1e-6,
+                f"{renderer.caption_fade:.3f}s vs module "
+                f"{render_mod.CAPTION_FADE:.3f}s")
+
+    # Narration is re-spoken rather than resampled, so 1.5x has to reach the
+    # service as a rate. Resampling afterwards would shift the pitch and, worse,
+    # would leave the shot lengths derived from clips of the old length.
+    suite.check("speed: the voice is asked to read faster",
+                tts_mod._rate(1.5) == 50 and tts_mod._rate(1.0) == 0
+                and tts_mod._rate(0.5) == -50,
+                f"1.5x -> speech_rate {tts_mod._rate(1.5)}")
+    suite.check("speed: a shot with no clip is estimated at the same speed",
+                abs(tts_mod.estimate_duration("一二三四五六七八九十", 1.5) * 1.5
+                    - tts_mod.estimate_duration("一二三四五六七八九十", 1.0)) < 0.01)
+
+
+def narration_alignment_checks(suite):
+    """The draft's narration clips sit on the shots they belong to.
+
+    This is check 5 of check_draft, run here because it had been reporting a
+    failure on every draft ever exported and nothing noticed. It compared the
+    clips against the *shot* starts, and the title card is voiced too - so the
+    title was paired with shot 1, shot 1 with shot 2, and a correct draft came
+    back as every clip one whole shot out of place. A check that fails on
+    everything is one nobody can read a real drift out of.
+
+    Run at two speeds on purpose. The title's clip starts `lead` into the card,
+    and `lead` is a baseline number that build.py divides by the speed, so a
+    1.0x-only test would pass against a constant that is wrong everywhere else.
+    """
+    import build as build_mod
+    import check_draft
+    import draft as draft_mod
+    import tts as tts_mod
+
+    plan = {
+        "title": "自检标题",
+        "scenes": [
+            {"narration": "第一句旁白在这里。", "framing": "medium",
+             "elements": [{"type": "sprite", "asset": "a.png", "x": 0.35,
+                           "y": 0.95, "rel": 0.6}]},
+            {"narration": "第二句旁白长一点点。", "framing": "medium",
+             "elements": [{"type": "sprite", "asset": "b.png", "x": 0.65,
+                           "y": 0.95, "rel": 0.6}]},
+        ],
+        "ending": {"text": "收尾一句", "highlight": ""},
+    }
+
+    def draft_at(speed, work, title=None):
+        """A real storyboard, a real voice index and a real draft, at `speed`."""
+        spoken_title = title or plan["title"]
+        project = offline_project(work, speed, plan, "voice")
+
+        # Real silent clips at this speed, written where the voice stage writes
+        # them, so the draft lays its audio from the same index a build would.
+        index = {}
+        for key, text in [("title", spoken_title)] + [
+                (str(i), s["narration"]) for i, s in enumerate(plan["scenes"], 1)]:
+            out = project.out / "voice" / (
+                "title.mp3" if key == "title" else f"scene_{int(key):02d}.mp3")
+            made = tts_mod._silent(text, out, speed)
+            index[key] = {"text": text, "path": str(made["path"]),
+                          "duration": made["duration"], "speed": speed,
+                          "words": [], "degraded": True}
+        (project.out / "voice" / "index.json").write_text(
+            json.dumps(index, ensure_ascii=False), encoding="utf-8")
+
+        storyboard, _, _ = build_mod.stage_storyboard(
+            project, dict(plan, title=spoken_title), index)
+        (project.out / "storyboard.json").write_text(
+            json.dumps(storyboard, ensure_ascii=False), encoding="utf-8")
+        draft_dir, _, _ = draft_mod.DraftBuilder(
+            project.out, name="voice").build(project.out / "jianying")
+        content = json.loads(
+            (draft_dir / "draft_content.json").read_text(encoding="utf-8"))
+        return project.out, storyboard, content
+
+    # A title too long to read before shot 1 keeps its type and loses its
+    # voice. The rule lives in build.py, the draft exporter used to lay its
+    # audio from the voice index instead, and the clip was still sitting there
+    # - so the draft spoke a title the MP4 beside it was silent for, truncated
+    # into a card sized for no speech at all. The draft is the deliverable, so
+    # the two disagreeing is worse than either being wrong.
+    with tempfile.TemporaryDirectory() as tmp:
+        long_title = "这是一个非常非常长的标题它根本读不完还在继续读下去"
+        out, sb, content = draft_at(1.5, Path(tmp) / "w", title=long_title)
+        card = sb.get("title_card") or {}
+        clips = [seg for tr in content["tracks"]
+                 if tr["type"] == "audio" and tr.get("name") == "配音"
+                 for seg in tr["segments"]]
+        suite.check("narration: an unreadable title loses its voice everywhere",
+                    not card.get("voice") and len(clips) == len(plan["scenes"]),
+                    f"{len(clips)} clips for {len(plan['scenes'])} shots, "
+                    f"card {'voiced' if card.get('voice') else 'silent'}")
+        # ...and the card keeps its type, which is the half that must survive.
+        suite.check("narration: ...but keeps its type on the card",
+                    (card.get("text") or "") == long_title,
+                    f"{len(card.get('text') or '')} characters on screen")
+        expected, actual, late = check_draft.narration_drift(out, sb, content)
+        suite.check("narration: the checker agrees the title is silent",
+                    [k for k, _ in expected] == ["1", "2"]
+                    and len(actual) == len(expected) and not late)
+
+    for speed in (1.0, 1.5):
+        with tempfile.TemporaryDirectory() as tmp:
+            out, sb, content = draft_at(speed, Path(tmp) / "w")
+            expected, actual, late = check_draft.narration_drift(out, sb, content)
+
+            # The title is one of them. Without it the lists are different
+            # lengths, which is the shape the old check silently zipped away.
+            suite.check(f"narration: the title is a clip like any other ({speed:.1f}x)",
+                        [k for k, _ in expected] == ["title", "1", "2"]
+                        and len(actual) == len(expected),
+                        f"expected {[k for k, _ in expected]}, "
+                        f"{len(actual)} in the draft")
+            suite.check(f"narration: every clip lands on its own shot ({speed:.1f}x)",
+                        not late,
+                        "; ".join(f"{k} off by {d / check_draft.SEC:.2f}s"
+                                  for k, d in late))
+
+            # The title's clip starts `lead` into the card, not at its start -
+            # and `lead` shortens with the video, which is the half a 1.0x-only
+            # test would never see.
+            lead = float((sb.get("title_card") or {}).get("lead", 0.0))
+            suite.check(f"narration: the title waits for the stinger ({speed:.1f}x)",
+                        abs(expected[0][1] - check_draft._us(lead)) < 2
+                        and lead > 0,
+                        f"title clip at {expected[0][1] / check_draft.SEC:.3f}s, "
+                        f"lead {lead:.3f}s")
+
+            # ...and it still catches a clip that really has moved. Without
+            # this the fix above could simply be "never report anything".
+            nudged = json.loads(json.dumps(content))
+            for track in nudged["tracks"]:
+                if track["type"] == "audio" and track.get("name") == "配音":
+                    moved = sorted(track["segments"],
+                                   key=lambda s: s["target_timerange"]["start"])
+                    moved[0]["target_timerange"]["start"] += 500_000
+                    break
+            _, _, caught = check_draft.narration_drift(out, sb, nudged)
+            suite.check(f"narration: a drifted title clip is caught ({speed:.1f}x)",
+                        [k for k, _ in caught] == ["title"],
+                        f"reported {[k for k, _ in caught]}")
+
+
 def main():
     print("cartoon-econ-video self-test (offline)\n")
     suite = Suite()
@@ -947,6 +1290,9 @@ def main():
         bad = report.failures()
         suite.check("the verifier passes its own render", not bad,
                     "; ".join(n for _, n, _ in bad))
+
+    speed_checks(suite)
+    narration_alignment_checks(suite)
 
     # The footage track's checks live in their own module. Two sessions work on
     # this repo at once; a single thousand-line test file is where their work

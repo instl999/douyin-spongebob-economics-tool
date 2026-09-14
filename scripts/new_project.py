@@ -94,14 +94,19 @@ def build(args):
         "cast": cast_ref,
         "orientation": args.orientation,
         "shot_seconds": args.shot_seconds,
-        "voice": {"speaker": voice, "speed": 1.0},
+        # How fast the finished video runs, all of it: narration, shot
+        # lengths, both cards and the subtitles that go with them. Written
+        # into every new project rather than left to the default, because a
+        # setting nobody can see in the file is a setting nobody changes.
+        "speed": timing.clamp(args.speed),
+        "voice": {"speaker": voice},
     }
     if args.target:
         project["target_seconds"] = args.target
 
     fit = timing.fit_to_target(
         script, args.target, shot_seconds=args.shot_seconds,
-        title_seconds=2.6, ending_seconds=4.0)
+        title_seconds=2.6, ending_seconds=4.0, speed=project["speed"])
 
     out = ROOT / "projects" / f"{args.name}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -123,6 +128,8 @@ def build(args):
     print(f"  orientation {args.orientation}"
           f"  {'1080x1920' if args.orientation == 'portrait' else '1920x1080'}")
     print(f"  voice       {voice}")
+    print(f"  speed       {fit['speed']:.2f}x"
+          + ("  (1.00x is natural pace)" if fit["speed"] != 1.0 else ""))
     print()
     print("predicted result")
     print(timing.describe(fit))
@@ -160,9 +167,14 @@ def main():
                          "(default_orientation, currently "
                          f"{styles_mod.default_orientation()})")
     ap.add_argument("--target", type=float, default=None,
-                    help="wanted length in seconds; the speech rate is fitted to it")
+                    help="wanted length in seconds; the speed is fitted to it")
     ap.add_argument("--voice", default="male",
                     help="male / female / female-brisk, or a full speaker id")
+    ap.add_argument("--speed", type=float, default=timing.DEFAULT_SPEED,
+                    metavar="X",
+                    help="how fast the whole video runs - narration, shots, "
+                         "cards and subtitles together. 1.0 is natural pace "
+                         f"(default {timing.DEFAULT_SPEED})")
     ap.add_argument("--shot-seconds", type=float, default=5.0,
                     help="how much narration one shot carries")
     args = ap.parse_args()

@@ -13,48 +13,105 @@ second rate. The intercept is the leading and trailing silence the service adds
 to every clip, and it is not a rounding detail - across fifteen shots it is
 seven seconds of the running time, which is the difference between hitting a
 target and missing it.
+
+## Speed is a playback rate, not a voice setting
+
+`speed` here means the whole video: 1.5 is the 1.0x cut played 1.5x faster.
+Narration, shot lengths, card holds, dissolves and subtitles all divide by it
+together, so nothing can drift out of step with anything else. The rule the
+rest of the pipeline follows is one line long:
+
+    a duration divides by speed, a per-second rate multiplies by it,
+    and anything measured in pixels does not move.
+
+It used to mean the speech rate alone, which is the one thing that cannot be
+sped up on its own: the voice arrived early and the picture sat there holding
+its old length.
+
+Narration is **re-spoken** faster rather than resampled - the service takes a
+speech rate directly - so there is no pitch shift, and shot lengths still come
+from the audio that actually came back rather than from an assumption about
+it. A shot cannot drift out of sync with its own narration because it is
+measured from it.
 """
 
 SECONDS_PER_CHAR = 0.1610
 CLIP_OVERHEAD = 0.484
-# Speech rate is clamped well inside the API's [-50, 100] range: past about
-# +/-20% the narration stops sounding like a person reading and starts sounding
-# like a tape being played at the wrong speed.
-MIN_SPEED = 0.85
-MAX_SPEED = 1.20
+
+# 1.0 is the baseline: every duration in a project file, in styles.json and in
+# this pipeline's own constants is written at 1.0 and means what it says.
+BASELINE_SPEED = 1.0
+# What a build uses when the project does not say. The measured references run
+# faster than this pipeline's natural pace, and 1.0 reads as slow beside them.
+DEFAULT_SPEED = 1.5
+# The bounds are the speech service's own: speech_rate is a percentage offset
+# in [-50, 100], so outside 0.5x-2.0x the voice could no longer be spoken at
+# the rate the picture is cut to, and the two would separate again.
+MIN_SPEED = 0.5
+MAX_SPEED = 2.0
+
+
+def clamp(speed):
+    """A usable global speed, whatever the project file says."""
+    try:
+        value = float(speed)
+    except (TypeError, ValueError):
+        return DEFAULT_SPEED
+    if value <= 0:
+        return DEFAULT_SPEED
+    return min(MAX_SPEED, max(MIN_SPEED, value))
+
+
+def scale(seconds, speed):
+    """A baseline duration in timeline time. The one conversion there is."""
+    return float(seconds) / clamp(speed)
 
 
 def count(text):
     return len([c for c in (text or "") if not c.isspace()])
 
 
-def clip_seconds(text, speed=1.0):
-    """How long one shot's narration will be."""
+def clip_seconds(text, speed=BASELINE_SPEED):
+    """How long one shot's narration will be.
+
+    Through `clamp`, like `scale` above, and that matters more than it looks:
+    two different guards on the same parameter would divide the narration by
+    one factor and the pads around it by another, which is the exact mismatch
+    this whole setting exists to remove - reached from inside the module that
+    defines it.
+    """
     n = count(text)
     if not n:
         return 0.0
-    return (SECONDS_PER_CHAR * n + CLIP_OVERHEAD) / max(speed, 0.1)
+    return (SECONDS_PER_CHAR * n + CLIP_OVERHEAD) / clamp(speed)
 
 
 def estimate(script, *, shot_seconds=5.0, tail_pad=0.35, title_seconds=2.6,
-             ending_seconds=4.0, speed=1.0, split=None):
-    """Predicted length of the finished video, and where it goes."""
+             ending_seconds=4.0, speed=BASELINE_SPEED, split=None):
+    """Predicted length of the finished video, and where it goes.
+
+    Every duration argument is a **baseline** one, as written in the project
+    file; `speed` is applied here. Passing pre-scaled values would apply it
+    twice, which is why nothing upstream divides first.
+    """
     if split is None:
         import plan as plan_mod
         split = plan_mod.split_script
     beats = split(script, shot_seconds)
-    per_shot = [clip_seconds(b, speed) + tail_pad for b in beats]
+    pad = scale(tail_pad, speed)
+    per_shot = [clip_seconds(b, speed) + pad for b in beats]
     narration = sum(per_shot)
+    cards = scale(title_seconds + ending_seconds, speed)
     return {
         "shots": len(beats),
         "characters": count(script),
         "narration": narration,
-        "cards": title_seconds + ending_seconds,
-        "total": narration + title_seconds + ending_seconds,
+        "cards": cards,
+        "total": narration + cards,
         "per_shot": per_shot,
         "beats": beats,
+        "speed": clamp(speed),
     }
-
 
 def reachable(script, *, shot_seconds=5.0, tail_pad=0.35, title_seconds=2.6,
               ending_seconds=4.0):
@@ -69,38 +126,47 @@ def reachable(script, *, shot_seconds=5.0, tail_pad=0.35, title_seconds=2.6,
 
 
 def fit_to_target(script, target_seconds, *, shot_seconds=5.0, tail_pad=0.35,
-                  title_seconds=2.6, ending_seconds=4.0):
-    """Pick a speech rate that lands near `target_seconds`.
+                  title_seconds=2.6, ending_seconds=4.0,
+                  speed=DEFAULT_SPEED):
+    """Pick a global speed that lands near `target_seconds`.
+
+    `speed` is what the project asked for, and is what comes back when there is
+    no target to fit. A target overrides it, because a video with a length to
+    hit has already answered the question this setting asks.
 
     Returns {"speed", "estimate", "ok", "note"}. `ok` is False when the target
-    is simply not reachable by changing the delivery, which is a script-length
-    problem and has to be said plainly rather than papered over: squeezing a
-    95-second script into 60 seconds means cutting words, not talking faster.
+    is simply not reachable, which is a script-length problem and has to be
+    said plainly rather than papered over: squeezing a 95-second script into 60
+    seconds means cutting words, not only playing them faster.
     """
     low, high = reachable(script, shot_seconds=shot_seconds, tail_pad=tail_pad,
                           title_seconds=title_seconds,
                           ending_seconds=ending_seconds)
+    asked = clamp(speed)
     natural = estimate(script, shot_seconds=shot_seconds, tail_pad=tail_pad,
                        title_seconds=title_seconds,
-                       ending_seconds=ending_seconds, speed=1.0)
+                       ending_seconds=ending_seconds, speed=asked)
 
     if target_seconds is None:
-        return {"speed": 1.0, "estimate": natural, "ok": True,
-                "note": "no target given; using natural pace"}
+        return {"speed": asked, "estimate": natural, "ok": True,
+                "note": f"no target given; running at {asked:.2f}x"}
 
     if not (low <= target_seconds <= high):
         overshoot = target_seconds < low
         chars_now = count(script)
-        # At the fastest sane delivery, how much script actually fits?
-        budget = max(0.0, target_seconds - title_seconds - ending_seconds)
-        per_shot_overhead = (CLIP_OVERHEAD / MAX_SPEED) + tail_pad
+        # At the fastest sane speed, how much script actually fits? The cards
+        # and the tails are shortened by that speed too, so they have to be
+        # measured at it rather than at their written length.
+        budget = max(0.0, target_seconds
+                     - scale(title_seconds + ending_seconds, MAX_SPEED))
+        per_shot_overhead = (CLIP_OVERHEAD + tail_pad) / MAX_SPEED
         shots = max(1, natural["shots"])
         fits = int(max(0.0, budget - per_shot_overhead * shots)
                    * MAX_SPEED / SECONDS_PER_CHAR)
         note = (
             f"{target_seconds:.0f}s is not reachable from this script: it runs "
-            f"{low:.0f}-{high:.0f}s between the fastest and slowest sane "
-            f"delivery. "
+            f"{low:.0f}-{high:.0f}s between {MAX_SPEED:.2g}x and "
+            f"{MIN_SPEED:.2g}x. "
             + (f"To land near {target_seconds:.0f}s the script needs to be about "
                f"{fits} characters instead of {chars_now} - cut roughly "
                f"{max(0, chars_now - fits)}."
@@ -122,12 +188,12 @@ def fit_to_target(script, target_seconds, *, shot_seconds=5.0, tail_pad=0.35,
             lo = mid
         else:
             hi = mid
-    speed = round((lo + hi) / 2, 3)
+    fitted = round((lo + hi) / 2, 3)
     final = estimate(script, shot_seconds=shot_seconds, tail_pad=tail_pad,
                      title_seconds=title_seconds,
-                     ending_seconds=ending_seconds, speed=speed)
-    return {"speed": speed, "estimate": final, "ok": True,
-            "note": f"speaking at {speed:.2f}x lands at {final['total']:.1f}s"}
+                     ending_seconds=ending_seconds, speed=fitted)
+    return {"speed": fitted, "estimate": final, "ok": True,
+            "note": f"{fitted:.2f}x lands at {final['total']:.1f}s"}
 
 
 def describe(result):

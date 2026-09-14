@@ -124,9 +124,10 @@ element will not look like them. Use it for the one label that lands on a beat.
   "video": {
     "orientation": "landscape", "width": 1920, "height": 1080, "fps": 30,
     "background": "background.png", "dissolve": 0.5,
-    "crf": 20, "preset": "veryfast"
+    "crf": 20, "preset": "veryfast", "speed": 1.0
   },
-  "title_card":  { "text": "什么是效率工资", "duration": 2.6, "style": "title", "size": 0.082 },
+  "title_card":  { "text": "什么是效率工资", "duration": 2.6, "style": "title", "size": 0.082,
+                   "voice": "out/x/voice/title.mp3", "lead": 0.45 },
   "scenes": [
     {
       "id": 1, "duration": 4.39,
@@ -151,13 +152,16 @@ element will not look like them. Use it for the one label that lands on a beat.
 | `background` | `background.png` | the one plate; cover-cropped if it is not the frame's shape |
 | `dissolve` | 0.5 | seconds of cross-dissolve between shots and cards |
 | `crf` / `preset` | 20 / `veryfast` | x264 settings |
+| `speed` | 1.5 | what the build ran at. **Recorded, not applied**: every duration in this file is already on that clock, so nothing downstream divides by it again. See the Speed section of CLAUDE.md |
 
 ### scenes
 
 `duration` is the shot's slot: the measured narration length plus `tail_pad`
-from the project file. `captions` are timed inside it by character count, so a
-long shot shows two or three shorter captions in turn rather than one wall of
-text. If `captions` is absent the renderer derives them from `subtitle`.
+from the project file, both already at the video's `speed` - the narration
+because it was spoken at that rate, the tail because `build.py` divided it.
+`captions` are timed inside it by character count, so a long shot shows two or
+three shorter captions in turn rather than one wall of text. If `captions` is
+absent the renderer derives them from `subtitle`.
 
 ### cards
 
@@ -168,4 +172,13 @@ text. If `captions` is absent the renderer derives them from `subtitle`.
 | `highlight` | one phrase drawn in gold |
 | `size` | type size as a fraction of frame width |
 | `image` | optional pre-made PNG to show instead of drawn text |
-| `duration` | seconds |
+| `duration` | seconds, at the video's `speed` |
+| `voice` | title card only: the clip that reads it aloud, or **`null` when it is not read at all**. Always written, so a silent title is stated rather than implied. See below |
+| `lead` | title card only, and only alongside `voice`: how far into the card the voice starts, so the draft lays the clip where the mix did |
+
+`voice` is a decision, not a lookup. A title too long to read before shot 1 has
+to start keeps its type on the card and loses its voice — `build.py` applies
+that rule, and this field is the only record of the outcome. Both the draft
+exporter and `check_draft` read it rather than going back to
+`voice/index.json`, where the clip is still sitting: doing that spoke a title
+the rendered MP4 was silent for, truncated into a card sized for no speech.

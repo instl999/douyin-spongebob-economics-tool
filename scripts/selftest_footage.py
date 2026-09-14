@@ -532,3 +532,68 @@ def run(suite, lay):
                     filled[0] < 0.25 < filled[1] < 0.85 < filled[2],
                     "  ".join(f"{f:.0%}" for f in filled))
 
+    # Speed has to reach the footage itself, and this is the one check that can
+    # tell the difference. A shot cut shorter and a shot played faster are the
+    # same length on the timeline and look identical in every report; the only
+    # place they differ is in what is on screen partway through. So: a source
+    # that is one second of red and then three of blue, cut to a two-second
+    # shot at 1.0x and at 2.0x, sampled at the same moment in each. At 1.0x
+    # that moment is still inside the red; at 2.0x the shot has already reached
+    # the blue, because it is playing the source at twice the rate rather than
+    # taking half as much of it.
+    #
+    # Narration at 1.5x over footage at 1.0x is the mismatch the setting exists
+    # to remove, and it would pass every other check in this file.
+    with tempfile.TemporaryDirectory() as tmp:
+        work = Path(tmp)
+        cache = work / "clips"
+        cache.mkdir()
+        src = cache / "pexels_retime.mp4"
+        subprocess.run(
+            [config.FFMPEG, "-y", "-v", "error",
+             "-f", "lavfi", "-i", "color=c=red:s=64x64:r=15:d=1",
+             "-f", "lavfi", "-i", "color=c=blue:s=64x64:r=15:d=3",
+             "-filter_complex", "[0:v][1:v]concat=n=2:v=1:a=0[v]",
+             "-map", "[v]", "-c:v", "libx264", "-pix_fmt", "yuv420p",
+             str(src)], check=True)
+        clip = {"provider": "pexels", "id": "retime", "duration": 4.0,
+                "download_url": "unused - already in the cache"}
+
+        def shot_at(speed, moment=0.75):
+            out = work / f"speed_{speed:.0f}.mp4"
+            fr_mod.prepare(clip, out, seconds=2.0, size=(64, 64), fps=15,
+                           grade="none", head_trim=0.0, cache_dir=cache,
+                           speed=speed)
+            still = work / f"speed_{speed:.0f}.png"
+            subprocess.run(
+                [config.FFMPEG, "-y", "-v", "error", "-ss", str(moment),
+                 "-i", str(out), "-frames:v", "1", str(still)], check=True)
+            pixels = np.asarray(Image.open(still).convert("RGB")).astype(int)
+            length = subprocess.run(
+                [config.FFPROBE, "-v", "error", "-show_entries",
+                 "format=duration", "-of", "csv=p=0", str(out)],
+                capture_output=True, text=True).stdout.strip()
+            return float(pixels[..., 0].mean() - pixels[..., 2].mean()), float(length)
+
+        warm_slow, len_slow = shot_at(1.0)
+        warm_fast, len_fast = shot_at(2.0)
+        suite.check("footage: speed plays the clip faster, not just shorter",
+                    warm_slow > 20 > -20 > warm_fast,
+                    f"r-b {warm_slow:+.0f} at 1.0x, {warm_fast:+.0f} at 2.0x")
+        suite.check("footage: and the shot is still the length it was given",
+                    abs(len_slow - 2.0) < 0.15 and abs(len_fast - 2.0) < 0.15,
+                    f"{len_slow:.2f}s and {len_fast:.2f}s")
+
+    # The rest of the timeline moves with it. Caption spans are cut from the
+    # shot durations, so at 1.5x they have to land 1.5x earlier - a caption
+    # left on the 1.0x clock is a subtitle for the shot before it.
+    beats = [{"beat": "第一句", "en": "one"}, {"beat": "第二句", "en": "two"}]
+    slow_spans = fb_mod.caption_spans(beats, [4.0, 4.0])
+    fast_spans = fb_mod.caption_spans(
+        [dict(b) for b in beats], [4.0 / 1.5, 4.0 / 1.5],
+        gap=fb_mod.paced(fb_mod.CAPTION_GAP, 1.5))
+    suite.check("footage: captions ride the same clock as the shots",
+                all(abs(f[0] * 1.5 - s[0]) < 1e-6
+                    and abs(f[1] * 1.5 - s[1]) < 1e-6
+                    for s, f in zip(slow_spans, fast_spans)),
+                f"ends {slow_spans[0][1]:.2f}s -> {fast_spans[0][1]:.2f}s")

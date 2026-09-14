@@ -106,7 +106,7 @@ def fetch(clip, cache_dir):
     return path
 
 
-def locate(clip, needs, seconds, src, model=None, probes=PROBES):
+def locate(clip, needs, seconds, src, model=None, probes=PROBES, speed=1.0):
     """Find *where inside* a long source the wanted shot actually is.
 
     Ranking scores a single thumbnail. That is fine for a 15-second stock clip,
@@ -122,18 +122,22 @@ def locate(clip, needs, seconds, src, model=None, probes=PROBES):
     vision calls, and only for clips already chosen.
     """
     duration = float(clip.get("duration") or 0)
+    # How much *source* a shot of `seconds` eats. At 1.5x it is half a second
+    # more per second on screen, and getting this wrong is not cosmetic: the
+    # window a probe scores would not be the window the cut actually plays.
+    consumed = float(seconds) * max(float(speed), 0.1)
     if duration <= LONG_SOURCE:
-        return HEAD_TRIM if duration >= seconds + HEAD_TRIM else 0.0
+        return HEAD_TRIM if duration >= consumed + HEAD_TRIM else 0.0
 
     key = footage_mod._cache_key("locate", clip.get("provider"), clip.get("id"),
-                                 needs, seconds)
+                                 needs, consumed)
 
     def probe():
         frames_dir = footage_mod.CACHE / "probes"
         frames_dir.mkdir(parents=True, exist_ok=True)
         # Keep clear of the head and tail: titles at the front, credits and
         # fade-outs at the back.
-        usable = max(0.0, duration - seconds)
+        usable = max(0.0, duration - consumed)
         best = {"start": 0.0, "score": -1, "why": "no probe succeeded"}
         for i in range(probes):
             t = usable * (0.05 + 0.9 * i / max(1, probes - 1))
@@ -155,33 +159,53 @@ def locate(clip, needs, seconds, src, model=None, probes=PROBES):
 
 
 def prepare(clip, out_path, seconds, size, fps=30, grade="vintage",
-            head_trim=HEAD_TRIM, cache_dir=None, needs=None, model=None):
+            head_trim=HEAD_TRIM, cache_dir=None, needs=None, model=None,
+            speed=1.0):
     """Cut one shot to length and shape. Returns the written path.
 
     Pass `needs` to have a long source located by content rather than cut from
     the head - see `locate`. Without it, long archival film is cut blind.
+
+    `speed` plays the source faster rather than only cutting less of it. This
+    is the difference between a video that is genuinely quicker and one whose
+    narration is quicker over footage still moving at its own pace - a walk at
+    1.0x under a voice at 1.5x reads as a dubbing error, and it is the reason
+    speed cannot be a voice setting. The output is still exactly `seconds`
+    long; what changes is how much source goes into it.
     """
     src = fetch(clip, cache_dir or (footage_mod.CACHE / "clips"))
     W, H = size
+    rate = max(float(speed), 0.1)
+    consumed = float(seconds) * rate
     if needs:
-        start = locate(clip, needs, seconds, src, model=model)
+        start = locate(clip, needs, seconds, src, model=model, speed=rate)
     else:
         # Only skip the head if the clip is long enough to afford it.
-        start = head_trim if clip.get("duration", 0) >= seconds + head_trim else 0.0
+        start = head_trim if clip.get("duration", 0) >= consumed + head_trim else 0.0
     # setsar=1 is not cosmetic. Sources arrive with whatever pixel aspect they
     # were encoded with - a 384x288 Commons upscale came out 1571:1440 while
     # generated fill was 20384:20385 - and `concat` refuses to join streams
     # whose SAR differs, even at identical pixel dimensions. xfade tolerated
     # it, so this only surfaced when transitions became hard cuts.
     chain = [f"scale={W}:{H}:force_original_aspect_ratio=increase",
-             f"crop={W}:{H}", "setsar=1", f"fps={fps}"]
+             f"crop={W}:{H}", "setsar=1"]
+    # Before fps=, so the cadence is resampled after the retime rather than
+    # having its own timestamps rewritten underneath it.
+    # (PTS-STARTPTS), not bare PTS: a seek and a -stream_loop both leave the
+    # first frame at whatever timestamp it had, and dividing that offset scales
+    # the *gap before the shot* rather than the shot.
+    if abs(rate - 1.0) > 1e-6:
+        chain.append(f"setpts=(PTS-STARTPTS)/{rate:.6f}")
+    chain.append(f"fps={fps}")
     if GRADES.get(grade):
         chain.append(GRADES[grade])
     if scrim(SCRIM_FOOTAGE):
         chain.append(scrim(SCRIM_FOOTAGE))
     # A clip shorter than its beat is looped rather than slowed: a slowed clip
     # reads as an effect, a looped one usually just reads as a longer shot.
-    loop = ["-stream_loop", "-1"] if clip.get("duration", 0) < seconds else []
+    # Measured against what the shot actually consumes, which at 1.5x is half
+    # again the seconds on screen.
+    loop = ["-stream_loop", "-1"] if clip.get("duration", 0) < consumed else []
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     _run([config.FFMPEG, "-y", "-v", "error", *loop, "-ss", f"{start:.3f}",

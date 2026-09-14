@@ -1,12 +1,12 @@
-﻿{
+{
   "name": "sunk_cost",
   "title": "什么是沉没成本",
   "script": "examples/sunk_cost.txt",
   "cast": "bikini_bottom",
   "orientation": "landscape",
   "shot_seconds": 5.0,
+  "speed": 1.5,
   "voice": {
-    "speaker": "zh_male_yuanboxiaoshu_uranus_bigtts",
-    "speed": 1.0
+    "speaker": "zh_male_yuanboxiaoshu_uranus_bigtts"
   }
 }

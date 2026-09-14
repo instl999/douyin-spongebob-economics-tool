@@ -62,6 +62,44 @@ character, not a whole library.
 - New style: copy `casts/_template.json`, fill the `_hint_*` fields, then
   `python scripts/build.py --check`.
 
+## Speed
+
+`speed` is one number for the whole video and **1.5 is the default** — the
+project file's `speed`, or `--speed` on either track. 1.0 is the baseline:
+every duration written in a project file, in `casts/styles.json` and in this
+pipeline's own constants means what it says at 1.0, and `timing.scale` is the
+one place that turns one into timeline time.
+
+It is not a voice setting, and that is the whole point. `voice.speed` used to
+be the speech rate alone, which is the one thing that cannot be sped up on its
+own: the narration arrived early and the picture sat there holding its old
+length. The rule now is one line — **a duration divides by speed, a per-second
+rate multiplies by it, and anything in pixels does not move** — and it is
+applied at exactly one point per track, `stage_storyboard` in the drawn track
+and `build` in the footage one.
+
+Three consequences worth knowing before editing anything here:
+
+- **Narration is re-spoken, not resampled.** The service takes a `speech_rate`
+  directly, so there is no pitch shift, and shot lengths still come from the
+  audio that actually came back. A shot cannot drift out of sync with its own
+  narration because it is measured from it. The voice cache keys on the speed
+  as well as the text, so changing `speed` re-reads rather than re-cutting old
+  clips to a new rhythm.
+- **Retrieved footage is played faster, not cut shorter.** `footage_render.prepare`
+  applies `setpts`, and `locate` scores the window the cut will actually play.
+  A shot cut shorter and a shot played faster are the same length on the
+  timeline and identical in every report; the selftest tells them apart by
+  sampling a frame partway through a red-then-blue source.
+- **Music and sound cues are left at natural pace.** They are cues, not a
+  clock. The opening stinger played 1.5× is a different sound, and nothing in
+  the picture is timed against the bed.
+
+The bounds, 0.5×–2.0×, are the speech service's own (`speech_rate` is a
+percentage offset in [-50, 100]). Outside them the voice could not be spoken at
+the rate the picture is cut to, which is the mismatch the setting exists to
+prevent.
+
 ## Two tracks
 
 **Drawn** (`build.py`) is the original: a fixed plate, AI sprites composited on
@@ -169,6 +207,14 @@ The card holds for `build.title_slot(...)`: the configured `title_seconds` as a
 floor, extended when the line needs longer. A fixed 2.6s would cut to shot 1
 mid-word on any title past about eight characters.
 
+Past `MAX_TITLE_SLOT` the card keeps its type and **loses its voice** — and the
+storyboard's `title_card.voice` is the only record of that. Both the mix and
+the draft exporter read it; the exporter used to go back to `voice/index.json`,
+where the clip is still sitting, and spoke a title the MP4 beside it was silent
+for, truncated into a card sized for no speech. Same shape as the sound cues
+above, and the same reason: a decision that lives in two places is a decision
+the two can disagree about.
+
 Per-project overrides: `opening_sfx` (a library name; `""` turns it off) and
 `title_seconds`.
 
@@ -190,7 +236,7 @@ the calligraphy card that already says it.
 
 ## Tests
 
-`python scripts/selftest.py` runs everything offline, 141 checks. The
+`python scripts/selftest.py` runs everything offline, 176 checks. The
 footage-track half lives in `scripts/selftest_footage.py` and is called from
 the end of it — two Claude Code sessions work on this repo at once, and one
 thousand-line test file is the single place their work is guaranteed to

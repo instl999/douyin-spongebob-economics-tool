@@ -44,6 +44,10 @@ FRAMING = _LOOK["framing"]
 # the bad one in red - so it is chosen by naming the meaning, not the colour.
 LABEL_TONES = {k: tuple(v) for k, v in _LOOK["label_tones"].items()}
 
+# Baseline fades, for a caller holding no storyboard. A Renderer takes its own
+# from the storyboard's `look` instead: build.py has already put those on the
+# video's clock, and a fade left at 1.0 in a 1.5x video is a subtitle still
+# arriving after the line that follows it has started.
 CAPTION_FADE = _LOOK["timing"]["caption_fade"]   # subtitle swaps inside a shot
 ELEMENT_FADE = _LOOK["timing"]["element_fade"]   # elements arriving mid-shot
 
@@ -428,6 +432,9 @@ class Renderer:
         self.look = styles_mod.look(carried=cfg.get("look"))
         self.fps = int(cfg.get("fps", 30))
         self.dissolve = float(cfg.get("dissolve", 0.5))
+        pace = self.look.get("timing") or {}
+        self.caption_fade = float(pace.get("caption_fade", CAPTION_FADE))
+        self.element_fade = float(pace.get("element_fade", ELEMENT_FADE))
         # Carried in the storyboard rather than looked up from the cast, so a
         # storyboard renders on its own without the cast file being present.
         self.panel_color = tuple(cfg.get("panel_color") or (176, 196, 205))
@@ -489,7 +496,7 @@ class Renderer:
             if appear <= 0.0:
                 opacities.append(1.0)
                 continue
-            o = smoothstep((local_t - appear) / ELEMENT_FADE)
+            o = smoothstep((local_t - appear) / self.element_fade)
             opacities.append(o)
             if o < 0.999:
                 partial = True
@@ -513,8 +520,8 @@ class Renderer:
             spans = self._caption_spans(seg)
             for start, end, text, highlight in spans:
                 if start <= local_t < end:
-                    fade = min(smoothstep((local_t - start) / CAPTION_FADE),
-                               smoothstep((end - local_t) / CAPTION_FADE))
+                    fade = min(smoothstep((local_t - start) / self.caption_fade),
+                               smoothstep((end - local_t) / self.caption_fade))
                     caption = (text, highlight, fade)
                     break
 

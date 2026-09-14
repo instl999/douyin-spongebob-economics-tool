@@ -43,6 +43,12 @@ import tts as tts_mod
 
 ROOT = Path(__file__).resolve().parent.parent
 
+# Every duration below is a **baseline** one, written for a video at 1.0x, and
+# `paced()` puts them on the clock the run actually uses. The picture is sped
+# up with them: retrieved footage is played faster in `footage_render.prepare`
+# rather than merely cut shorter, so a montage under 1.5x narration is not a
+# reel of 1.0x clips truncated to fit.
+
 # The gap between one shot's narration ending and the next beginning. Same
 # value the drawn track uses, so both cut to the same rhythm.
 TAIL_PAD = 0.35
@@ -56,6 +62,12 @@ DISSOLVE = 0.0
 CAPTION_GAP = 0.12
 HOOK_IN, HOOK_HOLD = 0.6, 3.4
 BGM_VOLUME = 0.05
+
+
+def paced(seconds, speed):
+    """A baseline duration at this run's speed. See timing.py."""
+    import timing
+    return timing.scale(seconds, speed)
 
 
 def log(message=""):
@@ -103,7 +115,7 @@ def stage_voice(beats, out_dir, speaker=None, speed=1.0, force=False):
                 result = tts_mod.synth(text, target, speaker=speaker, speed=speed)
             except tts_mod.TTSError as exc:
                 log(f"  ! beat {i}: {exc}; using an estimated duration")
-                result = tts_mod._silent(text, target)
+                result = tts_mod._silent(text, target, speed)
             log(f"  beat {i:>2}: {result['duration']:5.2f}s"
                 f"{'  (estimated, no audio)' if result['degraded'] else ''}")
         if result["degraded"]:
@@ -112,7 +124,7 @@ def stage_voice(beats, out_dir, speaker=None, speed=1.0, force=False):
                          "duration": result["duration"],
                          "speaker": speaker or "", "speed": float(speed),
                          "degraded": bool(result["degraded"])}
-        pieces.append((result["path"], result["duration"] + TAIL_PAD,
+        pieces.append((result["path"], result["duration"] + paced(TAIL_PAD, speed),
                        result["degraded"]))
 
     index_path.write_text(json.dumps(index, ensure_ascii=False, indent=2),
@@ -125,11 +137,17 @@ def stage_voice(beats, out_dir, speaker=None, speed=1.0, force=False):
 
 
 def stage_pictures(plans, durations, out_dir, lay, grade,
-                   min_score=footage_mod.MIN_SCORE):
+                   min_score=footage_mod.MIN_SCORE, speed=1.0):
     """One prepared clip per beat: retrieved where possible, generated where not.
 
     Returns (paths, rows) where each row records what the beat actually got, so
     the report can say which shots are real footage and which are fill.
+
+    `speed` reaches retrieved footage only. A composite, a motion graphic and
+    generated fill are all drawn to fill exactly the seconds they are given, so
+    they are already on the video's clock; a retrieved clip is somebody else's
+    footage running at its own pace, and is the one thing here that has to be
+    played faster rather than merely cut shorter.
     """
     shots_dir = out_dir / "shots"
     shots_dir.mkdir(parents=True, exist_ok=True)
@@ -167,9 +185,10 @@ def stage_pictures(plans, durations, out_dir, lay, grade,
             continue
         if chosen and chosen.get("score", 0) >= min_score:
             src = fr.fetch(chosen, footage_mod.CACHE / "clips")
-            start = fr.locate(chosen, entry["needs"], seconds, src)
+            start = fr.locate(chosen, entry["needs"], seconds, src,
+                              speed=speed)
             fr.prepare(chosen, target, seconds=seconds, size=lay.size,
-                       grade=grade, needs=entry["needs"])
+                       grade=grade, needs=entry["needs"], speed=speed)
             rows.append({"id": entry["id"], "kind": "footage",
                          "score": chosen["score"], "cut_at": round(start, 2),
                          "provider": chosen["provider"],
@@ -259,8 +278,10 @@ def verify_output(path, expected_seconds, lay, narration=None):
 
 
 def build(script_path, out_dir, orientation="landscape", grade="vintage",
-          provider=None, speaker=None, speed=1.0, bgm=None, limit=0,
+          provider=None, speaker=None, speed=None, bgm=None, limit=0,
           hook=None, revoice=False, topic=""):
+    import timing
+    speed = timing.clamp(timing.DEFAULT_SPEED if speed is None else speed)
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     lay = layout_mod.Layout(orientation)
@@ -274,7 +295,7 @@ def build(script_path, out_dir, orientation="landscape", grade="vintage",
     if not beats:
         raise SystemExit("the script has no sentences in it")
     log(f"{len(beats)} beats  |  {lay.describe()}  |  grade={grade}  "
-        f"|  providers={provider}")
+        f"|  speed={speed:.2f}x  |  providers={provider}")
 
     log("\nvoice")
     pieces = stage_voice(beats, out_dir, speaker=speaker, speed=speed,
@@ -286,7 +307,7 @@ def build(script_path, out_dir, orientation="landscape", grade="vintage",
         log(f"  ! {reason}")
     results = footage_mod.select_footage(
         beats, durations=durations, orientation=orientation,
-        provider=provider, progress=lambda m: None)
+        provider=provider, progress=lambda m: None, speed=speed)
     cov = footage_mod.coverage(results)
     if cov["beats"]:
         log(f"  retrieval covered {cov['matched']}/{cov['beats']} beats "
@@ -298,10 +319,12 @@ def build(script_path, out_dir, orientation="landscape", grade="vintage",
         log("  no beat asked for footage; every shot is drawn or composited")
 
     log("\npictures")
-    shot_paths, rows = stage_pictures(results, durations, out_dir, lay, grade)
+    shot_paths, rows = stage_pictures(results, durations, out_dir, lay, grade,
+                                      speed=speed)
 
     log("\nassemble")
-    spans = caption_spans(results, durations)
+    spans = caption_spans(results, durations, dissolve=paced(DISSOLVE, speed),
+                          gap=paced(CAPTION_GAP, speed))
     caps = fr.caption_pngs(spans, lay, look, out_dir / "captions")
     if hook is None:
         hook = beats[0]
@@ -317,10 +340,12 @@ def build(script_path, out_dir, orientation="landscape", grade="vintage",
     if opens_on_graphic:
         log("  hook skipped: shot 1 is a made shot with its own type")
     if hook_path:
-        caps = [(HOOK_IN, HOOK_IN + HOOK_HOLD, hook_path)] + caps
+        hook_in = paced(HOOK_IN, speed)
+        caps = [(hook_in, hook_in + paced(HOOK_HOLD, speed), hook_path)] + caps
     mute = out_dir / "video_mute.mp4"
     chrome = fr.chrome_png(topic, lay, grade, out_dir / "captions" / "chrome.png")
-    _, total = fr.assemble(shot_paths, durations, mute, dissolve=DISSOLVE,
+    _, total = fr.assemble(shot_paths, durations, mute,
+                           dissolve=paced(DISSOLVE, speed),
                            captions=caps, chrome=chrome, grade=grade)
     log(f"  {len(shot_paths)} shots, {total:.2f}s, {len(caps)} overlays"
         f"{', topic eyebrow' if topic else ''}")
@@ -392,7 +417,10 @@ def main():
     ap.add_argument("--grade", default="vintage", choices=sorted(fr.GRADES))
     ap.add_argument("--provider", default="")
     ap.add_argument("--speaker", default="")
-    ap.add_argument("--speed", type=float, default=1.0)
+    ap.add_argument("--speed", type=float, default=None, metavar="X", help=(
+        "how fast the whole video runs - narration, shot lengths, the "
+        "retrieved footage itself, captions and the hook together. 1.0 is "
+        "natural pace; default 1.5"))
     ap.add_argument("--bgm", default="")
     ap.add_argument("--hook", default="", help="opening line; defaults to beat 1")
     ap.add_argument("--topic", default="", help=(
