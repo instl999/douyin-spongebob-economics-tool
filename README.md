@@ -95,6 +95,7 @@ file.
 - [Install](#install)
 - [Credentials](#credentials)
 - [Making a video](#making-a-video)
+- [Speed](#speed)
 - [Changing the look](#changing-the-look)
 - [Command reference](#command-reference)
 - [Quality control](#quality-control)
@@ -124,6 +125,7 @@ crowds a character is a drag rather than another full run.
 | Video | H.264, CRF 20 by default |
 | Audio | AAC 192 kbps — narration over a music bed |
 | Structure | title card → shots → closing card |
+| Opening | whenever there is a title, the card is **read aloud** over a stinger at t=0; on by default, with no setting to turn the voice off |
 | Subtitles | burned into the MP4; a real editable subtitle track in the draft; `.srt` either way |
 
 Six videos were produced during development: two art styles, both orientations,
@@ -133,8 +135,8 @@ Six videos were produced during development: two art styles, both orientations,
 
 Tracks come out named and in order: `背景` (the plate and the two cards),
 `图层1…图层N` (one per simultaneous element, stacked in the renderer's own depth
-order), `配音` (narration, one clip per shot), `字幕` (subtitles, imported so
-they carry Jianying's native styling).
+order), `配音` (narration: one clip per shot, plus one for the spoken title), `字幕`
+(subtitles, imported so they carry Jianying's native styling).
 
 ```bash
 python scripts/draft.py out/<name> --install
@@ -294,7 +296,7 @@ see [Design decisions](#the-model-never-writes-narration).
 python scripts/new_project.py \
     --name my_video --title "什么是效率工资" \
     --script examples/my_video.txt \
-    --orientation landscape --target 90 --voice male
+    --orientation landscape --target 90 --voice male --speed 1.5
 ```
 
 This touches no network. It validates the cast, predicts the finished length,
@@ -363,9 +365,56 @@ intercept is the silence the service puts around every clip — across fifteen
 shots that is seven seconds, which is the difference between hitting a target
 and missing it.
 
-`target_seconds` fits the speech rate to a wanted length within 0.85×–1.20×.
-Outside that range, the answer is that the script is the wrong length, and it
-says so rather than producing something a third too long.
+`target_seconds` fits the **global speed** to a wanted length within
+0.5×–2.0×. Outside that range, the answer is that the script is the wrong
+length, and it says so rather than producing something a third too long.
+
+### Speed
+
+`speed` is one number for the whole video, and **1.5 is the default**. 1.0 is
+the baseline: every duration in a project file, in `casts/styles.json` and in
+the pipeline's own constants is written at 1.0 and means what it says.
+
+```jsonc
+{ "speed": 1.5 }          // in the project file
+```
+```bash
+python scripts/build.py projects/payday.json --speed 1.2
+python scripts/footage_build.py --script examples/telephone_history.txt --speed 1.2
+```
+
+It is deliberately **not** a voice setting, which is the one thing it cannot
+be. Speeding the narration alone gets a video whose voice arrives early over
+footage still moving at its old pace, and the fix is not a tweak to the number
+— it is that one number has to move everything:
+
+| | at 1.5× |
+|---|---|
+| narration | **re-spoken** at 1.5×, not resampled, so there is no pitch shift |
+| shot lengths | measured from the clips that came back, so they follow on their own |
+| tails, both cards, the dissolve | divided by 1.5 |
+| caption and element fades | divided by 1.5 |
+| subtitles | cut from the same shot durations as the picture, so they cannot drift |
+| retrieved footage (footage track) | **played** at 1.5×, not merely cut shorter |
+| camera pushes, chart builds | already fractions of a shot, so they follow |
+| music and sound cues | left alone — they are cues, not a clock, and a stinger played 1.5× is a different sound |
+
+The rule the code follows is one line: **a duration divides by speed, a
+per-second rate multiplies by it, and anything measured in pixels does not
+move.**
+
+Bounds are 0.5×–2.0×, which are the speech service's own: `speech_rate` is a
+percentage offset in [-50, 100], so past those the voice could no longer be
+spoken at the rate the picture is cut to and the two would separate again.
+
+A value outside them is pulled into range rather than refused — a typo in a
+project file should not kill a ten-minute build — but the run says so on the
+line before the length estimate, because forgiving and silent is how somebody
+ends up wondering why `"speed": 15` produced an ordinary-looking video.
+
+Changing `speed` on a project that has already been built **re-reads the
+narration** — a clip spoken at another speed is the wrong clip however well it
+matches the text — and everything downstream re-derives from the new lengths.
 
 ---
 
@@ -536,6 +585,7 @@ Tall scenery framing the picture makes every character look small and lost.
 | Create a project and see its cost | `python scripts/new_project.py --name … --title … --script … --cast <style key> --orientation …` |
 | Contact sheet of the shots | `python scripts/build.py <project> --preview` |
 | Build (checks the result automatically) | `python scripts/build.py <project>` |
+| Build at another speed | `python scripts/build.py <project> --speed 1.2` |
 | Check a finished video on its own | `python scripts/verify.py <project> --verbose` |
 | Re-run after editing the plan | `python scripts/build.py <project> --from storyboard` |
 | Generate a cast's whole library | `python scripts/build_library.py <style key or cast path> --plates` |
@@ -815,6 +865,31 @@ A pose that fails to arrive — quota, a content filter, a dropped connection �
 stands in the nearest existing pose rather than disappearing. The first real
 run of this hit a quota wall and the shot lost both its characters, which is
 worse than the generic casting the request was meant to improve on.
+
+### The title card is read aloud, and there is no switch for it
+
+The card used to hold a silent slot, so every video opened on two and a half
+seconds of nothing while the calligraphy sat there. It is now narrated like any
+other line, and the setting is deliberately absent: an opening that says nothing
+is not a style, it is the bug this replaced.
+
+Three things follow from that, and each is a default rather than a knob:
+
+- **The card holds for as long as its own line needs.** `title_seconds` (2.6 at
+  1.0×) is a floor, not the answer — a fixed hold cut to shot 1 mid-word on any
+  title past about eight characters.
+- **The voice waits for the stinger.** It starts 0.45 s in, measured off the cue:
+  the impact peaks in its first 0.25 s and is 10 dB down by 0.5 s, so the title
+  speaks into the decay rather than over the hit. Like every duration here, that
+  lead divides by the video's [speed](#speed).
+- **A title too long to read loses its voice, not its type.** Past a 4.5 s cap
+  the card would hold the video open too long, so the card stays and the
+  voice-over is dropped, with a line in the log saying so. Clamping instead
+  would cut the title mid-word.
+
+The title gets no subtitle cue of its own: the draft imports the `.srt` as a
+native subtitle track, so a cue here printed the title a second time in small
+white text under the card that already says it.
 
 ### The model never writes narration
 

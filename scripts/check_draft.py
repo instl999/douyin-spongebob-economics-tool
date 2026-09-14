@@ -27,6 +27,7 @@ import console  # noqa: F401  UTF-8 stdout; see console.py
 import numpy as np
 from PIL import Image
 
+import audio as audio_mod
 import render as render_mod
 import styles as styles_mod
 from layout import from_video as layout_from_video
@@ -47,6 +48,83 @@ def duration_of(sb):
     durations = [float(s.get("duration", 3.0)) for s in sb.get("scenes", [])]
     _, total = render_mod.build_timeline(sb, durations)
     return total
+
+
+def _expected_voice(project, sb):
+    """Where every narration clip in the draft should start, in timeline order.
+
+    Returns [(key, start_us)] - "title" for the card, "1", "2", ... for shots.
+
+    Rebuilt from the draft's own two inputs, the storyboard and the voice
+    index, because those are what `draft._add_voice` lays the clips from. The
+    shot starts alone are a different list: they omit the title, whose clip
+    begins `lead` into the card rather than at its start.
+
+    The lead comes off the storyboard, not `audio.TITLE_SFX_LEAD`. That
+    constant is the 1.0x baseline, and build.py divides it by the video's
+    speed - so reading it here would expect the title a fifth of a second late
+    on every video that is not running at natural pace. It is only the fallback
+    for a storyboard written before the field existed.
+    """
+    durations = [float(s.get("duration", 3.0)) for s in sb.get("scenes", [])]
+    segments, _ = render_mod.build_timeline(sb, durations)
+    card = sb.get("title_card") or {}
+
+    index_path = Path(project) / "voice" / "index.json"
+    index = (json.loads(index_path.read_text(encoding="utf-8-sig"))
+             if index_path.exists() else {})
+
+    expected = []
+    for seg in segments:
+        if seg.kind == "title":
+            # The storyboard, not the index. A title too long to read keeps its
+            # type and loses its voice, and only the storyboard records that -
+            # so an index lookup here would expect a clip the draft was right
+            # not to write, and report a correct draft as one short.
+            if not card.get("voice"):
+                continue
+            key, offset = "title", float(
+                card.get("lead", audio_mod.TITLE_SFX_LEAD))
+            path = Path(card["voice"])
+        elif seg.kind == "scene":
+            key, offset = str(seg.data.get("id", seg.index + 1)), 0.0
+            entry = index.get(key)
+            if not entry:
+                continue
+            path = Path(entry["path"])
+        else:
+            continue
+        # The file still being on disk is draft.py's other condition. A clip it
+        # skipped for that reason is not a clip that has drifted.
+        if path.exists():
+            expected.append((key, _us(seg.start + offset)))
+    return expected
+
+
+def narration_drift(project, sb, content):
+    """Where the draft's narration clips sit against where its timeline puts them.
+
+    Returns (expected, actual, late). `expected` is [(key, start_us)] in
+    timeline order, `actual` the clip starts found on the voice track, and
+    `late` the [(key, drift_us)] pairs past the tolerance.
+
+    `late` only means anything once the two lists are the same length. Until
+    they are, the clips being compared are not the same clips, and a caller has
+    to say so rather than report positions - which is the mistake that made
+    this check useless in the first place.
+    """
+    expected = _expected_voice(project, sb)
+    # The voice track by name, not every audio track: sound cues live on audio
+    # tracks too, and counting those as narration made a correct draft report
+    # seven clips 21 seconds out of place.
+    actual = sorted(seg["target_timerange"]["start"]
+                    for tr in content["tracks"]
+                    if tr["type"] == "audio" and tr.get("name") == "配音"
+                    for seg in tr["segments"])
+    late = [(key, abs(got - want))
+            for (key, want), got in zip(expected, actual)
+            if abs(got - want) > SEC // 100]           # 10ms
+    return expected, actual, late
 
 
 def _covering(track, t_us):
@@ -290,24 +368,50 @@ def main():
     # 5. narration lands on its own shot. A picture that matches the render
     #    while the voice sits half a second out is still a broken draft, and
     #    nothing above would notice.
-    durations = [float(s.get("duration", 3.0)) for s in sb.get("scenes", [])]
-    shots, _ = render_mod.build_timeline(sb, durations)
-    starts = [_us(s.start) for s in shots if s.kind == "scene"]
-    # The voice track by name, not every audio track: sound cues live on audio
-    # tracks too, and counting those as narration made a correct draft report
-    # seven clips 21 seconds out of place.
-    audio = [seg["target_timerange"]["start"]
-             for tr in content["tracks"]
-             if tr["type"] == "audio" and tr.get("name") == "配音"
-             for seg in tr["segments"]]
-    drift = [abs(a - b) for a, b in zip(sorted(audio), starts)]
-    late = [d for d in drift if d > SEC // 100]        # 10ms
-    if audio and late:
-        failures.append(f"{len(late)} narration clip(s) off their shot by up to "
-                        f"{max(late) / SEC:.2f}s")
-    print(f"  {'ok ' if audio and not late else '-- '} {len(audio)} narration "
-          f"clips, aligned to their shots"
-          f"{'' if audio else ' (none - voice stage not run)'}")
+    #
+    #    The expected positions are NOT simply the shot starts. The title card
+    #    is voiced too, and its clip begins after the stinger rather than at the
+    #    card's own start - so a list of shot starts is one entry short and
+    #    starts one entry late. Zipped against the clips it paired the title
+    #    with shot 1 and each shot with the next one along, and reported every
+    #    correct draft as every clip a whole shot out of place. A check that
+    #    fails on everything is a check nobody can read a real drift out of.
+    #
+    #    So the expectation is rebuilt from what the draft was written from:
+    #    the same timeline, the same voice index, the same lead.
+    voiced, audio, late = narration_drift(project, sb, content)
+    note, unknown = "", False
+    if audio and not voiced:
+        # The draft has clips and the project has no voice index to place them
+        # against - a draft checked away from the run that made it. Neither a
+        # pass nor a failure: the question simply cannot be answered, and
+        # printing "ok" for it is the false confidence this file exists to
+        # avoid. `voice/` survives build.py's tidy, so a normal run never
+        # lands here.
+        unknown = True
+    elif len(audio) != len(voiced):
+        # Not a drift - a clip that should be there and is not, or one that
+        # should not be and is. Positions cannot be compared at all until the
+        # two lists describe the same set of clips, so `late` is not reported
+        # alongside this: it was computed against a mis-paired list.
+        note = (f"{len(audio)} narration clip(s) in the draft, {len(voiced)} "
+                f"expected ({', '.join(k for k, _ in voiced)})")
+        failures.append(note)
+    elif late:
+        worst_key, worst_drift = max(late, key=lambda kv: kv[1])
+        note = (f"{len(late)} narration clip(s) off their shot by up to "
+                f"{worst_drift / SEC:.2f}s (worst: {worst_key})")
+        failures.append(note)
+
+    if not voiced and not audio:
+        print("  --  no narration clips (the voice stage was not run)")
+    elif unknown:
+        print(f"  --  {len(audio)} narration clips, not checked "
+              f"(no voice/index.json beside the draft)")
+    elif note:
+        print(f"  FAIL {note}")
+    else:
+        print(f"  ok  {len(audio)} narration clips, aligned to their shots")
 
     look = styles_mod.look(carried=video.get("look"))
 

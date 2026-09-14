@@ -1027,13 +1027,20 @@ def unusable_providers(provider):
 def select_footage(beats, durations=None, orientation="landscape",
                    provider="pexels", model=None,
                    candidates_per_beat=CANDIDATES_PER_BEAT,
-                   min_score=MIN_SCORE, progress=None):
+                   min_score=MIN_SCORE, progress=None, speed=1.0):
     """Run all three stages and return one chosen clip per beat.
 
     Clips are deduplicated across the whole video: the same shot appearing at
     0:30 and 2:10 is the single most obvious tell that a video was assembled by
     a machine, and it is free to avoid here by walking the ranked list.
+
+    `durations` are seconds on screen; `speed` says how much *source* each of
+    those costs, because a sped-up shot plays more of its clip than it occupies.
+    Both numbers matter here and they are not the same one: a 4-second shot at
+    1.5x needs six seconds of footage, and asking the providers for four would
+    fill the video with clips that have to loop inside a single shot.
     """
+    rate = max(float(speed), 0.1)
     names = [n.strip() for n in str(provider).split("+") if n.strip()]
     unknown = [n for n in names if n not in PROVIDERS]
     if unknown:
@@ -1046,6 +1053,8 @@ def select_footage(beats, durations=None, orientation="landscape",
     results = []
 
     for plan_entry, want_seconds in zip(plans, durations):
+        # What the shot will actually consume of a source.
+        source_seconds = want_seconds * rate
         # A beat the director marked as a graphic is not searched at all. There
         # is no footage of a savings rate, and searching for it spends real
         # money on candidates that can only lose to the chart.
@@ -1070,7 +1079,7 @@ def select_footage(beats, durations=None, orientation="landscape",
             for name, search in searches:
                 try:
                     hits = search(query, orientation=orientation,
-                                  min_seconds=max(3, int(want_seconds)),
+                                  min_seconds=max(3, int(source_seconds)),
                                   per_page=candidates_per_beat)
                 except FootageError as exc:
                     if progress:
@@ -1098,7 +1107,7 @@ def select_footage(beats, durations=None, orientation="landscape",
                 break
         # Prefer score, then a clip long enough to cover the beat without a
         # loop, then the higher resolution.
-        scored.sort(key=lambda c: (c["score"], c["duration"] >= want_seconds,
+        scored.sort(key=lambda c: (c["score"], c["duration"] >= source_seconds,
                                    c["width"]), reverse=True)
 
         chosen = next((c for c in scored if c["score"] >= min_score), None)
@@ -1112,6 +1121,7 @@ def select_footage(beats, durations=None, orientation="landscape",
             "queries": plan_entry["queries"],
             "fallback": plan_entry.get("fallback", False),
             "want_seconds": want_seconds,
+            "source_seconds": round(source_seconds, 3),
             "chosen": chosen,
             "considered": len(scored),
             "graphic": None,

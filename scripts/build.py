@@ -58,6 +58,7 @@ class Project:
                         or (ROOT / "out" / self.name)).resolve()
         self.out.mkdir(parents=True, exist_ok=True)
         (self.out / "voice").mkdir(exist_ok=True)
+        self._speed = None                 # resolved once; see `speed` below
 
     @property
     def script(self):
@@ -98,26 +99,66 @@ class Project:
         return Layout(self.data.get("orientation") or styles_mod.default_orientation(),
                       style=self.style_key)
 
+    @property
+    def speed(self):
+        """How fast the whole video runs. 1.0 is the baseline, 1.5 the default.
+
+        One number for narration, shot lengths, card holds, dissolves and
+        subtitles together - see timing.py for why it cannot be any of those
+        on its own. `voice.speed` is still read, so projects written before
+        this setting existed keep working, but a top-level `speed` wins.
+
+        Resolved exactly once per run, by `resolve_speed`, and then held: a
+        `target_seconds` fit and a configured speed are two answers to the same
+        question, and `seconds()` below has to be scaling by the one the
+        narration was actually spoken at.
+        """
+        import timing
+        if self._speed is not None:
+            return self._speed
+        voice = self.get("voice", {}) or {}
+        chosen = self.get("speed", voice.get("speed", timing.DEFAULT_SPEED))
+        return timing.clamp(chosen)
+
+    @speed.setter
+    def speed(self, value):
+        import timing
+        self._speed = timing.clamp(value)
+
+    def seconds(self, key, default):
+        """A configured duration in timeline time.
+
+        Project files are written at the 1.0x baseline - `tail_pad: 0.35` is
+        0.35 seconds of tail in a video running at natural pace - and this is
+        the one place that turns one into the length it actually holds for.
+        """
+        import timing
+        return timing.scale(float(self.get(key, default)), self.speed)
+
     def resolve_speed(self):
-        """Speech rate to use, honouring `target_seconds` when it is set.
+        """The global speed to build at, honouring `target_seconds` when set.
 
         Returns (speed, report). An unreachable target is reported rather
         than acted on: a 95-second script cannot become a 60-second video
-        by talking faster, and saying so is more use than silently
+        by running faster alone, and saying so is more use than silently
         producing something 35 seconds too long.
         """
         import timing
-        voice = self.get("voice", {}) or {}
         target = self.get("target_seconds")
         if target is None:
-            return float(voice.get("speed", 1.0)), None
+            # Nothing to fit: hold the configured speed so `seconds()` and the
+            # voice stage cannot later be handed a different one.
+            self._speed = self.speed
+            return self._speed, None
         result = timing.fit_to_target(
             self.script, float(target),
             shot_seconds=float(self.get("shot_seconds", 5.0)),
             tail_pad=float(self.get("tail_pad", 0.35)),
             title_seconds=float(self.get("title_seconds", 2.6)),
-            ending_seconds=float(self.get("ending_seconds", 4.0)))
-        return result["speed"], result
+            ending_seconds=float(self.get("ending_seconds", 4.0)),
+            speed=self.speed)
+        self.speed = result["speed"]
+        return self.speed, result
 
     def get(self, key, default=None):
         return self.data.get(key, default)
@@ -289,6 +330,11 @@ OPENING_GAIN = 1.0
 # title of ten characters or fewer, and this file's own findings say what that
 # is worth: a prompt is a request, check the output. A thirty-character title
 # reads for five seconds, and nothing stopped the card growing to fit it.
+#
+# Baseline seconds, like every duration written in this file: the callers below
+# divide by the global speed. A cap that did not would let the opening keep its
+# full length while everything after it ran 1.5x faster, which is the whole
+# mismatch the setting exists to prevent.
 MAX_TITLE_SLOT = 4.5
 
 
@@ -315,7 +361,7 @@ def title_slot(configured, spoken, tail, lead=TITLE_SFX_LEAD, cap=MAX_TITLE_SLOT
 def stage_voice(project, plan, force=False, speed=None):
     voice = project.get("voice", {}) or {}
     speaker = voice.get("speaker")
-    speed = float(speed if speed is not None else voice.get("speed", 1.0))
+    speed = float(speed if speed is not None else project.speed)
     index_path = project.out / "voice" / "index.json"
     index = (json.loads(index_path.read_text(encoding="utf-8-sig"))
              if index_path.exists() and not force else {})
@@ -336,12 +382,21 @@ def stage_voice(project, plan, force=False, speed=None):
         # run sees matching text and skips it. Degraded entries are retried
         # whenever narration is actually available.
         stale = cached and cached.get("degraded") and config.have_tts()
-        if (cached and not stale and cached.get("text") == text
+        # A clip spoken at another speed is the wrong clip, however well it
+        # matches the text. Without this, changing `speed` on a built project
+        # re-cut every shot to the new pace and kept the old narration, which
+        # is exactly the mismatch the setting exists to remove - and the run
+        # would report eight cached shots and look entirely successful.
+        was = float(cached.get("speed", 1.0)) if cached else speed
+        respeed = abs(was - speed) > 1e-6
+        if (cached and not stale and not respeed and cached.get("text") == text
                 and Path(cached["path"]).exists()):
             continue
         label = "title" if key == "title" else f"shot {key}"
         if stale:
             log(f"  {label}: retrying (was silent from an earlier failure)")
+        elif respeed and cached and cached.get("text") == text:
+            log(f"  {label}: re-reading at {speed:.2f}x (was {was:.2f}x)")
         out = project.out / "voice" / (
             "title.mp3" if key == "title" else f"scene_{int(key):02d}.mp3")
         try:
@@ -349,11 +404,11 @@ def stage_voice(project, plan, force=False, speed=None):
         except tts_mod.TTSError as exc:
             log(f"  ! {label}: {exc}")
             log("    falling back to an estimated duration for this shot")
-            result = tts_mod._silent(text, out)
+            result = tts_mod._silent(text, out, speed)
         if result["degraded"]:
             degraded += 1
         index[key] = {"text": text, "path": str(result["path"]),
-                      "duration": result["duration"],
+                      "duration": result["duration"], "speed": speed,
                       "words": result["words"], "degraded": result["degraded"]}
         log(f"  {label:>8}: {result['duration']:5.2f}s"
             f"{'  (estimated - no TTS)' if result['degraded'] else ''}")
@@ -369,13 +424,30 @@ def stage_voice(project, plan, force=False, speed=None):
 
 
 # A shot shorter than this has no room for anything to arrive; the element
-# would still be fading when the shot ends.
+# would still be fading when the shot ends. Baseline seconds - `_stagger` is
+# given the speed and divides both of these, so a 1.5x video does not silently
+# lose every staggered label to a floor written for 1.0x shots.
 STAGGER_MIN_SHOT = 3.6
 # How far into the shot emphasis text lands. A quarter in is after the sentence
 # has started saying the thing, which is the order an explainer wants: hear it,
-# then see it.
+# then see it. A fraction of the shot, so it needs no scaling: it is already
+# expressed in the only clock that matters here.
 STAGGER_FRACTION = 0.26
 STAGGER_MAX = 1.4
+
+
+def _paced_look(look, speed):
+    """The style's look with its durations put on the video's clock.
+
+    Only `timing` moves. Sizes, colours and clearances are measured in pixels
+    and fractions of the frame, and a frame does not get smaller because the
+    video runs faster.
+    """
+    import timing as timing_mod
+    paced = dict(look)
+    paced["timing"] = {k: timing_mod.scale(v, speed)
+                       for k, v in (look.get("timing") or {}).items()}
+    return paced
 
 
 def _plate(project, plan):
@@ -404,7 +476,7 @@ def _plate(project, plan):
     return "background.png"
 
 
-def _stagger(elements, duration):
+def _stagger(elements, duration, speed=1.0):
     """Let the emphasis text arrive rather than being there from the start.
 
     `appear` has existed since the first renderer, is faded in over
@@ -416,12 +488,14 @@ def _stagger(elements, duration):
     Only labels and balloons, and only when there is more than one thing on
     screen: a lone label that is not there yet is an empty frame.
     """
-    if duration < STAGGER_MIN_SHOT:
+    import timing
+    if duration < timing.scale(STAGGER_MIN_SHOT, speed):
         return
     text = [el for el in elements if el.get("type") in ("label", "bubble")]
     if not text or len(elements) < 2:
         return
-    when = round(min(STAGGER_MAX, duration * STAGGER_FRACTION), 2)
+    when = round(min(timing.scale(STAGGER_MAX, speed),
+                     duration * STAGGER_FRACTION), 2)
     for el in text:
         el.setdefault("appear", when)
 
@@ -465,14 +539,29 @@ def _ink(storyboard, project, lay, look):
 
 
 def stage_storyboard(project, plan, voice_index):
+    import timing
     lay = project.layout
-    look = project.look
-    tail = float(project.get("tail_pad", 0.35))
+    speed = project.speed
+    # The look's own durations are baseline seconds like everything else, and
+    # this is where they become timeline time. Scaled once, here, and carried
+    # in the storyboard - the renderer, the draft exporter and the checker all
+    # read them from there, so none of the three can be left at 1.0 while the
+    # other two run faster.
+    look = _paced_look(project.look, speed)
+    tail = project.seconds("tail_pad", 0.35)
     scenes, pieces, srt = [], [], []
     clock = 0.0
+    lead = timing.scale(TITLE_SFX_LEAD, speed)
+    cap = timing.scale(MAX_TITLE_SLOT, speed)
 
     title_text = project.get("title") or plan.get("title") or ""
-    title_seconds = float(project.get("title_seconds", 2.6)) if title_text else 0.0
+    title_seconds = project.seconds("title_seconds", 2.6) if title_text else 0.0
+    # The clip the title actually gets, after the fit rule below has had its
+    # say - not whatever the voice index happens to hold. It is carried in the
+    # storyboard because the mix is not the only thing that lays this audio:
+    # the draft exporter does too, and deriving it there from the index again
+    # meant the two disagreed whenever the rule fired.
+    title_voice = None
     if title_seconds:
         # The card holds for as long as its own line needs, never less than the
         # configured minimum. Reading it aloud inside a fixed 2.6 s would clip
@@ -481,15 +570,16 @@ def stage_storyboard(project, plan, voice_index):
         entry = voice_index.get("title", {})
         spoken = float(entry.get("duration") or 0.0)
         audio_path = entry.get("path")
-        if spoken and not title_voice_fits(spoken, tail):
+        if spoken and not title_voice_fits(spoken, tail, lead, cap):
             # Too long to read before shot 1 has to start. The card stays; only
             # its voice goes. Clamping instead would cut the title mid-word.
             log(f"  title voice dropped: {spoken:.1f}s of speech would hold the "
-                f"card past {MAX_TITLE_SLOT}s - ask the director for a shorter title")
+                f"card past {cap:.1f}s - ask the director for a shorter title")
             spoken, audio_path = 0.0, None
-        title_seconds = title_slot(title_seconds, spoken, tail)
-        pieces.append((audio_path if audio_path and Path(audio_path).exists()
-                       else None, title_seconds, TITLE_SFX_LEAD))
+        title_seconds = title_slot(title_seconds, spoken, tail, lead, cap)
+        if audio_path and Path(audio_path).exists():
+            title_voice = str(audio_path)
+        pieces.append((title_voice, title_seconds, lead))
         # Deliberately NOT an SRT cue, even though it is now spoken. The draft
         # imports the SRT as a native subtitle track, so a cue here printed the
         # title a second time in small white text under the calligraphy card
@@ -498,15 +588,18 @@ def stage_storyboard(project, plan, voice_index):
 
     for i, scene in enumerate(plan["scenes"], 1):
         entry = voice_index.get(str(i), {})
+        # The estimate is only reached when a shot has no real clip. It has to
+        # be asked at the same speed the rest of the video runs at, or the one
+        # shot the service dropped becomes the one shot still at 1.0x.
         duration = float(entry.get("duration") or
-                         tts_mod.estimate_duration(scene["narration"])) + tail
+                         tts_mod.estimate_duration(scene["narration"], speed)) + tail
         audio_path = entry.get("path")
         pieces.append((audio_path if audio_path and Path(audio_path).exists() else None,
                        duration))
         built = {"id": i, "subtitle": scene["narration"],
                  "framing": scene.get("framing", "medium"),
                  "elements": scene["elements"], "duration": duration}
-        _stagger(built["elements"], duration)
+        _stagger(built["elements"], duration, speed)
         # The director's reading of the sentence carries through. Sound cues
         # are chosen from the emotion and the action, and without this the
         # storyboard - which is all the cue planner sees - would have nothing
@@ -522,7 +615,7 @@ def stage_storyboard(project, plan, voice_index):
 
     ending = plan.get("ending") or {}
     ending_text = ending.get("text") or ""
-    ending_seconds = float(project.get("ending_seconds", 4.0)) if ending_text else 0.0
+    ending_seconds = project.seconds("ending_seconds", 4.0) if ending_text else 0.0
     if ending_seconds:
         pieces.append((None, ending_seconds))
         clock += ending_seconds
@@ -534,10 +627,18 @@ def stage_storyboard(project, plan, voice_index):
             "width": lay.width, "height": lay.height,
             "fps": int(project.get("fps", 30)),
             "background": _plate(project, plan),
-            "dissolve": float(project.get("dissolve",
-                                          look["timing"]["dissolve"])),
+            # A project's own `dissolve` is written at the baseline like the
+            # style's, so it goes through the same division; the style's has
+            # already had it applied by `_paced_look`.
+            "dissolve": (project.seconds("dissolve", 0.5)
+                         if project.get("dissolve") is not None
+                         else float(look["timing"]["dissolve"])),
             "crf": int(project.get("crf", 20)),
             "preset": project.get("preset", "veryfast"),
+            # What the whole video was built at. Nothing downstream needs to
+            # scale anything by it - every duration here is already timeline
+            # time - it is recorded so a storyboard says what it is.
+            "speed": speed,
             "panel_color": list(project.cast.panel_color),
             # Carried with the storyboard so the renderer, the draft exporter
             # and the draft checker all use one set of numbers. Looking them up
@@ -551,6 +652,23 @@ def stage_storyboard(project, plan, voice_index):
         storyboard["title_card"] = {
             "text": title_text, "duration": title_seconds, "style": "title",
             "size": float(project.get("title_size", 0.082))}
+        # `voice` is a decision, and it is written either way - `null` rather
+        # than an absent key - so a storyboard says plainly that a title is
+        # deliberately silent instead of leaving a reader to wonder whether
+        # the field was forgotten.
+        #
+        # It is the only record that the rule fired: a title too long to read
+        # before shot 1 keeps its type and loses its voice. The draft exporter
+        # went back to the voice index instead, found the clip still sitting
+        # there, and spoke a title the MP4 beside it was silent for, truncated
+        # into a card sized for no speech at all.
+        storyboard["title_card"]["voice"] = title_voice
+        if title_voice:
+            # How far into the card the voice starts, and meaningless without
+            # one. Carried rather than re-read from audio.TITLE_SFX_LEAD,
+            # which is a baseline number and would put the draft's title
+            # 0.45s in while the MP4's sat at 0.30s.
+            storyboard["title_card"]["lead"] = lead
         card_image = plan.get("_title_card_image")
         if card_image and (project.out / card_image).exists():
             storyboard["title_card"]["image"] = card_image
@@ -848,6 +966,7 @@ def check():
 
 
 def run_build():
+    import timing
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("project", nargs="?", help="path to a project json")
@@ -866,6 +985,10 @@ def run_build():
                     help="write a contact sheet of the shots and stop")
     ap.add_argument("--no-draft", action="store_true",
                     help="skip the editable Jianying project, leaving only the mp4")
+    ap.add_argument("--speed", type=float, default=None, metavar="X",
+                    help="how fast the whole video runs - narration, shots, "
+                         "cards and subtitles together. 1.0 is natural pace; "
+                         f"the project's own `speed`, else {timing.DEFAULT_SPEED}")
     args = ap.parse_args()
 
     if args.check or not args.project:
@@ -877,6 +1000,12 @@ def run_build():
         return 0 if ready else 1
 
     project = Project(args.project, out_override=args.out)
+    if args.speed is not None:
+        # Set on the data, not on the resolved speed, so `target_seconds` still
+        # gets the last word - a project that names a length has already said
+        # what pace it wants, and two answers to one question is how the voice
+        # and the picture came to disagree in the first place.
+        project.data["speed"] = args.speed
     # --from names one stage to redo, not everything downstream. Later
     # stages have their own caches - assets fingerprint each prompt, voice
     # keys on the text - so they re-derive exactly what actually changed.
@@ -909,12 +1038,29 @@ def run_build():
 
     import timing
     speed, fit = project.resolve_speed()
+    # Say so when the number being built at is not the number that was asked
+    # for. `clamp` is deliberately forgiving - a typo in a project file should
+    # not kill a ten-minute build - but forgiving and silent is how somebody
+    # ends up wondering why `"speed": 15` produced a normal-looking video.
+    asked = args.speed if args.speed is not None else project.get(
+        "speed", (project.get("voice", {}) or {}).get("speed"))
+    if fit is None and asked is not None:
+        try:
+            wanted = float(asked)
+        except (TypeError, ValueError):
+            wanted = None
+        if wanted is None or abs(wanted - speed) > 1e-6:
+            log(f"  ! speed {asked!r} is not usable "
+                f"({timing.MIN_SPEED}-{timing.MAX_SPEED}x); "
+                f"building at {speed:.2f}x")
     estimate = timing.estimate(
         project.script, shot_seconds=float(project.get("shot_seconds", 5.0)),
         tail_pad=float(project.get("tail_pad", 0.35)),
         title_seconds=float(project.get("title_seconds", 2.6)),
         ending_seconds=float(project.get("ending_seconds", 4.0)), speed=speed)
-    log(f"  predicted length {estimate['total']:.1f}s at {speed:.2f}x speed")
+    log(f"  predicted length {estimate['total']:.1f}s at {speed:.2f}x speed"
+        + ("" if abs(speed - timing.BASELINE_SPEED) < 1e-6 else
+           f" ({estimate['total'] * speed:.1f}s at 1.00x)"))
     if fit and not fit["ok"]:
         log(f"  ! {fit['note']}")
 

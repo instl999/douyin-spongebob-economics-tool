@@ -1,12 +1,12 @@
-﻿{
+{
   "name": "price_discrimination",
   "title": "什么是价格歧视",
   "script": "examples\\price_discrimination.txt",
   "cast": "bikini_bottom",
   "orientation": "landscape",
   "shot_seconds": 5.0,
+  "speed": 1.5,
   "voice": {
-    "speaker": "zh_male_yuanboxiaoshu_uranus_bigtts",
-    "speed": 1.0
+    "speaker": "zh_male_yuanboxiaoshu_uranus_bigtts"
   }
 }

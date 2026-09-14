@@ -29,6 +29,9 @@ from pathlib import Path
 
 import config
 
+# No estimated clip is shorter than this. A baseline second, like every other
+# duration in this pipeline - it divides by the speed in estimate_duration, or
+# a 1.5x video would floor its shortest shots at 1.8x their share.
 MIN_ESTIMATE = 1.2
 
 DONE_CODE = 20000000
@@ -53,7 +56,8 @@ def estimate_duration(text, speed=1.0):
     about how long the video is.
     """
     import timing
-    return max(MIN_ESTIMATE, timing.clip_seconds(text, speed))
+    return max(timing.scale(MIN_ESTIMATE, speed),
+               timing.clip_seconds(text, speed))
 
 
 def synth(text, out_path, speaker=None, speed=1.0, emotion=None, timeout=180):
@@ -67,7 +71,7 @@ def synth(text, out_path, speaker=None, speed=1.0, emotion=None, timeout=180):
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     if not config.have_tts():
-        return _silent(text, out_path)
+        return _silent(text, out_path, speed)
 
     audio_params = {"format": "mp3", "sample_rate": 24000,
                     "enable_timestamp": True}
@@ -188,9 +192,16 @@ def _words(sentence):
     return out
 
 
-def _silent(text, out_path):
-    """No credentials: a silent track of the estimated length keeps timing sane."""
-    duration = estimate_duration(text)
+def _silent(text, out_path, speed=1.0):
+    """No credentials: a silent track of the estimated length keeps timing sane.
+
+    At the *video's* speed, not at 1.0. A stand-in clip is what every shot
+    length is cut from when there is no key, so leaving it at natural pace
+    produced a whole offline build at 1.0x while every card and dissolve around
+    it had been shortened - the exact mismatch this setting exists to prevent,
+    reached from the one direction where nobody is listening for it.
+    """
+    duration = estimate_duration(text, speed)
     out_path = out_path.with_suffix(".wav")
     subprocess.run(
         [config.FFMPEG, "-y", "-v", "error", "-f", "lavfi",
