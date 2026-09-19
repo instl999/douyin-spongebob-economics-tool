@@ -360,6 +360,72 @@ OPENING_GAIN = 1.0
 MAX_TITLE_SLOT = 4.5
 
 
+# How many of the script's opening sentences the title is checked against.
+# Two: sentence one is usually a hook and sentence two is the line the title
+# was taken from, and a title repeated as the second thing said is the same
+# stutter as one repeated as the first.
+TITLE_ECHO_SHOTS = 2
+
+# A restatement shares most of the title's characters AND a fair share of its
+# character pairs. Characters alone match any two Chinese sentences built from
+# the same common words; pairs alone miss a title whose clause the narration
+# reorders, which is how an opening line usually restates a headline.
+TITLE_ECHO_CHARACTERS = 0.8
+TITLE_ECHO_PAIRS = 0.5
+
+# Below this a title is too short for those ratios to mean anything: two
+# characters are wholly contained in half the sentences ever written.
+TITLE_ECHO_MIN_LENGTH = 4
+
+TITLE_ECHO_NOISE = set("，,、。.；;：:！!？?～~—-…" + chr(34) + "'“”‘’()（）《》〈〉[]【】")
+
+
+def _echo_key(text):
+    """`text` reduced to the characters that carry its meaning."""
+    return "".join(c for c in text
+                   if not c.isspace() and c not in TITLE_ECHO_NOISE)
+
+
+def _pairs(text):
+    return {text[i:i + 2] for i in range(len(text) - 1)}
+
+
+def title_is_echo(title, narrations, lookahead=TITLE_ECHO_SHOTS):
+    """True when the script's opening already says what the title says.
+
+    The card is read aloud, and the director writes the title from the script
+    it was handed - so the title and the first thing said are often the same
+    sentence, delivered half a second apart. Speaking both opens the video on
+    a stutter.
+
+    Matched on meaning, not characters. The director paraphrases, so a repeat
+    is rarely a prefix: a title comes back with its clauses swapped and a word
+    changed, matches no prefix of anything, and is still the same sentence
+    twice to anyone watching. Checked across the opening pair because the line
+    the title came from lands in sentence two as often as in sentence one.
+
+    The ratios are deliberately strict. Silencing a title the script never
+    says loses the opening line outright, which is a worse video than the
+    stutter this prevents, so a near miss is left to be spoken.
+    """
+    wanted = _echo_key(title or "")
+    if not wanted:
+        return False
+    opening = _echo_key("".join(narrations[:max(1, lookahead)]))
+    if not opening:
+        return False
+    # Said outright, either way round. No length guard - a quotation is a
+    # quotation however short.
+    if wanted in opening or opening in wanted:
+        return True
+    if len(wanted) < TITLE_ECHO_MIN_LENGTH:
+        return False
+    shared = sum(c in opening for c in wanted) / len(wanted)
+    pairs = _pairs(wanted)
+    overlap = (len(pairs & _pairs(opening)) / len(pairs)) if pairs else 0.0
+    return shared >= TITLE_ECHO_CHARACTERS and overlap >= TITLE_ECHO_PAIRS
+
+
 def title_voice_fits(spoken, tail, lead=TITLE_SFX_LEAD, cap=MAX_TITLE_SLOT):
     """Whether reading the title aloud leaves shot 1 starting in time."""
     return lead + spoken + tail <= cap
@@ -393,6 +459,12 @@ def stage_voice(project, plan, force=False, speed=None):
     # silent slot in the narration track, so the video opened on two and a half
     # seconds of nothing while the card sat there.
     title_text = project.get("title") or plan.get("title") or ""
+    # Skipped here rather than only at placement, because the clip costs a
+    # call to the speech service whether or not anything lays it down.
+    if title_text and title_is_echo(
+            title_text, [s["narration"] for s in plan["scenes"]]):
+        log("  title voice skipped: the script's opening already says it")
+        title_text = ""
     jobs = [("title", title_text)] if title_text else []
     jobs += [(str(i), scene["narration"])
              for i, scene in enumerate(plan["scenes"], 1)]
@@ -592,6 +664,13 @@ def stage_storyboard(project, plan, voice_index):
         entry = voice_index.get("title", {})
         spoken = float(entry.get("duration") or 0.0)
         audio_path = entry.get("path")
+        if spoken and title_is_echo(
+                title_text, [s["narration"] for s in plan["scenes"]]):
+            # A clip left over from a build before the title changed, or from
+            # one made before this rule existed. The index still holds it, and
+            # `--from storyboard` would otherwise speak it.
+            log("  title voice dropped: the script's opening already says it")
+            spoken, audio_path = 0.0, None
         if spoken and not title_voice_fits(spoken, tail, lead, cap):
             # Too long to read before shot 1 has to start. The card stays; only
             # its voice goes. Clamping instead would cut the title mid-word.
@@ -608,13 +687,20 @@ def stage_storyboard(project, plan, voice_index):
         # that already says it. The card is the title's caption.
         clock += title_seconds
 
+    last_shot = len(plan["scenes"])
     for i, scene in enumerate(plan["scenes"], 1):
         entry = voice_index.get(str(i), {})
+        # Every shot carries a tail so its neighbour does not start on the
+        # same breath - except the last one, which has no neighbour. Held
+        # there it was simply dead air: a third of a second of silence after
+        # the final subtitle, before the closing card or before the file
+        # stops, on every video this pipeline has ever made.
+        shot_tail = 0.0 if i == last_shot else tail
         # The estimate is only reached when a shot has no real clip. It has to
         # be asked at the same speed the rest of the video runs at, or the one
         # shot the service dropped becomes the one shot still at 1.0x.
         duration = float(entry.get("duration") or
-                         tts_mod.estimate_duration(scene["narration"], speed)) + tail
+                         tts_mod.estimate_duration(scene["narration"], speed)) + shot_tail
         audio_path = entry.get("path")
         pieces.append((audio_path if audio_path and Path(audio_path).exists() else None,
                        duration))
@@ -814,14 +900,33 @@ def stage_render(project, storyboard, force=False):
     return target
 
 
-def stage_audio(project, pieces, total, storyboard=None):
+def _resolve(value, default=None):
+    """A project path, relative to the repository unless it is absolute."""
+    if not value:
+        return default
+    path = Path(value)
+    return path if path.is_absolute() else ROOT / path
+
+
+def stage_audio(project, pieces, total, storyboard=None, script="", moods=()):
+    import music as music_mod
+
     narration = audio_mod.build_narration(pieces, project.out / "narration.wav")
-    bgm = project.get("bgm", "assets/bgm_default.wav")
-    if bgm:
-        bgm_path = Path(bgm)
-        if not bgm_path.is_absolute():
-            bgm_path = ROOT / bgm
-        bgm = bgm_path if bgm_path.exists() else None
+    # `bgm` names one track and is not second-guessed; `bgm_library` is a
+    # folder to choose from. Neither set means the library at its default
+    # location, falling back to the single bed that has always shipped.
+    named = project.get("bgm", None)
+    if named is not None:
+        # Present and empty is how a project has always said "no music", and
+        # it stays a choice rather than an invitation to search a folder.
+        chosen = _resolve(named) if named else None
+        bgm = chosen if chosen and chosen.exists() else None
+        log(f"  music: {bgm.name if bgm else 'none (set by the project)'}")
+    else:
+        bgm, why = music_mod.choose(
+            _resolve(project.get("bgm_library"), ROOT / "assets" / "bgm"),
+            script, moods, fallback=ROOT / "assets" / "bgm_default.wav")
+        log(f"  music: {why}")
     cues = []
     if storyboard is not None:
         import sfx as sfx_mod
@@ -832,7 +937,8 @@ def stage_audio(project, pieces, total, storyboard=None):
     track = project.out / "audio.wav"
     with Atomic(track) as partial:
         audio_mod.mix(narration, partial, total, bgm=bgm,
-                      bgm_volume=float(project.get("bgm_volume", 0.10)),
+                      bgm_volume=float(project.get("bgm_volume",
+                                                   audio_mod.BGM_VOLUME)),
                       cues=cues,
                       cue_volume=float(project.get(
                           "sfx_volume", project.look["sound"].get("gain", 0.34))))
@@ -924,14 +1030,24 @@ def stage_mux(project, video, audio_track):
     return out
 
 
-def stage_draft(project):
-    """Write the editable Jianying project and prove it matches the render."""
+def stage_draft(project, install=True):
+    """Write the editable Jianying project and prove it matches the render.
+
+    Written straight into Jianying's own drafts folder when one can be found,
+    because the alternative was a folder beside the mp4 and a line of output
+    asking the operator to move it - a manual copy after every single build,
+    for a deliverable whose whole point is that it can still be edited.
+    """
     import check_draft
     import draft as draft_mod
 
+    root = draft_mod.jianying_drafts_dir() if install else None
     builder = draft_mod.DraftBuilder(project.out, name=project.name)
-    path, total, layers = builder.build(project.out / "jianying")
+    path, total, layers = builder.build(root or project.out / "jianying")
     log(f"  {path.name}: {total:.1f}s over {layers} element layers")
+    if root is None and install:
+        log("  Jianying's drafts folder was not found - move this into it, or "
+            "set JIANYING_DRAFT_DIR")
     # Checked here rather than left to the operator: the draft is written
     # blind - Jianying is not needed to write one and may not be installed -
     # so the only thing standing between a wrong transform and a broken
@@ -1006,6 +1122,9 @@ def run_build():
                     help="write a contact sheet of the shots and stop")
     ap.add_argument("--no-draft", action="store_true",
                     help="skip the editable Jianying project, leaving only the mp4")
+    ap.add_argument("--draft-here", action="store_true",
+                    help="write the draft beside the mp4 instead of into "
+                         "Jianying's own drafts folder")
     ap.add_argument("--speed", type=float, default=None, metavar="X",
                     help="how fast the whole video runs - narration, shots, "
                          "cards and subtitles together. 1.0 is natural pace; "
@@ -1120,7 +1239,8 @@ def run_build():
         return 0
 
     log("\n[6/8] audio")
-    track = stage_audio(project, pieces, total, storyboard)
+    track = stage_audio(project, pieces, total, storyboard,
+                        script=project.script, moods=plan.get("mood", ()))
     if done("audio"):
         return 0
 
@@ -1130,7 +1250,8 @@ def run_build():
         return 0
 
     log("\n[8/8] draft")
-    draft_path = None if args.no_draft else stage_draft(project)
+    draft_path = (None if args.no_draft
+                  else stage_draft(project, install=not args.draft_here))
     log("")
     report_usage()
     log(f"\nfinished: {final}")

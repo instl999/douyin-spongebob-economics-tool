@@ -99,7 +99,12 @@ def estimate(script, *, shot_seconds=5.0, tail_pad=0.35, title_seconds=2.6,
         split = plan_mod.split_script
     beats = split(script, shot_seconds)
     pad = scale(tail_pad, speed)
-    per_shot = [clip_seconds(b, speed) + pad for b in beats]
+    # The last shot carries no tail - it has no neighbour to keep off its
+    # breath, and the pad there was dead air after the final subtitle. The
+    # estimate is what a user is told before anything is paid for, so it has
+    # to be the length the video actually comes out at, not 0.35s more.
+    per_shot = [clip_seconds(b, speed) + (0.0 if i == len(beats) - 1 else pad)
+                for i, b in enumerate(beats)]
     narration = sum(per_shot)
     cards = scale(title_seconds + ending_seconds, speed)
     return {

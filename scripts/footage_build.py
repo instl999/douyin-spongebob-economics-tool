@@ -61,7 +61,12 @@ DISSOLVE = 0.0
 # once. Must stay below the shortest shot.
 CAPTION_GAP = 0.12
 HOOK_IN, HOOK_HOLD = 0.6, 3.4
-BGM_VOLUME = 0.05
+# A quieter bed than the drawn track uses, and now a round number in the band
+# both tracks quote: 0.056 is -25 dB. The 0.05 it replaces was -26 dB, chosen
+# from a measurement that 0.10 -> 0.05 recovers 0.3 LU of range on this
+# narration - a decibel either side of that is not what the measurement was
+# about, and one stated band across both tracks is worth more than the digit.
+BGM_VOLUME = audio_mod.BGM_VOLUME
 
 
 def paced(seconds, speed):
@@ -353,19 +358,28 @@ def build(script_path, out_dir, orientation="landscape", grade="vintage",
     log("\naudio")
     narration = audio_mod.build_narration(
         [(p, s) for p, s, _ in pieces], out_dir / "narration.wav")
-    bed = Path(bgm) if bgm else (ROOT / "assets" / "bgm_default.wav")
-    # A quieter bed than the drawn track uses. Measured on this narration,
-    # 0.10 -> 0.05 recovers 0.3 LU of range; a flat bed fills the gaps between
-    # words and is the main thing collapsing the measured dynamics.
+    # Chosen from the library the drawn track uses, by the same labels. An
+    # explicit --bgm is somebody naming a track and is not second-guessed.
+    if bgm:
+        bed, why = Path(bgm), Path(bgm).name
+    else:
+        import music as music_mod
+        bed, why = music_mod.choose(ROOT / "assets" / "bgm", script,
+                                    fallback=ROOT / "assets" / "bgm_default.wav")
+    log(f"  music: {why}")
+    # `bed and bed.exists()`, not `bed.exists()` alone: no music leaves this
+    # None, and Path("") is Path(".") - a directory that exists, which ffmpeg
+    # is then handed as a music file.
+    # A quieter bed than the drawn track uses; see audio.BGM_VOLUME.
     # duck is passed explicitly, not left to the default: the drawn track's mix
     # was measured without it and owns that default, and ducking is worth
     # +0.3 LU of range here - the difference between just inside the reference
     # band and just outside it.
     track = audio_mod.mix(narration, out_dir / "audio.wav", total,
-                          bgm=bed if bed.exists() else None, bgm_volume=BGM_VOLUME,
+                          bgm=bed if bed and bed.exists() else None,
+                          bgm_volume=BGM_VOLUME,
                           loudness=audio_mod.TARGET_LUFS, duck=True)
-    log(f"  mixed and normalised to {audio_mod.TARGET_LUFS} LUFS"
-        f"{'' if bed.exists() else '  (no music bed found)'}")
+    log(f"  mixed and normalised to {audio_mod.TARGET_LUFS} LUFS")
 
     final = out_dir / f"{Path(script_path).stem}.mp4"
     audio_mod.mux(mute, track, final)

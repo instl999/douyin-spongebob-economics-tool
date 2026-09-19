@@ -1008,6 +1008,190 @@ def main():
                 panel["w"] >= 0.9 and panel["ph"] >= 0.4 and panel["x"] == 0.5,
                 f"0.30x0.20 -> {panel['w']:.2f}x{panel['ph']:.2f} at x={panel['x']}")
 
+    # --- a title the script's own opening already says ---------------------
+    # The card is read aloud, and the director writes the title from the
+    # script it was handed, so the two are often the same sentence half a
+    # second apart. Matched on meaning: the director paraphrases, so a repeat
+    # is rarely a prefix of anything.
+    import build as build_mod
+
+    echo = build_mod.title_is_echo
+    suite.check("opening: a reworded restatement is still a restatement",
+                echo("男人不能为女人做的3件事", ["有3件事，男人不要为女人做。"]),
+                "clauses swapped, no prefix in common")
+    suite.check("opening: a restatement in sentence two counts too",
+                echo("男人不能为女人做的3件事",
+                     ["今天聊个扎心的话题。", "有3件事，男人千万不要为女人做。"])
+                and not echo("男人不能为女人做的3件事",
+                             ["先说点别的。", "再说点别的。",
+                              "有3件事，男人千万不要为女人做。"]),
+                "sentence one is a hook; past the pair it is not a stutter")
+    # The near miss has to stay spoken. Silencing a title the script never
+    # says loses the opening line outright, which is worse than the stutter.
+    suite.check("opening: sharing a subject is not saying the same thing",
+                not echo("为什么你存不下钱",
+                         ["今天聊聊钱的事。", "你有没有发现，工资一到手就没了？"])
+                and echo("记账", ["我建议你从记账开始。"])
+                and not echo("三十岁", ["二十岁的时候你不会懂。"]),
+                "quoted outright still matches at any length")
+
+    # --- nothing is left running after the last word -----------------------
+    # Every shot carries a tail so the next does not start on the same breath.
+    # The last shot has no next, and the tail there was simply dead air after
+    # the final subtitle - on every video this pipeline has made.
+    tail_plan = {
+        "title": "标题",
+        "scenes": [
+            {"narration": "第一句话在这里说完。", "framing": "medium",
+             "elements": [{"type": "sprite", "asset": "a.png", "x": 0.32,
+                           "y": 0.95, "rel": 0.6}]},
+            {"narration": "第二句话稍微长一点点。", "framing": "close",
+             "elements": [{"type": "sprite", "asset": "b.png", "x": 0.5,
+                           "y": 0.95, "rel": 0.6}]},
+        ],
+        "ending": {"text": "结语在这里", "highlight": ""},
+    }
+    with tempfile.TemporaryDirectory() as tmp:
+        work = Path(tmp) / "tail"
+        project = offline_project(work, 1.0, tail_plan, "tail")
+        index = {"title": {"duration": 0.9, "path": "", "words": []}}
+        for i, scene in enumerate(tail_plan["scenes"], 1):
+            index[str(i)] = {"duration": 2.0, "path": "", "words": []}
+        sb, _, _ = build_mod.stage_storyboard(project, tail_plan, index)
+        shots = sb["scenes"]
+        tail_pad = 0.35
+        suite.check("ending: the last shot carries no tail",
+                    abs(shots[-1]["duration"] - 2.0) < 1e-6
+                    and abs(shots[0]["duration"] - (2.0 + tail_pad)) < 1e-6,
+                    f"{shots[0]['duration']:.2f}s then {shots[-1]['duration']:.2f}s")
+        last = shots[-1]["captions"][-1]
+        suite.check("ending: the last subtitle reaches the end of its shot",
+                    abs(last["end"] - shots[-1]["duration"]) < 1e-6,
+                    f"caption ends {shots[-1]['duration'] - last['end']:.3f}s early")
+
+    # --- the music is chosen, and chosen the same way twice ----------------
+    import music as music_mod
+
+    suite.check("music: the label is the front of the filename",
+                music_mod.label("紧张Kill Drill - Robert Ruth.mp3") == "紧张"
+                and music_mod.label("紧张危机Dismantle.mp3") == "紧张危机"
+                # A Chinese artist credit at the END is not a label.
+                and music_mod.label("舒缓Sunny Side - 岩崎太整.mp3") == "舒缓"
+                and music_mod.label("Untagged.mp3") == "")
+    with tempfile.TemporaryDirectory() as tmp:
+        folder = Path(tmp) / "bgm"
+        folder.mkdir()
+        for name in ("紧张Kill Drill.mp3", "紧张危机Dismantle.mp3",
+                     "舒缓Sunny Side.mp3", "开头失落IV.mp3", "失落Rain.mp3",
+                     "notes.txt"):
+            (folder / name).write_bytes(b"")
+        entries = music_mod.library(folder)
+        suite.check("music: only playable files are in the library",
+                    len(entries) == 5, f"{len(entries)} of 6 files")
+        suite.check("music: a two-label track wins a two-mood script",
+                    music_mod.pick(entries, ["紧张", "危机"]).name
+                    == "紧张危机Dismantle.mp3"
+                    and music_mod.pick(entries, ["紧张"]).name
+                    == "紧张Kill Drill.mp3")
+        # One bed runs under the whole video, so a cue written for an opening
+        # ranks below a plain track of the same mood - below it, not out.
+        suite.check("music: a track written for an opening ranks below a plain one",
+                    music_mod.pick(entries, ["失落"]).name == "失落Rain.mp3"
+                    and music_mod.pick(
+                        [e for e in entries if e[1] == "开头失落"],
+                        ["失落"]).name == "开头失落IV.mp3")
+        suite.check("music: nothing matching means no music, not any music",
+                    music_mod.pick(entries, ["升华"]) is None,
+                    "the wrong bed is more distracting than none")
+        # A rebuild has to keep the music it had, or `--from audio` rescores
+        # a finished video from the order the filesystem listed the folder in.
+        for name in ("紧张AAA.mp3", "紧张ZZZ.mp3"):
+            (folder / name).write_bytes(b"")
+        repeats = {music_mod.pick(music_mod.library(folder), ["紧张"]).name
+                   for _ in range(5)}
+        suite.check("music: the same script picks the same track every time",
+                    repeats == {"紧张AAA.mp3"}, ", ".join(sorted(repeats)))
+        # A project that never set one up keeps the bed that always shipped.
+        default = Path(tmp) / "default.wav"
+        default.write_bytes(b"")
+        chosen, why = music_mod.choose(Path(tmp) / "absent", "文案",
+                                       fallback=default)
+        suite.check("music: no library falls back to the default bed",
+                    chosen == default, why)
+
+    suite.check("music: a label the model invented is dropped",
+                music_mod.clean(["紧张", "波澜壮阔", "危机"]) == ["紧张", "危机"]
+                and music_mod.clean("舒缓") == ["舒缓"]
+                and music_mod.clean(None) == [])
+    suite.check("music: the script answers when the director does not",
+                "焦虑" in music_mod.moods_in("他很焦虑，晚上睡不着，总是担心明天。")
+                and music_mod.moods_in("。。。") == [])
+    # Both tracks quote a level in the same band. Below it the bed does
+    # nothing; above it the music is a second thing to listen to while
+    # somebody is talking.
+    import footage_build as footage_mod
+    levels = {"drawn": audio_mod.BGM_VOLUME, "footage": footage_mod.BGM_VOLUME}
+    in_band = {k: -25.5 <= 20 * np.log10(v) <= -19.5 for k, v in levels.items()}
+    suite.check("music: the bed sits 20-25 dB under the voice",
+                all(in_band.values()),
+                ", ".join(f"{k} {20 * np.log10(v):.1f} dB"
+                          for k, v in levels.items()))
+
+    # --- the draft lands where Jianying reads it ---------------------------
+    # Written into the editor's own folder, because the alternative was a
+    # manual copy after every single build.
+    import draft as draft_mod
+    import os as os_mod
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+        local = tmp / "Local"
+        root = local / "JianyingPro"
+        default_drafts = root / "User Data" / "Projects" / draft_mod.DRAFT_LEAF
+        default_drafts.mkdir(parents=True)
+        kept = {k: os_mod.environ.get(k)
+                for k in ("LOCALAPPDATA", "APPDATA", "JIANYING_DRAFT_DIR")}
+        try:
+            os_mod.environ["LOCALAPPDATA"] = str(local)
+            os_mod.environ.pop("APPDATA", None)
+            os_mod.environ.pop("JIANYING_DRAFT_DIR", None)
+            suite.check("draft: the editor's drafts folder is found",
+                        draft_mod.jianying_drafts_dir() == default_drafts)
+
+            # Moving the library leaves the default folder in place but empty,
+            # so a probe that knows only the default writes every draft where
+            # the editor no longer looks - and reports success doing it.
+            moved = tmp / "D" / "Drafts" / draft_mod.DRAFT_LEAF
+            moved.mkdir(parents=True)
+            config_dir = root / "User Data" / "Config"
+            config_dir.mkdir(parents=True)
+            (config_dir / "globalSetting").write_text(
+                json.dumps({"other": str(tmp / "nope"),
+                            "currentDraftUserPath": str(moved.parent)}),
+                encoding="utf-8")
+            suite.check("draft: a relocated library beats the empty default",
+                        draft_mod.jianying_drafts_dir() == moved, str(moved))
+
+            mine = tmp / "mine"
+            mine.mkdir()
+            os_mod.environ["JIANYING_DRAFT_DIR"] = str(mine)
+            found = draft_mod.jianying_drafts_dir()
+            os_mod.environ["JIANYING_DRAFT_DIR"] = str(tmp / "typo")
+            try:
+                draft_mod.jianying_drafts_dir()
+                refused = False
+            except SystemExit:
+                refused = True
+            suite.check("draft: an explicit folder wins and is still checked",
+                        found == mine and refused,
+                        "a typo is reported, not silently ignored")
+        finally:
+            for key, value in kept.items():
+                if value is None:
+                    os_mod.environ.pop(key, None)
+                else:
+                    os_mod.environ[key] = value
+
     # --- a real render, end to end ----------------------------------------
     with tempfile.TemporaryDirectory() as tmp:
         work = Path(tmp)

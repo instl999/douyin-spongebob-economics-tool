@@ -16,7 +16,7 @@ python scripts/build_library.py clay --plates           # a style's references
 ```
 
 Useful flags: `--stop-after <stage>`, `--out <dir>`, `--regenerate-assets`,
-`--preview`, `--no-draft`, `--no-verify`.
+`--preview`, `--no-draft`, `--draft-here`, `--no-verify`.
 
 ## Stages
 
@@ -179,6 +179,7 @@ Where the two tracks deliberately disagree, and why:
 | transitions | 0.5s dissolve | **hard cut** (references: 59 cuts / 309s) |
 | opening | calligraphy title card, **spoken over a stinger** | hook overlaid on shot 1, no card |
 | ending | 金句 card | none; ends on footage |
+| last shot | **no tail pad** - the card cuts in on the last word | **no tail pad** - the file ends on it |
 | subtitles | Chinese | Chinese + English beneath |
 | loudness | limited only | normalised to -17 LUFS, LRA preserved |
 
@@ -234,9 +235,63 @@ The title is **not** an SRT cue. The draft imports the SRT as a native subtitle
 track, so a cue there printed the title a second time in small white text under
 the calligraphy card that already says it.
 
+**A title the script's own opening already says is not read aloud at all.** The
+director writes the title from the script it was handed, so the card and the
+first thing said are often the same sentence delivered half a second apart.
+`build.title_is_echo` compares meaning rather than characters - shared
+characters and shared character pairs - across the first two shots, because the
+director paraphrases (a repeat is rarely a prefix) and because the line a title
+came from lands in shot two as often as in shot one. It is checked in
+`stage_voice`, so the clip is never paid for, and again in `stage_storyboard`,
+which catches one left in the index by an earlier build.
+
+The thresholds are deliberately strict: silencing a title the script never says
+loses the opening line outright, which is a worse video than the stutter.
+
+## The ending
+
+**The last shot carries no tail pad.** Every other shot ends with `tail_pad`
+(0.35s at baseline) so the next does not start on the same breath. The last
+shot has no next, and that pad was dead air between the final subtitle and
+either the 金句 card or the end of the file - on every video the pipeline had
+made. The card itself is unchanged: it holds `ending_seconds` with text on
+screen, which is content rather than trailing time.
+
+## Music
+
+`music.py` chooses one bed from a folder, matched to how the script reads.
+
+Nothing is shipped but `assets/bgm_default.wav`, and nothing should be: the
+tracks are licensed to whoever collected them. Point `bgm_library` (project
+JSON) or `assets/bgm/` at a folder whose filenames carry a Chinese mood label
+before the track title - `紧张Kill Drill - Robert Ruth.mp3` - and the label is
+read off the front, up to the first non-Chinese character, so an artist credit
+at the end is not mistaken for one.
+
+The director supplies the script's own labels as a `mood` field on the call it
+already makes; a second request for one word would double what choosing a bed
+costs. `music.moods_in` reads the script directly when the model returns none.
+
+Four rules worth not undoing:
+
+- A label naming a **position** (`开头`, `结尾`, `后期`, `提出`) ranks below a
+  plain track of the same mood, because one bed runs under the whole video.
+  Ranked down, not excluded - a folder may hold nothing else.
+- **A mood that matches nothing means no music.** The wrong bed is more
+  distracting than none, and it is the one choice in a video that nobody plays
+  back to check. That is not the same as **no mood at all** - no label and no
+  keyword hit decides nothing about the video, so it keeps `bgm_default.wav`
+  rather than going silent on an absence.
+- **Ties break by filename**, so `--from audio` cannot rescore a finished video.
+- `bgm` in the project JSON names one track and is not second-guessed.
+
+Both tracks quote a level in the same band, `audio.BGM_VOLUME` = 0.056 (-25 dB).
+The footage track used 0.05 from a measurement about range, not about that
+digit; one stated band across both tracks is worth more than the decibel.
+
 ## Tests
 
-`python scripts/selftest.py` runs everything offline, 176 checks. The
+`python scripts/selftest.py` runs everything offline, 194 checks. The
 footage-track half lives in `scripts/selftest_footage.py` and is called from
 the end of it — two Claude Code sessions work on this repo at once, and one
 thousand-line test file is the single place their work is guaranteed to

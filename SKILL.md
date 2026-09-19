@@ -134,10 +134,12 @@ python scripts/build.py projects/my_video.json --from storyboard
 **主交付物是剪映工程，不是 MP4。**
 
 ```bash
-python scripts/draft.py out/my_video --install
+python scripts/draft.py out/my_video
 ```
 
-`--install` 会直接写进剪映的草稿目录，用户打开剪映就能看到。没装剪映或找不到
+草稿默认直接写进剪映的草稿目录（含草稿库被搬到别的盘的情况），用户打开剪映就能看到，
+不用手动复制。`--out` 可以指定别处；整片构建时用 `--draft-here` 留在 mp4 旁边。
+没装剪映或找不到
 目录时，工程在 `out/my_video/jianying/`，让用户自己拷过去。
 
 交付时要说清三件事：
@@ -300,7 +302,7 @@ python scripts/draft.py out/my_video --install
 | 单张抠图 | `python scripts/matting.py in.jpg out.png` |
 | **查每一镜有没有演出文案**（花钱，每镜一次视觉调用） | `python scripts/critique.py out/<name>` |
 | 重新生成音效库 | `python scripts/gen_sfx.py` |
-| 导出剪映工程（**交付物**） | `python scripts/draft.py out/<name> --install` |
+| 导出剪映工程（**交付物**） | `python scripts/draft.py out/<name>` |
 | 单独校验剪映工程 | `python scripts/check_draft.py out/<name>` |
 | 老 plan 套用新规则（不调模型） | `python scripts/migrate_plan.py out/<name>/plan.json <画风key或cast路径>` |
 | 新画风：一次性生成整套素材 | `python scripts/build_library.py <画风key> --plates` |

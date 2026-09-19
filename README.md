@@ -121,12 +121,12 @@ crowds a character is a drag rather than another full run.
 
 | | |
 |---|---|
-| Draft | `out/<name>/jianying/<name>/`, opens in Jianying with every layer intact |
+| Draft | written straight into Jianying's own drafts folder, so it is simply there when the app opens |
 | Resolution | 1920×1080 landscape or 1080×1920 portrait |
 | Frame rate | 30 fps |
 | Video | H.264, CRF 20 by default |
-| Audio | AAC 192 kbps — narration over a music bed |
-| Structure | title card → shots → closing card |
+| Audio | AAC 192 kbps — narration over a music bed chosen from your own library by mood, 20–25 dB under the voice |
+| Structure | title card → shots → closing card. The picture ends on the last subtitle; nothing is held after it |
 | Opening | whenever there is a title, the card is **read aloud** over a stinger at t=0; on by default, with no setting to turn the voice off |
 | Subtitles | burned into the MP4; a real editable subtitle track in the draft; `.srt` either way |
 
@@ -140,14 +140,26 @@ Tracks come out named and in order: `背景` (the plate and the two cards),
 order), `配音` (narration: one clip per shot, plus one for the spoken title), `字幕`
 (subtitles, imported so they carry Jianying's native styling).
 
+A build writes the draft into Jianying's own drafts folder, so the project
+simply appears in the app with nothing to copy by hand. The folder is found
+rather than configured — both `剪映专业版` and CapCut, and the real location
+when the draft library has been moved to another disk. That last case is the
+reason the editor's settings file is read rather than the default folder
+stat'ed: moving the library leaves the default in place but empty, so a lookup
+that only knew the default would write every draft where the editor no longer
+looks, and report success doing it.
+
+Set `JIANYING_DRAFT_DIR` when the lookup finds the wrong install, or pass
+`--draft-here` to leave the draft beside the mp4 under `out/<name>/jianying/`.
+Exporting one on its own still works:
+
 ```bash
-python scripts/draft.py out/<name> --install
+python scripts/draft.py out/<name>            # into Jianying
+python scripts/draft.py out/<name> --out .    # somewhere else
 ```
 
-`--install` writes into Jianying's own drafts folder so the project simply
-appears in the app. Without it the draft lands under `out/<name>/jianying/` and
-can be moved there by hand. Media is referenced by absolute path, so move the
-draft folder and its `materials/` together, or re-export.
+Media is referenced by absolute path, so move the draft folder and its
+`materials/` together, or re-export.
 
 One thing to know before editing: **each element is a full-canvas transparent
 frame, not a cropped sprite.** Dragging and scaling behave normally — the
@@ -595,7 +607,7 @@ Tall scenery framing the picture makes every character look small and lost.
 | Cut out a single image by hand | `python scripts/matting.py in.jpg out.png` |
 | Ask whether each shot acts out its line | `python scripts/critique.py out/<name>` |
 | Regenerate the sound-effect library | `python scripts/gen_sfx.py` |
-| Export the editable Jianying project | `python scripts/draft.py out/<name> --install` |
+| Export the editable Jianying project | `python scripts/draft.py out/<name>` |
 | Check an exported draft | `python scripts/check_draft.py out/<name>` |
 
 ### Stages

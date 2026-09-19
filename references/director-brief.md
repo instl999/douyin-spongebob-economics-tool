@@ -256,6 +256,7 @@ characters.
 {{"title": "<= 10 characters, the question the video answers",
   "setting": "one place this whole script could sit in, 10-20 words, in the cast's world - a back kitchen, a small office, a shop counter, a bank hall. Used as the backdrop for every shot whose sentence names nowhere in particular, so pick the one that suits the subject rather than the first sentence",
   "ending": {{"text": "the closing line, may contain \\n", "highlight": "<= 4 characters from it"}},
+  "mood": ["one or two of {moods}, most telling first - how the script feels; it chooses the music"],
   "shots": [
     {{"id": 1, "framing": "medium",
       "beat": {{"subject": "sponge", "action": "is handed his pay packet",
