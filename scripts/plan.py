@@ -375,7 +375,12 @@ def build_prompt(beats, cast, orientation="landscape",
     roster = _roster_text(cast)
     listing = chr(10).join(f"{i}. {text}" for i, text in enumerate(beats, 1))
     portrait = orientation == "portrait"
+    import music
     return brief_template().format(
+        # Asked for on the call the director already makes. A mood is one
+        # word, and a second request for it would double what it costs to
+        # choose a music bed.
+        moods="/".join(music.MOODS),
         count=len(beats), beats=listing, roster=roster,
         casting=_casting_notes(cast),
         pose_budget=pose_budget,
@@ -725,9 +730,14 @@ def validate(data, beats, cast, max_sprites=None):
                 break
         ending_text = ending_text[:ENDING_MAX_CHARS].strip()
 
+    import music
     return {
         "title": (data.get("title") or "").strip(),
         "setting": (data.get("setting") or "").strip(),
+        # Filtered to labels a filename could actually carry: a word the model
+        # invented matches nothing and would only push a real one down the
+        # ranking. Absent entirely is fine - the script's own words answer.
+        "mood": music.clean(data.get("mood")),
         "ending": {"text": ending_text,
                    "highlight": (ending.get("highlight") or "").strip() or None},
         "scenes": scenes,
@@ -892,7 +902,7 @@ def offline_plan(script, cast, shot_seconds=5.0):
                              "rel": cast.relative_height(asset)})
         scenes.append({"id": i + 1, "narration": beat,
                        "framing": framings[i % 3], "elements": elements})
-    return {"title": "", "setting": "",
+    return {"title": "", "setting": "", "mood": [],
             "ending": {"text": scenes[-1]["narration"] if scenes else "",
                        "highlight": None},
             "scenes": scenes,

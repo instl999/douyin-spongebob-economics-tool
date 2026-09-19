@@ -528,14 +528,88 @@ class DraftBuilder:
             json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def jianying_drafts_dir():
-    """Where Jianying keeps its projects on Windows, if it is installed."""
-    local = os.environ.get("LOCALAPPDATA")
-    if not local:
+# Where an installed editor keeps its user data, and the folder holding drafts
+# inside it. The mainland build is checked before the international one: a
+# machine carrying both is a 剪映 user who also has CapCut, not the reverse.
+APP_DIRS = ("JianyingPro", "CapCut")
+DRAFT_LEAF = "com.lveditor.draft"
+
+
+def _app_roots():
+    """Every directory an installed 剪映 / CapCut keeps its user data in."""
+    bases = []
+    for variable in ("LOCALAPPDATA", "APPDATA"):
+        value = (os.environ.get(variable) or "").strip()
+        if value:
+            bases.append(Path(value))
+    home = Path.home()
+    # Windows is the supported platform. The macOS location costs one stat
+    # call and turns "not found" into "it just worked" for anyone on one.
+    bases += [home / "AppData" / "Local", home / "Movies"]
+    roots = []
+    for base in bases:
+        for app in APP_DIRS:
+            candidate = base / app
+            if candidate.is_dir() and candidate not in roots:
+                roots.append(candidate)
+    return roots
+
+
+def _relocated(app_root):
+    """The drafts folder the user moved to, as Jianying itself recorded it.
+
+    Jianying can keep its draft library on another disk, and a machine that
+    has moved it still has the default folder sitting there empty - so a probe
+    that knows only the default finds a directory, calls it a hit, and writes
+    every draft where the editor no longer looks. Nothing about that looks
+    wrong: the build succeeds and the draft list stays empty.
+
+    The path is in Jianying's own settings file, under a key that has been
+    renamed between versions. Rather than bet on one name, any string value
+    naming a directory that exists is taken, keys mentioning drafts first.
+    """
+    settings = app_root / "User Data" / "Config" / "globalSetting"
+    try:
+        data = json.loads(settings.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
         return None
-    guess = (Path(local) / "JianyingPro" / "User Data" / "Projects"
-             / "com.lveditor.draft")
-    return guess if guess.is_dir() else None
+    if not isinstance(data, dict):
+        return None
+    named = [(key, value) for key, value in data.items()
+             if isinstance(value, str) and value.strip()]
+    named.sort(key=lambda pair: "draft" not in pair[0].lower())
+    for _key, value in named:
+        candidate = Path(value.strip()).expanduser()
+        # Settings hold the library root; the drafts live in the bundle-id
+        # folder under it, and some versions record that folder directly.
+        if candidate.name != DRAFT_LEAF:
+            candidate = candidate / DRAFT_LEAF
+        if candidate.is_dir():
+            return candidate
+    return None
+
+
+def jianying_drafts_dir():
+    """Where Jianying keeps its projects on this machine, if it is installed.
+
+    JIANYING_DRAFT_DIR overrides the search, for a machine with two installs
+    or a layout this does not know. It is checked rather than trusted: a typo
+    there is a mistake to report, not a reason to quietly use somewhere else.
+    """
+    configured = (os.environ.get("JIANYING_DRAFT_DIR") or "").strip()
+    if configured:
+        path = Path(configured).expanduser()
+        if not path.is_dir():
+            raise SystemExit(f"JIANYING_DRAFT_DIR does not exist: {path}")
+        return path
+    for root in _app_roots():
+        moved = _relocated(root)
+        if moved is not None:
+            return moved
+        default = root / "User Data" / "Projects" / DRAFT_LEAF
+        if default.is_dir():
+            return default
+    return None
 
 
 def main():
@@ -543,31 +617,38 @@ def main():
         description="export a built project as an editable Jianying draft")
     ap.add_argument("project", help="a directory holding storyboard.json")
     ap.add_argument("--out", help="where to write the draft folder "
-                                  "(default: <project>/jianying)")
+                                  "(default: Jianying's own drafts folder, "
+                                  "else <project>/jianying)")
     ap.add_argument("--name", help="draft name, as shown in Jianying")
     ap.add_argument("--install", action="store_true",
-                    help="write straight into Jianying's own drafts folder")
+                    help="deprecated: this is the default. Kept so existing "
+                         "commands and scripts keep working")
     ap.add_argument("--no-dissolve", action="store_true",
                     help="omit the cross-dissolves between shots")
     args = ap.parse_args()
 
     builder = DraftBuilder(args.project, name=args.name,
                            dissolve=not args.no_dissolve)
-    if args.install:
+    # Into the editor's own folder unless somewhere else was asked for. The
+    # draft is the deliverable and it is only useful open in Jianying, so the
+    # default that made every build end in a manual copy was the wrong one.
+    if args.out:
+        root = Path(args.out)
+    else:
         root = jianying_drafts_dir()
         if root is None:
-            raise SystemExit("Jianying's drafts folder was not found - "
-                             "pass --out to choose a location instead")
-    else:
-        root = Path(args.out) if args.out else Path(args.project) / "jianying"
+            if args.install:
+                raise SystemExit("Jianying's drafts folder was not found - "
+                                 "pass --out to choose a location instead")
+            root = Path(args.project) / "jianying"
 
     path, total, layers = builder.build(root)
     size = sum(f.stat().st_size for f in path.rglob("*") if f.is_file()) / 1e6
     print(f"draft written: {path}")
     print(f"  {total:.1f}s, {layers} element layers, {size:.0f} MB")
-    if not args.install:
-        print("  move this folder into Jianying's drafts directory, or re-run "
-              "with --install")
+    if root == Path(args.project) / "jianying":
+        print("  Jianying's drafts folder was not found, so this is beside the "
+              "render - move it there, or set JIANYING_DRAFT_DIR")
 
 
 if __name__ == "__main__":

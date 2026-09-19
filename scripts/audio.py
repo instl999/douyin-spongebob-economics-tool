@@ -187,7 +187,15 @@ def normalize(src, out_path, target_i=TARGET_LUFS, target_lra=TARGET_LRA,
     return out_path
 
 
-def mix(narration, out_path, total, bgm=None, bgm_volume=0.10,
+# How far under the voice a music bed sits, as linear gain. Both tracks now
+# quote a number in the same 20-25 dB band: below it the bed stops doing
+# anything, above it the music becomes a second thing to listen to while
+# somebody is talking. 0.056 is -25 dB, the quiet end of that band, which is
+# where a bed under continuous narration belongs.
+BGM_VOLUME = 0.056
+
+
+def mix(narration, out_path, total, bgm=None, bgm_volume=BGM_VOLUME,
         narration_volume=1.0, rate=44100, cues=(), cue_volume=0.34,
         loudness=None, duck=False):
     """Narration, optional music, and any sound cues, limited and trimmed.
