@@ -1,6 +1,12 @@
 # credentials - never commit
 .env
 
+# The music library is yours, not the repository's. The folder's README is
+# tracked so the naming convention travels with the code; the audio in it is
+# licensed to whoever collected it and must not be published here.
+assets/bgm/*
+!assets/bgm/README.md
+
 # generated output
 out/
 
