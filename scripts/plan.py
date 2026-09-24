@@ -743,6 +743,10 @@ def validate(data, beats, cast, max_sprites=None):
         # invented matches nothing and would only push a real one down the
         # ranking. Absent entirely is fine - the script's own words answer.
         "mood": music.clean(data.get("mood")),
+        # Where the script's feeling turns, each with its own moods: the music
+        # changes there. Cleaned to a few sections of a few shots each, or
+        # none - a script that does not turn keeps one bed throughout.
+        "sections": music.clean_sections(data.get("sections"), len(scenes)),
         "ending": {"text": ending_text,
                    "highlight": (ending.get("highlight") or "").strip() or None},
         "scenes": scenes,
@@ -1002,7 +1006,7 @@ def offline_plan(script, cast, shot_seconds=5.0):
                              "rel": cast.relative_height(asset)})
         scenes.append({"id": i + 1, "narration": beat,
                        "framing": framings[i % 3], "elements": elements})
-    return {"title": "", "setting": "", "mood": [],
+    return {"title": "", "setting": "", "mood": [], "sections": [],
             "ending": {"text": scenes[-1]["narration"] if scenes else "",
                        "highlight": None},
             "scenes": scenes,

@@ -64,6 +64,123 @@ def run(suite, lay):
     stop_after_checks(suite)
     refresh_checks(suite)
     freshness_checks(suite)
+    draft_parity_checks(suite)
+
+
+def draft_parity_checks(suite):
+    """The draft holds what the MP4 holds: walls, balloons, captions, music."""
+    import audio as audio_mod
+    import check_draft
+    import draft as draft_mod
+    import numpy as np
+    import render as render_mod
+    import tts as tts_mod
+    from layout import from_video
+
+    violet = [88, 72, 130]               # neon_cyberpunk's panel colour
+    bed = ROOT / "assets" / "bgm_default.wav"
+    with tempfile.TemporaryDirectory() as tmp:
+        work = Path(tmp)
+        plate(work / "background.png")
+        sprite(work / "a.png", (230, 60, 60))
+        board = {
+            "video": {"orientation": "landscape", "width": 1920, "height": 1080,
+                      "fps": 30, "background": "background.png",
+                      "dissolve": 0.3, "panel_color": violet},
+            "scenes": [
+                {"id": 1, "duration": 2.4, "framing": "medium", "subtitle": "一。",
+                 "captions": [{"text": "第一句字幕", "start": 0.0, "end": 2.4}],
+                 "elements": [
+                     {"type": "panel", "x": 0.5, "y": 0.99, "w": 0.94, "ph": 0.5},
+                     {"asset": "a.png", "x": 0.3, "y": 0.97, "h": 0.4},
+                     {"type": "bubble", "text": "我更卖力了！", "tail": "left",
+                      "x": 0.7, "y": 0.25, "anchor": "center"}]},
+                {"id": 2, "duration": 2.0, "framing": "close", "subtitle": "二。",
+                 "captions": [{"text": "第二句字幕", "start": 0.0, "end": 2.0}],
+                 "elements": [
+                     {"asset": "a.png", "x": 0.5, "y": 0.97, "h": 0.4},
+                     {"type": "label", "text": "标签", "x": 0.5, "y": 0.3,
+                      "anchor": "center"}]}],
+            "music": {"volume": 0.16, "duck": True, "beds": [
+                {"path": str(bed), "start": 0.0, "end": 2.6,
+                 "fade_in": 1.2, "fade_out": 2.0},
+                {"path": str(bed), "start": 1.6, "end": 4.4,
+                 "fade_in": 2.0, "fade_out": 2.0}]},
+        }
+        index = {}
+        (work / "voice").mkdir()
+        for i, scene in enumerate(board["scenes"], 1):
+            made = tts_mod._silent(scene["subtitle"], work / "voice" /
+                                   f"scene_{i:02d}.mp3", 1.0)
+            index[str(i)] = {"text": scene["subtitle"], "path": str(made["path"]),
+                             "duration": 1.6, "words": [], "degraded": False}
+        (work / "voice" / "index.json").write_text(json.dumps(index),
+                                                    encoding="utf-8")
+        (work / "storyboard.json").write_text(json.dumps(board, ensure_ascii=False),
+                                              encoding="utf-8")
+        audio_mod.write_srt([(0.0, 2.4, "第一句字幕"), (2.4, 4.4, "第二句字幕")],
+                            work / "parity.srt")
+        path, _, _ = draft_mod.DraftBuilder(work, name="parity").build(
+            work / "jianying")
+        content = json.loads((path / "draft_content.json").read_text(
+            encoding="utf-8"))
+
+        lay = from_video(board["video"])
+        materials = {m["id"]: m["path"] for m in content["materials"]["videos"]}
+        panel_file = next(p for p in materials.values() if "panel" in Path(p).name)
+        drawn = np.asarray(Image.open(panel_file).convert("RGBA"))
+        want = np.asarray(render_mod.build_element_image(
+            board["scenes"][0]["elements"][0], render_mod.Assets(work), lay,
+            panel_color=render_mod.Renderer(board, work).panel_color))
+        got_rgb = np.median(drawn[drawn[:, :, 3] > 0][:, :3], axis=0)
+        want_rgb = np.median(want[want[:, :, 3] > 0][:, :3], axis=0)
+        suite.check("draft: a panel is the colour the MP4 drew it",
+                    np.abs(got_rgb - want_rgb).max() <= 2,
+                    f"draft {got_rgb.astype(int).tolist()}, "
+                    f"render {want_rgb.astype(int).tolist()}")
+
+        texts = {seg["material_id"]: seg for tr in content["tracks"]
+                 if tr["type"] == "text" for seg in tr["segments"]}
+        words = [json.loads(m["content"])["text"]
+                 for m in content["materials"]["texts"]]
+        balloon = any("bubble" in Path(p).name for p in materials.values())
+        suite.check("draft: a speech bubble keeps its balloon under the words",
+                    balloon and any("卖力" in w for w in words),
+                    "balloon picture + editable words")
+        diffs = check_draft.compare(work, path) or []
+        suite.check("draft: ...and still rebuilds the frames the MP4 drew",
+                    diffs and max(d for _, d in diffs) <= check_draft.MAX_MEAN_DIFF,
+                    ", ".join(f"shot {i} {d:.2f}" for i, d in diffs))
+
+        subs = [m for m in content["materials"]["texts"]
+                if json.loads(m["content"])["text"].endswith("字幕")]
+        strokes = [json.loads(m["content"])["styles"][0].get("strokes")
+                   for m in subs]
+        wanted_y = -(lay.subtitle_center_y - lay.height / 2) / (lay.height / 2)
+        placed = [texts[m["id"]]["clip"]["transform"]["y"] for m in subs
+                  if m["id"] in texts]
+        suite.check("draft: subtitles carry the MP4's outline",
+                    subs and all(strokes), f"{len(subs)} subtitle(s)")
+        suite.check("draft: subtitles sit on the MP4's caption line",
+                    placed and all(abs(y - wanted_y) < 1e-3 for y in placed),
+                    f"y {placed[:1]} vs {wanted_y:.3f}")
+
+        music = [seg for tr in content["tracks"] if tr["type"] == "audio"
+                 and str(tr.get("name", "")).startswith("配乐")
+                 for seg in tr["segments"]]
+        lanes = {tr.get("name") for tr in content["tracks"]
+                 if str(tr.get("name", "")).startswith("配乐")}
+        ducked = [seg for seg in music
+                  if any(kf.get("property_type") == "KFTypeVolume"
+                         for kf in seg.get("common_keyframes") or [])]
+        suite.check("draft: the music the mix used is in the draft",
+                    len(music) >= 2 and len(lanes) == 2,
+                    f"{len(music)} segment(s) on {len(lanes)} lane(s): "
+                    "two sections crossfading need two")
+        suite.check("draft: the music dips under the narration",
+                    ducked and content["materials"].get("audio_fades"),
+                    f"{len(ducked)} keyframed, "
+                    f"{len(content['materials'].get('audio_fades') or [])} fades")
 
 
 def stop_after_checks(suite):

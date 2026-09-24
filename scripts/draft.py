@@ -45,6 +45,7 @@ from PIL import Image
 
 import render as render_mod
 import styles as styles_mod
+import textkit
 from layout import from_video as layout_from_video
 
 import pyJianYingDraft as jy
@@ -59,6 +60,13 @@ SEC = 1_000_000
 # Records the draft_content.json this exporter wrote, so a later run can tell
 # its own output apart from one a person has since edited.
 STAMP = ".exported"
+
+# Jianying's own size for imported subtitles, and the fixed point every other
+# text size here is scaled against. The stroke is Jianying's default
+# thickness: the MP4's captions are white on a black edge, and an imported
+# subtitle with no edge at all was unreadable on a bright plate.
+SUBTITLE_SIZE = 5.0
+SUBTITLE_BORDER = 40.0
 
 
 def _us(seconds):
@@ -126,7 +134,7 @@ class DraftBuilder:
         self.fps = int(video.get("fps", 30))
         self.lay = layout_from_video(video)
         self.assets = render_mod.Assets(self.project)
-        self.panel_color = self.sb.get("panel_color")
+        self.panel_color = render_mod.panel_color_of(self.sb)
         self.look = styles_mod.look(carried=video.get("look"))
         # The one duration in this file that is not read off a segment. The
         # storyboard's `look` has already been put on the video's clock by
@@ -142,14 +150,14 @@ class DraftBuilder:
 
     # --- materials --------------------------------------------------------
 
-    def _frame_for(self, el, framing):
+    def _frame_for(self, el, framing, bare=False):
         """One element, centred in its own canvas-sized transparent frame.
 
         Returns (path, dx, dy): the material, and how far that frame has to
-        move, in whole pixels.
+        move, in whole pixels. `bare` is a balloon without its words.
         """
         img = render_mod.build_element_image(el, self.assets, self.lay, framing,
-                                             self.panel_color)
+                                             self.panel_color, bare=bare)
         if img is None:
             return None
         # The renderer's own placement, not a second copy of it - see
@@ -169,7 +177,8 @@ class DraftBuilder:
         # Exact size, not a rounded bucket. Sharing a material between two
         # elements that render a couple of pixels apart saves a file and makes
         # the offsets above wrong for whichever one did not build it.
-        key = (ident, kind, el.get("tone"), el.get("tail"), img.width, img.height)
+        key = (ident, kind, el.get("tone"), el.get("tail"), bare,
+               img.width, img.height)
         path = self._frames.get(key)
         if path is None:
             stem = Path(ident).stem if kind == "sprite" else kind
@@ -215,6 +224,7 @@ class DraftBuilder:
         self._add_elements(script, segments)
         self._add_voice(script, segments)
         self._add_sfx(script)
+        self._add_music(script, segments)
         self._add_subtitles(script)
 
         content = self.dir / "draft_content.json"
@@ -260,9 +270,16 @@ class DraftBuilder:
                 continue
             framing = render_mod.FRAMING.get(seg.data.get("framing", "medium"), 1.0)
             for i, el in enumerate(seg.data.get("elements", [])):
+                bare = False
                 if self._add_native_text(script, el, seg):
-                    continue
-                built = self._frame_for(el, framing)
+                    if el.get("type") != "bubble":
+                        continue
+                    # A balloon exported as text alone lost the balloon: the
+                    # MP4 had a speech bubble and the draft had words floating
+                    # on the plate. The balloon goes on this layer, drawn
+                    # empty, and the words sit on it as editable text.
+                    bare = True
+                built = self._frame_for(el, framing, bare=bare)
                 if built is None:
                     continue
                 path, dx, dy = built
@@ -354,31 +371,45 @@ class DraftBuilder:
         if not text:
             return False
 
-        tone = el.get("tone", "neutral")
-        colour = self.look["label_tones"].get(tone,
-                                              self.look["label_tones"]["neutral"])
         # Jianying's own imported subtitles use size 5, which is the only fixed
         # point available for this scale. A label is sized against the caption
         # in pixels, so the same ratio carries over.
         caption_px = max(1, self.lay.subtitle_font_px())
-        size = 5.0 * self.lay.label_font_px(el.get("size", 1.0)) / caption_px
-
         image = render_mod.build_element_image(el, self.assets, self.lay)
         left, top = render_mod.element_origin(el, image, self.lay)
-        dx = (left + image.width / 2) - self.W / 2
-        dy = (top + image.height / 2) - self.H / 2
+        if kind == "bubble":
+            # The words go on the balloon's body, which is not the middle of
+            # its image once the tail hangs below it, and they wrap where the
+            # MP4's did. Dark and unoutlined, like the balloon they sit in.
+            px = self.lay.label_font_px(el.get("size", render_mod.BUBBLE_SIZE))
+            lines, body_w, body_h, _ = textkit.bubble_body(
+                text, size=px,
+                max_width=int(self.lay.width * el.get("max_width", 0.24)))
+            text = "\n".join(lines) or text
+            centre = (left + body_w / 2, top + body_h / 2)
+            colour, bold, border = textkit.BUBBLE_INK[:3], False, None
+        else:
+            tone = el.get("tone", "neutral")
+            colour = self.look["label_tones"].get(
+                tone, self.look["label_tones"]["neutral"])
+            px = self.lay.label_font_px(el.get("size", 1.0))
+            centre = (left + image.width / 2, top + image.height / 2)
+            bold = True
+            # Whatever the renderer measured against the plate, so a label
+            # that needed a dark edge in the MP4 has one here too.
+            border = TextBorder(color=tuple(c / 255 for c in
+                                            el.get("outline", (255, 255, 255))),
+                                width=28.0)
+        size = 5.0 * px / caption_px
+        dx, dy = centre[0] - self.W / 2, centre[1] - self.H / 2
 
         appear = max(0.0, min(float(el.get("appear", 0.0) or 0.0),
                               seg.duration * 0.8))
         segment = TextSegment(
             text, _span(seg.start + appear, seg.end),
-            style=TextStyle(size=size, align=1, bold=True,
+            style=TextStyle(size=size, align=1, bold=bold,
                             color=tuple(c / 255 for c in colour)),
-            # Whatever the renderer measured against the plate, so a label
-            # that needed a dark edge in the MP4 has one here too.
-            border=TextBorder(color=tuple(c / 255 for c in
-                                          el.get("outline", (255, 255, 255))),
-                              width=28.0),
+            border=border,
             clip_settings=ClipSettings(transform_x=dx / (self.W / 2),
                                        transform_y=-dy / (self.H / 2)))
         animation = (self.text_config.get("animation") or {}).get(
@@ -508,14 +539,126 @@ class DraftBuilder:
     def _add_subtitles(self, script):
         """Captions as a real subtitle track, not baked pixels.
 
-        This is the one piece of text worth handing to Jianying natively: the
-        SRT is already cut to the same spans the renderer used, and import_srt
-        reproduces Jianying's own subtitle styling, so it looks native and
-        stays editable.
+        The SRT is already cut to the same spans the renderer used, so the
+        timing carries over as it is. The look does not come with it: an
+        imported subtitle is plain white with no edge, which is unreadable
+        over a bright plate, and it sits at Jianying's default height whatever
+        this layout put the caption at. So it is imported against a styled
+        template - the MP4's fill, a stroke, bold, and the caption's own line.
         """
         srt = next(iter(sorted(self.project.glob("*.srt"))), None)
-        if srt is not None:
-            script.import_srt(str(srt), "字幕")
+        if srt is None:
+            return
+        caption = self.look.get("caption") or {}
+        fill = tuple(c / 255 for c in caption.get("fill", (255, 255, 255)))
+        edge = tuple(c / 255 for c in caption.get("stroke_fill", (0, 0, 0)))
+        place = ClipSettings(transform_y=-(self.lay.subtitle_center_y - self.H / 2)
+                             / (self.H / 2))
+        template = TextSegment(
+            "字幕", Timerange(0, SEC),
+            style=TextStyle(size=SUBTITLE_SIZE, bold=True, align=1, color=fill,
+                            auto_wrapping=True,
+                            max_line_width=float(
+                                self.lay.cfg.get("subtitle_max_width", 0.86))),
+            border=TextBorder(color=edge, width=SUBTITLE_BORDER),
+            clip_settings=place)
+        script.import_srt(str(srt), "字幕", style_reference=template,
+                          clip_settings=place)
+
+    def _speech(self, segments):
+        """[(start, end)] seconds where narration is heard, from the voice index.
+
+        The same clips `_add_voice` lays, at the same places: the title's
+        after its lead, each shot's from the shot's start for as long as the
+        clip runs.
+        """
+        index_path = self.project / "voice" / "index.json"
+        index = (json.loads(index_path.read_text(encoding="utf-8-sig"))
+                 if index_path.exists() else {})
+        card = self.sb.get("title_card") or {}
+        spans = []
+        for seg in segments:
+            if seg.kind == "title" and card.get("voice"):
+                lead = float(card.get("lead", audio_mod.TITLE_SFX_LEAD))
+                entry = index.get("title") or {}
+                length = float(entry.get("duration") or seg.duration - lead)
+                spans.append((seg.start + lead,
+                              min(seg.end, seg.start + lead + length)))
+            elif seg.kind == "scene":
+                entry = index.get(str(seg.data.get("id", seg.index + 1))) or {}
+                if entry.get("duration") and not entry.get("degraded"):
+                    spans.append((seg.start, min(seg.end, seg.start
+                                                 + float(entry["duration"]))))
+        return spans
+
+    def _add_music(self, script, segments):
+        """The beds the mix used, on their own track, ducked where it ducked.
+
+        The storyboard records which beds run where, and this lays exactly
+        those: each looped to its span, faded as the mix fades it, and the
+        overlap between two sections kept as a crossfade on parallel lanes.
+        Jianying has no sidechain, so the dip under the voice is drawn as
+        volume keyframes along the narration the draft carries.
+        """
+        music = self.sb.get("music") or {}
+        beds = [bed for bed in music.get("beds") or []
+                if Path(bed["path"]).exists()]
+        if not beds:
+            return
+        level = float(music.get("volume", audio_mod.BGM_VOLUME))
+        attack, release = audio_mod.DUCK_ATTACK, audio_mod.DUCK_RELEASE
+        under = level * 10 ** (-audio_mod.DUCK_DB / 20)
+        # Lines closer together than the compressor can recover between are
+        # one dip, as they are in the mix: the bed does not bob up for the
+        # tail between two shots and straight back down.
+        dips = []
+        for a, b in sorted(self._speech(segments) if music.get("duck") else []):
+            if dips and a - attack <= dips[-1][1] + release:
+                dips[-1][1] = max(dips[-1][1], b)
+            else:
+                dips.append([a, b])
+
+        def volume_at(t):
+            for a, b in dips:
+                if a <= t <= b:
+                    return under
+                if a - attack < t < a:
+                    return level + (under - level) * (t - (a - attack)) / attack
+                if b < t < b + release:
+                    return under + (level - under) * (t - b) / release
+            return level
+
+        def envelope(start, end):
+            """[(offset_us, volume)] across one piece of a bed."""
+            times = {start, end}
+            for a, b in dips:
+                times |= {t for t in (a - attack, a, b, b + release)
+                          if start < t < end}
+            return [(_us(t - start), volume_at(t)) for t in sorted(times)]
+        speech = bool(dips)
+
+        for bed in beds:
+            material = jy.AudioMaterial(bed["path"])
+            loop = material.duration / SEC
+            start, end = float(bed["start"]), float(bed["end"])
+            pieces, cursor = [], start
+            while end - cursor > 0.05 and loop > 0:
+                pieces.append((cursor, min(end, cursor + loop)))
+                cursor += loop
+            for n, (a, b) in enumerate(pieces):
+                piece = AudioSegment(material, _span(a, b),
+                                     volume=1.0 if speech else level)
+                fade_in = float(bed.get("fade_in", 0)) if n == 0 else 0.0
+                fade_out = (float(bed.get("fade_out", 0))
+                            if n == len(pieces) - 1 else 0.0)
+                if fade_in or fade_out:
+                    piece.add_fade(_us(min(fade_in, (b - a) / 2)),
+                                   _us(min(fade_out, (b - a) / 2)))
+                if speech:
+                    for offset, volume in envelope(a, b):
+                        piece.add_keyframe(offset, volume)
+                script.add_segment(piece, self._lane(
+                    script, TrackType.audio, "配乐", _us(a), _us(b)))
 
     def _write_meta(self):
         """Jianying needs a meta file beside the content to list the draft."""

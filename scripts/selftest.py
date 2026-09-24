@@ -1126,13 +1126,15 @@ def main():
     suite.check("music: the script answers when the director does not",
                 "焦虑" in music_mod.moods_in("他很焦虑，晚上睡不着，总是担心明天。")
                 and music_mod.moods_in("。。。") == [])
-    # Both tracks quote a level in the same band. Below it the bed does
-    # nothing; above it the music is a second thing to listen to while
-    # somebody is talking.
+    # The footage track quotes its bed as a constant in the 20-25 dB band.
+    # Below it the bed does nothing; above it the music is a second thing to
+    # listen to while somebody is talking. The drawn track's bed is ducked,
+    # so its level is a measurement of the mix - see selftest_look.
     import footage_build as footage_mod
-    levels = {"drawn": audio_mod.BGM_VOLUME, "footage": footage_mod.BGM_VOLUME}
+    levels = {"footage": footage_mod.BGM_VOLUME,
+              "un-ducked": audio_mod.BGM_VOLUME}
     in_band = {k: -25.5 <= 20 * np.log10(v) <= -19.5 for k, v in levels.items()}
-    suite.check("music: the bed sits 20-25 dB under the voice",
+    suite.check("music: an un-ducked bed sits 20-25 dB under the voice",
                 all(in_band.values()),
                 ", ".join(f"{k} {20 * np.log10(v):.1f} dB"
                           for k, v in levels.items()))
@@ -1483,6 +1485,8 @@ def main():
     # is guaranteed to collide.
     import selftest_workflow
     selftest_workflow.run(suite, lay)
+    import selftest_look
+    selftest_look.run(suite, lay)
     import selftest_footage
     selftest_footage.run(suite, lay)
 

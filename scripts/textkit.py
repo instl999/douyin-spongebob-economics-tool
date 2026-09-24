@@ -249,19 +249,43 @@ def render_label(text, *, size, bold=True, fill=(30, 30, 30, 255),
     return img
 
 
-def render_bubble(text, *, size, max_width, tail="left", bold=False,
-                  fill=(255, 255, 255, 245), outline=(20, 20, 20, 255)):
-    """A rounded speech balloon sized to its text, with a tail on one side."""
+# The colour of the words in a balloon, shared with the draft's text for them.
+BUBBLE_INK = (20, 20, 20, 255)
+
+
+def bubble_body(text, *, size, max_width, bold=False):
+    """(lines, body width, body height, tail height) of a speech balloon.
+
+    The body is the rounded box the words sit in; the tail hangs below it. The
+    draft needs this to put editable words at the body's centre, which is not
+    the centre of the image once the tail is added.
+    """
     lines = wrap(text, size, max_width, bold)
     if not lines:
-        return None
+        return [], 0, 0, 0
     lh = line_height(size, bold)
     gap = int(size * 0.22)
     pad_x, pad_y = int(size * 0.75), int(size * 0.55)
     tw = int(max(advance(l, size, bold) for l in lines))
     th = lh * len(lines) + gap * (len(lines) - 1)
-    w, h = tw + pad_x * 2, th + pad_y * 2
-    tail_h = int(size * 0.85)
+    return lines, tw + pad_x * 2, th + pad_y * 2, int(size * 0.85)
+
+
+def render_bubble(text, *, size, max_width, tail="left", bold=False,
+                  fill=(255, 255, 255, 245), outline=(20, 20, 20, 255),
+                  words=True):
+    """A rounded speech balloon sized to its text, with a tail on one side.
+
+    `words=False` draws the balloon alone, sized for the words, so the draft
+    can set them over it as text a person can still retype.
+    """
+    lines, w, h, tail_h = bubble_body(text, size=size, max_width=max_width,
+                                      bold=bold)
+    if not lines:
+        return None
+    lh = line_height(size, bold)
+    gap = int(size * 0.22)
+    pad_y = int(size * 0.55)
 
     img = Image.new("RGBA", (w, h + tail_h), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
@@ -281,10 +305,10 @@ def render_bubble(text, *, size, max_width, tail="left", bold=False,
         draw.line([pts[0], pts[2]], fill=outline, width=line_w)
         draw.line([pts[1], pts[2]], fill=outline, width=line_w)
 
-    for i, line in enumerate(lines):
+    for i, line in enumerate(lines if words else []):
         x = (w - advance(line, size, bold)) / 2
         draw.text((x, pad_y + i * (lh + gap)), line, font=font(size, bold),
-                  fill=(20, 20, 20, 255))
+                  fill=BUBBLE_INK)
     return img
 
 

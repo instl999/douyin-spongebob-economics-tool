@@ -279,12 +279,15 @@ def compare(project, draft_dir):
         # arrived yet has to come out of the comparison, or a correct draft is
         # reported broken. Same reason labels come out when they are exported
         # as text: these are the two places the outputs legitimately differ.
+        # A balloon keeps its picture on a video layer and only its words go
+        # to text, so it stays in - drawn empty, as the draft holds it.
         scene = dict(seg.data, elements=[
             el for el in seg.data.get("elements", [])
-            if not (native_labels and el.get("type") in ("label", "bubble"))
+            if not (native_labels and el.get("type") == "label")
             and not float(el.get("appear", 0.0) or 0.0) > 0.0])
         want = render_mod.compose_plate(scene, background, assets, lay,
-                                        sb.get("panel_color"))
+                                        render_mod.panel_color_of(sb),
+                                        bare_bubbles=native_labels)
         diffs.append((seg.data.get("id", seg.index + 1),
                       float(np.abs(got - np.asarray(want, dtype=np.int16)).mean())))
     return diffs or None
@@ -505,7 +508,21 @@ def main():
     print(f"  {'ok ' if not late else 'FAIL'} {len(cues)} sound cue(s), "
           f"all inside the video")
 
-    # 8. tracks that should exist
+    # 8. the music the mix used. The bed used to be chosen inside the mix and
+    #    never reach the draft at all, so the deliverable was silent under its
+    #    narration while the preview beside it had music.
+    beds = [bed for bed in (sb.get("music") or {}).get("beds") or []
+            if Path(bed["path"]).exists()]
+    laid = [seg for tr in content["tracks"]
+            if tr["type"] == "audio" and str(tr.get("name", "")).startswith("配乐")
+            for seg in tr["segments"]]
+    if beds and not laid:
+        failures.append(f"{len(beds)} music bed(s) in the storyboard, none in "
+                        "the draft")
+    print(f"  {'ok ' if laid or not beds else 'FAIL'} {len(beds)} music bed(s), "
+          f"{len(laid)} segment(s) on the music track")
+
+    # 9. tracks that should exist
     names = {tr.get("name") for tr in content["tracks"]}
     for wanted, why in (("背景", "background"), ("配音", "narration"),
                         ("字幕", "subtitles")):

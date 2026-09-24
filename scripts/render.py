@@ -44,6 +44,11 @@ FRAMING = _LOOK["framing"]
 # the bad one in red - so it is chosen by naming the meaning, not the colour.
 LABEL_TONES = {k: tuple(v) for k, v in _LOOK["label_tones"].items()}
 
+# A balloon's type, as a multiple of the label size. One number, because the
+# draft sets the same words as text over the balloon and has to size them the
+# way this does.
+BUBBLE_SIZE = 0.82
+
 # Baseline fades, for a caller holding no storyboard. A Renderer takes its own
 # from the storyboard's `look` instead: build.py has already put those on the
 # video's clock, and a fade left at 1.0 in a 1.5x video is a subtitle still
@@ -208,6 +213,22 @@ def outline_against(plate, el, image, lay, options):
     return tuple(max(options, key=lambda o: _contrast(o, ink)))
 
 
+def panel_color_of(storyboard):
+    """The slab colour a storyboard carries, from where build.py writes it.
+
+    Under `video`, beside the rest of what the renderer needs. The draft
+    exporter, its checker, the verifier and the critic all read it from the
+    top level instead, found nothing, and drew every panel in the default
+    blue-grey - on the six styles whose panels are not that colour, the draft
+    disagreed with the MP4 on every walled shot and the checker, reading the
+    same wrong key, said they matched. The top level is still read, for a
+    storyboard written by hand.
+    """
+    colour = ((storyboard.get("video") or {}).get("panel_color")
+              or storyboard.get("panel_color"))
+    return tuple(int(c) for c in colour)[:3] if colour else None
+
+
 def plate_for(assets, name, lay):
     """The background image, covered and cropped to the frame.
 
@@ -238,8 +259,13 @@ def _paste(canvas, sprite, origin, opacity=1.0):
     canvas.alpha_composite(sprite, origin)
 
 
-def build_element_image(el, assets, lay, framing=1.0, panel_color=None):
-    """Return the RGBA image for one element, at final pixel size."""
+def build_element_image(el, assets, lay, framing=1.0, panel_color=None,
+                        bare=False):
+    """Return the RGBA image for one element, at final pixel size.
+
+    `bare` draws a speech balloon without its words, for the draft, which
+    sets the words as editable text over it.
+    """
     kind = el.get("type", "sprite")
     if kind == "label":
         # The references colour labels by meaning, not decoration: green on the
@@ -261,9 +287,9 @@ def build_element_image(el, assets, lay, framing=1.0, panel_color=None):
     if kind == "bubble":
         return textkit.render_bubble(
             el["text"],
-            size=lay.label_font_px(el.get("size", 0.82)),
+            size=lay.label_font_px(el.get("size", BUBBLE_SIZE)),
             max_width=int(lay.width * el.get("max_width", 0.24)),
-            tail=el.get("tail", "left"))
+            tail=el.get("tail", "left"), words=not bare)
     image = assets.sized(
         el["asset"],
         lay.sprite_height(el.get("h", 0.4) * framing * el.get("rel", 1.0)))
@@ -275,17 +301,22 @@ def build_element_image(el, assets, lay, framing=1.0, panel_color=None):
     return image
 
 
-def compose_plate(scene, background, assets, lay, panel_color=None):
+def compose_plate(scene, background, assets, lay, panel_color=None,
+                  bare_bubbles=False):
     """Background plus every element of one shot, as an RGB uint8 array.
 
     Elements that appear part-way through the shot are drawn here at full
     opacity as well; the frame loop fades them in over this plate.
+    `bare_bubbles` draws balloons without their words - what the draft's
+    picture layers hold, with the words set over them as text.
     """
     canvas = background.copy()
     framing = FRAMING.get(scene.get("framing", "medium"), 1.0)
     for el in scene.get("elements", []):
         try:
-            img = build_element_image(el, assets, lay, framing, panel_color)
+            img = build_element_image(
+                el, assets, lay, framing, panel_color,
+                bare=bare_bubbles and el.get("type") == "bubble")
         except FileNotFoundError as exc:
             # One deleted PNG should cost one element, not the whole render -
             # this runs after the storyboard, the narration and the artwork are
@@ -437,7 +468,7 @@ class Renderer:
         self.element_fade = float(pace.get("element_fade", ELEMENT_FADE))
         # Carried in the storyboard rather than looked up from the cast, so a
         # storyboard renders on its own without the cast file being present.
-        self.panel_color = tuple(cfg.get("panel_color") or (176, 196, 205))
+        self.panel_color = panel_color_of(storyboard) or (176, 196, 205)
         self.assets = Assets(self.workdir)
         bg_name = cfg.get("background", "background.png")
         self.background = plate_for(self.assets, bg_name, self.lay)

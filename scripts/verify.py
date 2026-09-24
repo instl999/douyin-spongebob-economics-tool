@@ -294,7 +294,8 @@ def check_composition(report, storyboard, project_dir, lay):
         for el in scene.get("elements", []):
             try:
                 img = render_mod.build_element_image(
-                    el, assets, lay, framing, storyboard.get("panel_color"))
+                    el, assets, lay, framing,
+                    render_mod.panel_color_of(storyboard))
             except Exception:
                 continue
             if img is not None:

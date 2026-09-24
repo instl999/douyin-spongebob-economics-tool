@@ -843,10 +843,53 @@ def stage_storyboard(project, plan, voice_index):
         storyboard["sound_cues"].insert(
             0, [0.0, opening, float(project.get("opening_volume", OPENING_GAIN))])
 
+    # The music is decided here and carried, like the cues: the mix and the
+    # draft both lay it from this record. The draft used to have no music at
+    # all - the bed was chosen inside the mix and nothing else ever saw it.
+    storyboard["music"] = _music(project, plan, storyboard, clock)
+
     (project.out / "storyboard.json").write_text(
         json.dumps(storyboard, ensure_ascii=False, indent=2), encoding="utf-8")
     audio_mod.write_srt(srt, project.out / f"{project.name}.srt")
     return storyboard, pieces, clock
+
+
+def _music(project, plan, storyboard, total):
+    """Which beds run under the video, where, and how loud. Decided once.
+
+    `bgm` in the project names one track and is not second-guessed; empty
+    means no music. Otherwise the director's sections, when it marked any,
+    each get the bed that fits their own mood and place, crossfading at the
+    boundary - and a script with no sections gets one bed start to finish.
+    """
+    import music as music_mod
+    import render as render_mod
+    duck = bool(project.get("duck_music", True))
+    volume = float(project.get(
+        "bgm_volume",
+        audio_mod.BGM_DUCKED_VOLUME if duck else audio_mod.BGM_VOLUME))
+    named = project.get("bgm", None)
+    if named is not None:
+        # Present and empty is how a project has always said "no music", and
+        # it stays a choice rather than an invitation to search a folder.
+        chosen = _resolve(named) if named else None
+        path = chosen if chosen and chosen.exists() else None
+        beds = ([{"path": str(path), "start": 0.0, "end": round(total, 3),
+                  "fade_in": music_mod.FADE_IN,
+                  "fade_out": music_mod.FADE_OUT}] if path else [])
+        why = path.name if path else "none (set by the project)"
+    else:
+        segments, _ = render_mod.build_timeline(
+            storyboard, [s["duration"] for s in storyboard["scenes"]])
+        starts = {seg.data.get("id"): seg.start for seg in segments
+                  if seg.kind == "scene"}
+        beds, why = music_mod.plan_beds(
+            _resolve(project.get("bgm_library"), ROOT / "assets" / "bgm"),
+            project.script, plan.get("mood") or (), plan.get("sections") or (),
+            starts=starts, total=total,
+            fallback=ROOT / "assets" / "bgm_default.wav")
+    log(f"  music: {why}")
+    return {"volume": volume, "duck": duck, "beds": beds}
 
 
 def _caption_spans(text, duration):
@@ -974,40 +1017,36 @@ def _resolve(value, default=None):
     return path if path.is_absolute() else ROOT / path
 
 
-def stage_audio(project, pieces, total, storyboard=None, script="", moods=()):
-    import music as music_mod
+def stage_audio(project, pieces, total, storyboard):
+    """Narration, the beds the storyboard chose, and its cues, in one mix.
+
+    Normalised to `audio.TARGET_LUFS`, the band the references measure in, so
+    a series plays back at one level whatever the voice service hands over.
+    The drawn track used to be limited only, and came out as loud as that
+    day's narration happened to be. A project's `"loudness": null` restores
+    that.
+    """
+    import sfx as sfx_mod
 
     narration = audio_mod.build_narration(pieces, project.out / "narration.wav")
-    # `bgm` names one track and is not second-guessed; `bgm_library` is a
-    # folder to choose from. Neither set means the library at its default
-    # location, falling back to the single bed that has always shipped.
-    named = project.get("bgm", None)
-    if named is not None:
-        # Present and empty is how a project has always said "no music", and
-        # it stays a choice rather than an invitation to search a folder.
-        chosen = _resolve(named) if named else None
-        bgm = chosen if chosen and chosen.exists() else None
-        log(f"  music: {bgm.name if bgm else 'none (set by the project)'}")
-    else:
-        bgm, why = music_mod.choose(
-            _resolve(project.get("bgm_library"), ROOT / "assets" / "bgm"),
-            script, moods, fallback=ROOT / "assets" / "bgm_default.wav")
-        log(f"  music: {why}")
-    cues = []
-    if storyboard is not None:
-        import sfx as sfx_mod
-        cues = sfx_mod.carried(storyboard)
-        if cues:
-            log(f"  {len(cues)} sound cue(s): {sfx_mod.describe(cues)}")
+    music = storyboard.get("music") or {}
+    beds = music.get("beds") or []
+    log(f"  music: {len(beds)} bed(s)"
+        + (", ducked under the voice" if beds and music.get("duck") else ""))
+    cues = sfx_mod.carried(storyboard)
+    if cues:
+        log(f"  {len(cues)} sound cue(s): {sfx_mod.describe(cues)}")
 
+    loudness = project.get("loudness", audio_mod.TARGET_LUFS)
     track = project.out / "audio.wav"
     with Atomic(track) as partial:
-        audio_mod.mix(narration, partial, total, bgm=bgm,
-                      bgm_volume=float(project.get("bgm_volume",
-                                                   audio_mod.BGM_VOLUME)),
+        audio_mod.mix(narration, partial, total, beds=beds,
+                      bgm_volume=float(music.get("volume", audio_mod.BGM_VOLUME)),
+                      duck=bool(music.get("duck")),
                       cues=cues,
                       cue_volume=float(project.get(
-                          "sfx_volume", project.look["sound"].get("gain", 0.34))))
+                          "sfx_volume", project.look["sound"].get("gain", 0.34))),
+                      loudness=None if loudness is None else float(loudness))
     return track
 
 
@@ -1313,8 +1352,7 @@ def run_build():
         return 0
 
     log("\n[6/8] audio")
-    track = stage_audio(project, pieces, total, storyboard,
-                        script=project.script, moods=plan.get("mood", ()))
+    track = stage_audio(project, pieces, total, storyboard)
     if done("audio"):
         return 0
 

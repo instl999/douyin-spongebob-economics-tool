@@ -251,12 +251,23 @@ x and y are 0-1 across the stage. y is where the *bottom* of a sprite sits.
 Never put the same character on screen twice in one shot. Do not overlap two
 characters.
 
+# Where the script turns
+
+The music can change where the script's feeling changes: a puzzle posed, then
+the turn that explains it, then the payoff. Mark those places as `sections`,
+each with the id of the shot it starts on and one or two moods from the same
+list as `mood`. Two to four sections, each at least three shots long; the first
+starts at shot 1. A script that never turns needs no sections at all - leave
+the list empty and one bed runs under the whole video. Do not invent a turn to
+fill the field.
+
 # Output
 
 {{"title": "<= 10 characters, the question the video answers",
   "setting": "one place this whole script could sit in, 10-20 words, in the cast's world - a back kitchen, a small office, a shop counter, a bank hall. Used as the backdrop for every shot whose sentence names nowhere in particular, so pick the one that suits the subject rather than the first sentence",
   "ending": {{"text": "the closing line, may contain \\n", "highlight": "<= 4 characters from it"}},
   "mood": ["one or two of {moods}, most telling first - how the script feels; it chooses the music"],
+  "sections": [{{"from": 1, "mood": ["疑问"]}}, {{"from": 7, "mood": ["转机"]}}, {{"from": 12, "mood": ["升华"]}}],
   "shots": [
     {{"id": 1, "framing": "medium",
       "beat": {{"subject": "sponge", "action": "is handed his pay packet",

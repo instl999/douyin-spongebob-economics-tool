@@ -194,10 +194,25 @@ def normalize(src, out_path, target_i=TARGET_LUFS, target_lra=TARGET_LRA,
 # where a bed under continuous narration belongs.
 BGM_VOLUME = 0.056
 
+# The same bed when it is ducked under the voice, which the drawn track now
+# is. A constant -25 dB is right under speech and almost nothing everywhere
+# else: the title card, the closing card and every breath between shots sat
+# on a bed too quiet to hear. Ducked, the bed sits at -16 dB when nobody is
+# talking and the sidechain pulls it about 10 dB further down under the
+# voice, which lands it back inside the 20-25 dB band where it matters.
+BGM_DUCKED_VOLUME = 0.16
+
+# How far under the voice the ducked bed goes, for the draft - which has no
+# sidechain and draws the dip as volume keyframes instead. Measured off the
+# mix's own compressor on narration at a typical level.
+DUCK_DB = 10.0
+DUCK_ATTACK = 0.05
+DUCK_RELEASE = 0.35
+
 
 def mix(narration, out_path, total, bgm=None, bgm_volume=BGM_VOLUME,
         narration_volume=1.0, rate=44100, cues=(), cue_volume=0.34,
-        loudness=None, duck=False):
+        loudness=None, duck=False, beds=None):
     """Narration, optional music, and any sound cues, limited and trimmed.
 
     `cues` is [(seconds, name, path[, gain])] from sfx.plan. Each one becomes
@@ -208,16 +223,27 @@ def mix(narration, out_path, total, bgm=None, bgm_volume=BGM_VOLUME,
     cue: the title card's stinger is a deliberate accent and sits well above
     the level the library cues want.
 
+    `beds` is [{path, start, end, fade_in, fade_out}], the music as the
+    storyboard records it - one bed for a whole video, or one per section
+    with neighbours overlapping to crossfade. `bgm` is the older single-file
+    form, laid as one bed start to finish.
+
     `loudness` is a target LUFS; when given the mix is normalised to it as a
-    final step. Left None the track is only limited, which is what the drawn
-    track has always done - changing its sound is not this parameter's job.
+    final step. Left None the track is only limited.
 
     `duck` pulls the music under the voice. Worth +0.3 LU of loudness range at
-    a 0.10 bed on the footage track, and off by default because the drawn
-    track's mix was measured without it.
+    a 0.10 bed on the footage track, and it is what lets the drawn track's bed
+    be heard between lines without competing with them.
     """
     inputs = ["-i", str(narration)]
-    has_bed = bool(bgm and Path(bgm).exists())
+    if beds is None:
+        beds = ([{"path": str(bgm), "start": 0.0, "end": float(total),
+                  "fade_in": 1.2, "fade_out": 2.0}]
+                if bgm and Path(bgm).exists() else [])
+    beds = [bed for bed in beds
+            if Path(bed["path"]).exists()
+            and float(bed["end"]) - float(bed["start"]) > 0.05]
+    has_bed = bool(beds)
     # Only split the voice when something downstream keys off it. An
     # unconnected filter output is a hard error, not a warning, so a spare
     # [voicekey] would break every music-free mix.
@@ -231,12 +257,32 @@ def mix(narration, out_path, total, bgm=None, bgm_volume=BGM_VOLUME,
     count = 1
 
     if has_bed:
-        inputs += ["-stream_loop", "-1", "-i", str(bgm)]
-        count += 1
-        fade_out_at = max(0.0, total - 2.0)
-        chains.append(
-            f"[1:a]volume={bgm_volume:.3f},atrim=0:{total:.3f},"
-            f"afade=t=in:st=0:d=1.2,afade=t=out:st={fade_out_at:.3f}:d=2.0[bed0]")
+        # Each bed is its own looping input, trimmed to its span, faded at
+        # both ends and delayed to where it starts - so two sections overlap
+        # by exactly their crossfade and nothing needs rendering in between.
+        parts = []
+        for bed in beds:
+            index = count
+            count += 1
+            inputs += ["-stream_loop", "-1", "-i", str(bed["path"])]
+            start, end = float(bed["start"]), min(float(bed["end"]), total)
+            length = max(0.05, end - start)
+            fade_in = min(float(bed.get("fade_in", 1.2)), length / 2)
+            fade_out = min(float(bed.get("fade_out", 2.0)), length / 2)
+            delay = max(0, int(round(start * 1000)))
+            chains.append(
+                f"[{index}:a]aformat=sample_rates={rate}:channel_layouts=stereo,"
+                f"volume={bgm_volume:.3f},atrim=0:{length:.3f},"
+                f"afade=t=in:st=0:d={fade_in:.3f},"
+                f"afade=t=out:st={length - fade_out:.3f}:d={fade_out:.3f},"
+                f"adelay={delay}|{delay}[bedpart{index}]")
+            parts.append(f"[bedpart{index}]")
+        if len(parts) == 1:
+            chains.append(f"{parts[0]}anull[bed0]")
+        else:
+            chains.append(f"{''.join(parts)}amix=inputs={len(parts)}:"
+                          f"duration=longest:dropout_transition=0:"
+                          f"normalize=0[bed0]")
         if ducking:
             # An earlier measurement said ducking did nothing; that was taken
             # through single-pass loudnorm, whose own compression swamped the
