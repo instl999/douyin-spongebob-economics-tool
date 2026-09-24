@@ -2,7 +2,7 @@
 
 复刻抖音「海绵宝宝经济学」的同款科普视频：一段口播文案，一条命令出成片 —— AI 分镜、固定背景板 + AI 生成素材分层合成、逐镜演绎、AI 配音、字幕、标题卡、混音、编码、质检全自动。
 
-**自带火山方舟 Agent Plan API 支持**：导演、生图、配音共用一把 `ARK_API_KEY`，全部走 Agent Plan 套餐 —— **生图不额外计费**。
+**自带火山方舟 Agent Plan API 支持**：导演、生图、配音共用一把 `ARK_API_KEY`，全部走 Agent Plan 接口。**Agent Plan 生图仍会计费**，只是通常比标准按量调用成本低；实际费用以火山方舟控制台显示的最新定价和账单为准。
 
 画风在哪里改（详见下文 [Changing the look](#changing-the-look)）：
 
@@ -62,6 +62,38 @@ python scripts/build_library.py clay --plates                   # 一次性生�
 python scripts/build.py --check                                 # 校验画风配置与全部 cast 文件
 ```
 
+### 推荐：直接交给 Codex / Claude Code
+
+在 Codex 或 Claude Code 中直接打开本仓库，然后用自然语言描述文案、画风、横竖屏和目标时长即可，不需要额外封装。建议先让 Agent 阅读 `CLAUDE.md` 和本 README；第一次运行只做检查与离线测试，正式生成前先创建项目并报告预计生图数量。注意 `--preview` 也会先生成素材和配音，并不是免费预览。失败后从对应阶段续跑，避免重复生成和重复计费。
+
+下面这些提示词可以直接复制给 Agent：
+
+**首次安装，只做免费检查**
+
+```text
+阅读 CLAUDE.md 和 README.md，安装依赖，运行 scripts/build.py --check 和 scripts/selftest.py。不要调用任何付费 API；把缺少的 Key、字体、FFmpeg 或配置列给我。
+```
+
+**从口播稿创建项目，先估算再生成**
+
+```text
+把 examples/my_video.txt 做成“为什么工资越高反而效率越高”的科普视频项目，使用 clay 画风、竖屏、目标 60 秒。先用 new_project.py 创建项目，告诉我预计时长和生图数量；先不要运行 build.py 或 --preview。
+```
+
+**完整生成视频和剪映草稿**
+
+```text
+检查 projects/my_video.json，说明本次预计会生成多少张图，然后完成构建。结束后检查 MP4、剪映草稿和自动质检结果；如有失败，从最近可复用的阶段续跑，不要无故加 --regenerate-assets。
+```
+
+**局部修复或换画风**
+
+```text
+检查 out/my_video/plan.json 和质检结果，只修复构图拥挤或素材异常的镜头。能从 storyboard 或后续阶段重跑就不要重做素材；如果改成 watercolor_anime，先告诉我哪些参考图或镜头会重新计费。
+```
+
+> 费用提醒：`scripts/selftest.py`、`scripts/build.py --check` 和 `new_project.py` 不触发生图费用；`build.py --preview` 会先执行素材生成与配音，可能产生费用。正式素材生成会计费。Agent Plan 不是免费额度，运行前请在火山方舟控制台确认当前价格与余额。
+
 ---
 
 English documentation follows.
@@ -70,8 +102,9 @@ Turn a narration script into a finished explainer video.
 
 > **Ships with Volcengine Ark Agent Plan API support** — the director, image
 > generation and narration share one `ARK_API_KEY`, all routed through the
-> Agent Plan (`/api/plan/v3`). Under an Agent Plan subscription, **image
-> generation costs nothing extra**.
+> Agent Plan API (`/api/plan/v3`). **Image generation is still billed on Agent
+> Plan**, although it is usually cheaper than standard pay-as-you-go calls.
+> Check the current price and your actual bill in the Volcengine Ark console.
 
 ```bash
 python scripts/build.py projects/efficiency_wage.json
@@ -95,6 +128,7 @@ file.
 - [What it produces](#what-it-produces)
 - [Why it is built this way](#why-it-is-built-this-way)
 - [Install](#install)
+- [Use it from Codex or Claude Code](#use-it-from-codex-or-claude-code)
 - [Credentials](#credentials)
 - [Making a video](#making-a-video)
 - [Speed](#speed)
@@ -228,13 +262,59 @@ Two checks confirm the install:
 
 ---
 
+## Use it from Codex or Claude Code
+
+The recommended workflow is to open this repository directly in Codex or
+Claude Code and describe the script, style, orientation and target duration in
+plain language. No wrapper is needed. Ask the agent to read `CLAUDE.md` and
+this README first, run only the checks and offline test on first setup, then
+create a project and report its image estimate before starting billed
+generation. Note that `--preview` generates assets and narration first, so it is
+not a free preview. After a failure, resume from the nearest reusable stage
+instead of regenerating successful assets.
+
+Copy-paste examples:
+
+**Set up and run only free checks**
+
+```text
+Read CLAUDE.md and README.md, install the dependencies, and run scripts/build.py --check plus scripts/selftest.py. Do not call any paid API. List any missing key, font, FFmpeg installation, or configuration for me.
+```
+
+**Create a project and estimate it first**
+
+```text
+Turn examples/my_video.txt into an explainer titled “Why Higher Wages Can Raise Productivity”, using the clay style, portrait orientation, and a 60-second target. Use new_project.py to create the project and report its predicted duration and image count. Do not run build.py or --preview yet.
+```
+
+**Build the video and editable draft**
+
+```text
+Review projects/my_video.json, tell me how many images this run is expected to generate, and then complete the build. Inspect the MP4, Jianying draft, and automatic quality report. If a stage fails, resume from cached work and do not use --regenerate-assets unless it is genuinely required.
+```
+
+**Repair only what is wrong or change style**
+
+```text
+Inspect out/my_video/plan.json and the quality report. Repair only shots with crowded composition or bad assets. Restart from storyboard or a later stage whenever possible. If switching to watercolor_anime, first explain which references or shot assets will be regenerated and billed.
+```
+
+> Cost note: `scripts/selftest.py`, `scripts/build.py --check`, and project
+> creation do not generate images. `build.py --preview` runs asset generation
+> and narration first, so it may incur charges. New generated assets are billed.
+> Agent Plan is not a free image allowance; check current pricing and balance in
+> the Ark console before a full build.
+
+---
+
 ## Credentials
 
 **One key does everything.** `ARK_API_KEY` from
 [console.volcengine.com/ark](https://console.volcengine.com/ark) covers the
 director, image generation and narration. The tool ships with Volcengine Ark
-**Agent Plan** API support out of the box — under an Agent Plan subscription,
-image generation costs nothing extra.
+**Agent Plan** API support out of the box. Agent Plan image calls are still
+billed, although they are usually cheaper than standard pay-as-you-go calls;
+the Ark console is the source of truth for current pricing and actual charges.
 
 Two things about the Volcengine API are easy to get wrong, and **both report
 something other than the real problem**:
@@ -339,6 +419,10 @@ it says by how many characters.
 ```bash
 python scripts/build.py projects/my_video.json --preview
 ```
+
+> `--preview` is not a free dry run: it completes the plan, asset-generation and
+> narration stages before writing the contact sheet. Use the estimate printed by
+> `new_project.py` to review the expected image count before running it.
 
 `out/my_video/preview.jpg` is a contact sheet of every shot with its framing and
 duration. **Look at it.** Several real defects during development were caught
