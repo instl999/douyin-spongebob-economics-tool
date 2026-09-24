@@ -29,10 +29,12 @@ def contact_sheet(storyboard, workdir, out_path, columns=4, thumb_width=440):
         panels.append(("title",
                        render_mod.compose_card(storyboard["title_card"], lay,
                                                renderer.assets)))
+    zones = lay.cfg.get("ui_zones") or []
     for scene in storyboard.get("scenes", []):
         frame = render_mod.compose_plate(scene, renderer.background,
                                          renderer.assets, lay,
-                                         renderer.panel_color)
+                                         renderer.panel_color,
+                                         chrome=renderer.chrome)
         image = Image.fromarray(frame)
         caption = (scene.get("captions") or [{}])[0].get("text") or scene.get("subtitle", "")
         if caption:
@@ -43,6 +45,16 @@ def contact_sheet(storyboard, workdir, out_path, columns=4, thumb_width=440):
                 image = image.convert("RGBA")
                 image.alpha_composite(layer)
                 image = image.convert("RGB")
+        # Where the phone app draws over the video, roughly: nothing that
+        # matters should be under these.
+        if zones:
+            outline = ImageDraw.Draw(image, "RGBA")
+            for x0, y0, x1, y1 in zones:
+                outline.rectangle([x0 * lay.width, y0 * lay.height,
+                                   x1 * lay.width - 1, y1 * lay.height - 1],
+                                  fill=(255, 40, 40, 38),
+                                  outline=(255, 40, 40, 220),
+                                  width=max(2, lay.width // 240))
         panels.append((f"shot {scene.get('id', '?')}  "
                        f"{scene.get('duration', 0):.1f}s  "
                        f"{scene.get('framing', 'medium')}", image))

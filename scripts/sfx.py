@@ -184,12 +184,23 @@ def carried(storyboard):
     return out
 
 
-def plan(storyboard, durations, cast=None, look=None):
+# Which cue survives when two are too close: what the sentence means first,
+# the closing line's sting above all, the swoosh on a cut last.
+PRIORITY = {"punchline": 3, "moment": 2, "transition": 1}
+
+
+def plan(storyboard, durations, cast=None, look=None, taken=()):
     """Return [(seconds, name, path)] for the whole video, in time order.
 
     `cast` is optional and only sharpens the board cue - without it a writable
     prop cannot be told from any other prop, and that cue is simply skipped
     rather than fired on everything.
+
+    `taken` is moments already sounding - the opening stinger at 0 - that no
+    cue may crowd. No two cues land closer than `sound.min_gap` (baseline
+    seconds, divided by the video's speed): a swoosh on every cut and a
+    reaction on every shot was nine cues in seventeen seconds. Where two
+    compete, the one about the sentence wins over the one about the cut.
     """
     look = look or styles_mod.look(carried=(storyboard.get("video") or {}).get("look"))
     config = look.get("sound") or {}
@@ -199,15 +210,19 @@ def plan(storyboard, durations, cast=None, look=None):
 
     palette = config.get("cues") or {}
     per_shot = int(config.get("max_per_shot", 2))
+    speed = float((storyboard.get("video") or {}).get("speed", 1.0) or 1.0)
+    gap = float(config.get("min_gap", 0.0)) / max(speed, 0.1)
     rotor = _Rotor(have)
     segments, _ = render_mod.build_timeline(storyboard, durations)
-    cues = []
+    # Slots first, sounds after: which effect a slot gets depends on what
+    # was heard before it, so names are only handed out once the slots that
+    # survive the gap are known.
+    slots = []
 
     for segment in segments:
         if segment.kind == "ending":
-            name = rotor.take(palette.get("punchline"))
-            if name:
-                cues.append((segment.start, name))
+            slots.append((segment.start, "punchline",
+                          (palette.get("punchline"),)))
             continue
         if segment.kind != "scene":
             continue
@@ -217,9 +232,8 @@ def plan(storyboard, durations, cast=None, look=None):
         # The cut itself, on everything but the first shot: there is nothing to
         # cut from, and a swoosh over the title card reads as a mistake.
         if segment.index > 0:
-            name = rotor.take(palette.get("transition"))
-            if name:
-                shot.append((max(0.0, segment.start - TRANSITION_LEAD), name))
+            shot.append((max(0.0, segment.start - TRANSITION_LEAD),
+                         "transition", (palette.get("transition"),)))
 
         # Then one cue for what the shot is *about*. A figure appearing on
         # screen earns a cha-ching; a pile of coins merely lying in the frame
@@ -246,19 +260,32 @@ def plan(storyboard, durations, cast=None, look=None):
             # about the sentence rather than about the furniture, so it fits
             # wherever the first choice has just been heard.
             reaction = _emotion(scene)
-            name = rotor.take(palette.get(moment),
-                              palette.get(reaction) if reaction != moment else None,
-                              palette.get("label"))
-            if name:
-                appear = min((float(el.get("appear", 0.0))
-                              for el in scene.get("elements") or []
-                              if el.get("type") in ("label", "bubble")),
-                             default=0.0)
-                shot.append((segment.start + max(appear, 0.18), name))
+            appear = min((float(el.get("appear", 0.0))
+                          for el in scene.get("elements") or []
+                          if el.get("type") in ("label", "bubble")),
+                         default=0.0)
+            shot.append((segment.start + max(appear, 0.18), "moment",
+                         (palette.get(moment),
+                          palette.get(reaction) if reaction != moment else None,
+                          palette.get("label"))))
 
-        cues.extend(sorted(shot)[:per_shot])
+        slots.extend(sorted(shot, key=lambda slot: slot[0])[:per_shot])
 
-    return [(when, name, have[name]) for when, name in sorted(cues)]
+    kept, held = [], [float(t) for t in taken]
+    for when, kind, groups in sorted(slots,
+                                     key=lambda s: (-PRIORITY[s[1]], s[0])):
+        if not any(name in have for group in groups for name in group or ()):
+            continue                     # nothing to play here; hold no room
+        if gap and any(abs(when - other) < gap for other in held):
+            continue
+        kept.append((when, groups))
+        held.append(when)
+    cues = []
+    for when, groups in sorted(kept, key=lambda s: s[0]):
+        name = rotor.take(*groups)
+        if name:
+            cues.append((when, name))
+    return [(when, name, have[name]) for when, name in cues]
 
 
 def describe(cues):

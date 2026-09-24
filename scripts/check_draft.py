@@ -185,13 +185,17 @@ def keyframed(segment, offset_us):
     return out
 
 
-def rebuild(draft_dir, t_us, materials, W, H):
-    """The frame the draft describes at `t_us`, composited from scratch."""
+def rebuild(draft_dir, t_us, materials, W, H, skip=()):
+    """The frame the draft describes at `t_us`, composited from scratch.
+
+    `skip` names video tracks to leave out - the title bar, which does not
+    move with a camera push and would make a correct one look wrong.
+    """
     content = json.loads((draft_dir / "draft_content.json").read_text(
         encoding="utf-8"))
     canvas = Image.new("RGBA", (W, H), (0, 0, 0, 255))
     for track in content["tracks"]:
-        if track["type"] != "video":
+        if track["type"] != "video" or track.get("name") in skip:
             continue
         seg = _covering(track, t_us)
         if seg is None:
@@ -255,6 +259,7 @@ def compare(project, draft_dir):
     native_labels = bool((look.get("text") or {}).get("native_labels", True))
     durations = [float(s.get("duration", 3.0)) for s in sb.get("scenes", [])]
     segments, _ = render_mod.build_timeline(sb, durations)
+    chrome = render_mod.chrome_for(sb, lay)
     diffs = []
     for seg in segments:
         if seg.kind != "scene":
@@ -287,7 +292,8 @@ def compare(project, draft_dir):
             and not float(el.get("appear", 0.0) or 0.0) > 0.0])
         want = render_mod.compose_plate(scene, background, assets, lay,
                                         render_mod.panel_color_of(sb),
-                                        bare_bubbles=native_labels)
+                                        bare_bubbles=native_labels,
+                                        chrome=chrome)
         diffs.append((seg.data.get("id", seg.index + 1),
                       float(np.abs(got - np.asarray(want, dtype=np.int16)).mean())))
     return diffs or None
@@ -463,8 +469,10 @@ def main():
                     for sg in tr["segments"]
                     if sg["target_timerange"]["start"] == start
                     and sg.get("common_keyframes"))
-        first = rebuild(draft_dir, start + 1000, materials, W, H)
-        last = rebuild(draft_dir, start + span - 1000, materials, W, H)
+        still = ("标题栏",)
+        first = rebuild(draft_dir, start + 1000, materials, W, H, skip=still)
+        last = rebuild(draft_dir, start + span - 1000, materials, W, H,
+                       skip=still)
         zoom = 1.0 + float(motion.get("push_in", 0.05))
         grown = Image.fromarray(np.uint8(np.clip(first, 0, 255))).resize(
             (round(W * zoom), round(H * zoom)), Image.LANCZOS)

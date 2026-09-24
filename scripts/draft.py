@@ -49,8 +49,8 @@ import textkit
 from layout import from_video as layout_from_video
 
 import pyJianYingDraft as jy
-from pyJianYingDraft import (AudioSegment, ClipSettings, KeyframeProperty,
-                             ScriptFile, TextBorder,
+from pyJianYingDraft import (AudioSegment, ClipSettings, IntroType,
+                             KeyframeProperty, ScriptFile, TextBorder,
                              TextIntro, TextSegment, TextStyle, Timerange,
                              TrackSpec, TrackType, TransitionType, VideoMaterial,
                              VideoSegment)
@@ -67,6 +67,10 @@ STAMP = ".exported"
 # subtitle with no edge at all was unreadable on a bright plate.
 SUBTITLE_SIZE = 5.0
 SUBTITLE_BORDER = 40.0
+
+# The track the portrait title bar sits on: above every element layer, never
+# pushed in with the shot under it, and left out of the camera-move check.
+CHROME_TRACK = "标题栏"
 
 
 def _us(seconds):
@@ -215,6 +219,9 @@ class DraftBuilder:
         script.append_track(TrackSpec(TrackType.video, "背景"))
         for i in range(layers):
             script.append_track(TrackSpec(TrackType.video, f"图层{i + 1}"))
+        chrome = render_mod.chrome_for(self.sb, self.lay)
+        if chrome is not None:
+            script.append_track(TrackSpec(TrackType.video, CHROME_TRACK))
         # Above the picture, below the subtitles: emphasis text belongs over
         # the characters and under the caption, which is where a person editing
         # this would expect to find it.
@@ -222,6 +229,8 @@ class DraftBuilder:
 
         self._add_background(script, segments)
         self._add_elements(script, segments)
+        if chrome is not None:
+            self._add_chrome(script, segments, chrome)
         self._add_voice(script, segments)
         self._add_sfx(script)
         self._add_music(script, segments)
@@ -245,9 +254,14 @@ class DraftBuilder:
                     body_start = seg.start
                 continue
             card = self._card_png(seg.data, seg.kind)
-            script.add_segment(
-                VideoSegment(VideoMaterial(str(card)), _span(seg.start, seg.end)),
-                "背景")
+            piece = VideoSegment(VideoMaterial(str(card)),
+                                 _span(seg.start, seg.end))
+            # The MP4 brushes the title on left to right over `title_wipe`;
+            # Jianying's own wipe intro is the same move, and stays editable.
+            wipe = float((self.look.get("timing") or {}).get("title_wipe", 0))
+            if seg.kind == "title" and wipe > 0:
+                piece.add_animation(IntroType.画面擦除, _us(wipe))
+            script.add_segment(piece, "背景")
         if body_start is None:
             return
         plate = VideoMaterial(str(
@@ -306,10 +320,28 @@ class DraftBuilder:
                 # a gap, and the renderer's own dissolve is what this mimics.
                 last = previous.get(track)
                 if (self.dissolve and last and not appear
-                        and abs(last[1] - seg.start) < 1e-6):
+                        and abs(last[1] - seg.start) < 1e-6
+                        and seg.data.get("transition") != "cut"):
                     last[0].add_transition(TransitionType.叠化)
                 script.add_segment(segment, track)
                 previous[track] = (segment, seg.end)
+
+    def _add_chrome(self, script, segments, chrome):
+        """The title bar over every shot, as one still on a track of its own.
+
+        One segment from the first shot to the last, so it neither blinks at
+        a cut nor rides a push-in: it is the frame's furniture, not a layer of
+        any shot.
+        """
+        shots = [seg for seg in segments if seg.kind == "scene"]
+        if not shots:
+            return
+        path = self.media / "chrome_title_bar.png"
+        chrome.save(path, "PNG")
+        script.add_segment(
+            VideoSegment(VideoMaterial(str(path)),
+                         _span(shots[0].start, shots[-1].end)),
+            CHROME_TRACK)
 
     def _push_in(self, segment, seg, transform_x, transform_y, offset=0.0):
         """A slow zoom across one shot, or nothing. True if it moved.
@@ -383,8 +415,7 @@ class DraftBuilder:
             # MP4's did. Dark and unoutlined, like the balloon they sit in.
             px = self.lay.label_font_px(el.get("size", render_mod.BUBBLE_SIZE))
             lines, body_w, body_h, _ = textkit.bubble_body(
-                text, size=px,
-                max_width=int(self.lay.width * el.get("max_width", 0.24)))
+                text, size=px, max_width=render_mod.text_width(el, self.lay))
             text = "\n".join(lines) or text
             centre = (left + body_w / 2, top + body_h / 2)
             colour, bold, border = textkit.BUBBLE_INK[:3], False, None

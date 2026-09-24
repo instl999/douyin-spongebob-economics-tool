@@ -70,11 +70,12 @@ MIN_DUO_HEIGHT = 0.58
 # 32 shots while averaging 2.7 elements, so "wide" just meant "smaller".
 WIDE_NEEDS_ELEMENTS = 3
 
-# A panel is a room, and a room does not stop two thirds of the way across the
-# picture. Below this the plate's grass shows down both sides and the wall
-# reads as a screen propped on a lawn rather than as somewhere the characters
-# are. Not 1.0: a little of the plate at the edges still reads as depth.
-MIN_PANEL_WIDTH = 0.94
+# A panel is a room, and a room does not stop short of the picture's edges.
+# Narrower, the plate's grass shows down both sides and the wall reads as a
+# screen propped on a lawn rather than as somewhere the characters are. It was
+# 0.94 while panels were translucent slabs; an opaque wall standing on a floor
+# with a strip of meadow at each side is a set piece, not a room.
+MIN_PANEL_WIDTH = 1.0
 MIN_PANEL_HEIGHT = 0.45
 
 # Style-neutral on purpose: this is sent for every cast, and the brief that
@@ -210,7 +211,9 @@ ORIENTATION_NOTES = {
     "portrait": ("The frame is TALL and NARROW (9:16). Only two things fit side "
                  "by side. Never put three or more sprites in one shot - use "
                  "two, or one character with one prop, and let the label or the "
-                 "balloon carry the rest."),
+                 "balloon carry the rest. The phone draws its like and share "
+                 "buttons down the right edge, so keep everything left of "
+                 "x 0.85: one character at x 0.44, two at x 0.26 and 0.64."),
 }
 
 
@@ -490,6 +493,12 @@ def _elements(raw_elements, cast, shot_id, problems, drawings):
             if kind == "label":
                 tone = el.get("tone", "neutral")
                 item["tone"] = tone if tone in LABEL_TONES else "neutral"
+                # Which character the label is about, when it is about one.
+                # It is placed just above that character's head.
+                named = el.get("for")
+                if isinstance(named, str) and \
+                        named.strip() in (cast.data.get("characters") or {}):
+                    item["for"] = named.strip()
             if kind == "bubble":
                 item["tail"] = el.get("tail", "left")
         else:

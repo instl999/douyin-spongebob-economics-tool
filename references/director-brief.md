@@ -175,9 +175,9 @@ everyone for that shot:
 {{"type": "panel", "x": 0.5, "y": 0.99, "w": 0.94, "ph": 0.5}}
 
 x,y is the bottom centre in stage coordinates; w and ph are fractions of the
-frame. **A wall reaches the frame edges**: w below 0.94 and ph below 0.45 are
-raised to those, because a narrow slab reads as a card floating on the backdrop
-rather than as a room. Add the furniture that belongs there on top of it - a
+frame. **A wall spans the whole width** and stands on a floor the characters
+stand on; ph below 0.45 is raised to that, because a short slab reads as a card
+floating on the backdrop rather than as a room. Add the furniture that belongs there on top of it - a
 desk, a counter, a meeting table - and the place is built.
 
 **Look through the shot list for every sentence that names a location and give
@@ -231,7 +231,9 @@ x and y are 0-1 across the stage. y is where the *bottom* of a sprite sits.
   the thing they name, y 0.20-0.55. Two or three words - a figure, a name, a
   before/after. Never a whole sentence. Add "tone": "good" when it names an
   improvement, "bad" for a loss or a problem, "money" for a figure or a price,
-  and leave it off otherwise - it colours the label green, red or amber
+  and leave it off otherwise - it colours the label green, red or amber.
+  When a label is about one character - their wage, their mood, their loss -
+  add "for": "<their name>" and it is placed just above their head
 - Speech bubbles: "type": "bubble" with "text", "anchor": "center", y 0.18-0.34,
   "tail": "left" or "right" leaning back toward the speaker. Under 15
   characters, used sparingly, for a character's own line

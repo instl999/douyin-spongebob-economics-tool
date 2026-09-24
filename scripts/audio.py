@@ -325,6 +325,61 @@ def mix(narration, out_path, total, bgm=None, bgm_volume=BGM_VOLUME,
     return out_path
 
 
+# Quieter than this is a pause. The voice service's pauses at a comma run
+# 0.2-0.3 s at natural pace and shorten with the speech rate; a stop consonant
+# inside a word is well under 0.07 s, so the floor keeps those out.
+PAUSE_DB = -38.0
+MIN_PAUSE = 0.14
+
+
+def speech_pauses(path, speed=1.0):
+    """Where the voice is in one narration clip: (onset, offset, pauses).
+
+    `onset` is where speech starts after the clip's leading silence, `offset`
+    where it stops before the trailing one, and `pauses` the (start, end) of
+    every silence between. Captions switch at these rather than at a guess
+    from character counts. None when the clip cannot be read.
+    """
+    shortest = max(0.07, MIN_PAUSE / max(float(speed), 0.1))
+    proc = subprocess.run(
+        [config.FFMPEG, "-nostats", "-i", str(path), "-af",
+         f"silencedetect=noise={PAUSE_DB}dB:d={shortest:.3f}", "-f", "null", "-"],
+        capture_output=True, text=True, encoding="utf-8", errors="replace")
+    if proc.returncode != 0:
+        return None
+    length = None
+    for line in (proc.stderr or "").splitlines():
+        if "Duration:" in line and length is None:
+            stamp = line.split("Duration:")[1].split(",")[0].strip()
+            try:
+                h, m, s = stamp.split(":")
+                length = int(h) * 3600 + int(m) * 60 + float(s)
+            except ValueError:
+                length = None
+    if not length:
+        return None
+    silences, opened = [], None
+    for match in re.finditer(r"silence_(start|end): (-?[\d.]+)", proc.stderr or ""):
+        value = max(0.0, float(match.group(2)))
+        if match.group(1) == "start":
+            opened = value
+        elif opened is not None:
+            silences.append((opened, value))
+            opened = None
+    if opened is not None:
+        silences.append((opened, length))
+    onset, offset = 0.0, length
+    if silences and silences[0][0] <= 0.02:
+        onset = silences.pop(0)[1]
+    if silences and silences[-1][1] >= length - 0.02:
+        offset = silences.pop()[0]
+    if offset <= onset:
+        return None
+    pauses = [(round(a, 3), round(b, 3)) for a, b in silences
+              if onset < a and b < offset]
+    return round(onset, 3), round(offset, 3), pauses
+
+
 def mux(video, audio, out_path):
     run([config.FFMPEG, "-y", "-v", "error", "-i", str(video), "-i", str(audio),
          "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-shortest",

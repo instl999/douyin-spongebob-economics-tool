@@ -500,6 +500,11 @@ def stage_voice(project, plan, force=False, speed=None):
         respeed = abs(was - speed) > 1e-6
         if (cached and not stale and not respeed and cached.get("text") == text
                 and Path(cached["path"]).exists()):
+            # A clip spoken before its pauses were measured is measured now:
+            # it is a local read of a file already paid for.
+            if key != "title" and "speech" not in cached and not cached.get(
+                    "degraded"):
+                _measure_speech(cached, speed)
             continue
         label = "title" if key == "title" else f"shot {key}"
         if stale:
@@ -519,6 +524,8 @@ def stage_voice(project, plan, force=False, speed=None):
         index[key] = {"text": text, "path": str(result["path"]),
                       "duration": result["duration"], "speed": speed,
                       "words": result["words"], "degraded": result["degraded"]}
+        if key != "title" and not result["degraded"]:
+            _measure_speech(index[key], speed)
         log(f"  {label:>8}: {result['duration']:5.2f}s"
             f"{'  (estimated - no TTS)' if result['degraded'] else ''}")
 
@@ -532,6 +539,20 @@ def stage_voice(project, plan, force=False, speed=None):
     return index
 
 
+def _measure_speech(entry, speed):
+    """Record where the voice is in one clip: onset, offset and its pauses.
+
+    Captions change at these pauses instead of at a guess from character
+    counts, and labels arrive when their words are heard. Nothing is recorded
+    when the clip cannot be read - the captions then fall back to the guess.
+    """
+    measured = audio_mod.speech_pauses(entry["path"], speed)
+    if measured:
+        onset, offset, pauses = measured
+        entry["speech"] = [onset, offset]
+        entry["pauses"] = [list(p) for p in pauses]
+
+
 # A shot shorter than this has no room for anything to arrive; the element
 # would still be fading when the shot ends. Baseline seconds - `_stagger` is
 # given the speed and divides both of these, so a 1.5x video does not silently
@@ -543,6 +564,10 @@ STAGGER_MIN_SHOT = 3.6
 # expressed in the only clock that matters here.
 STAGGER_FRACTION = 0.26
 STAGGER_MAX = 1.4
+# A label heard late in its shot still arrives with time left to read it.
+STAGGER_LATEST = 0.7
+# ...and one heard at once still arrives a beat in, not on the cut.
+STAGGER_EARLIEST = 0.2
 
 
 def _paced_look(look, speed):
@@ -585,7 +610,7 @@ def _plate(project, plan):
     return "background.png"
 
 
-def _stagger(elements, duration, speed=1.0):
+def _stagger(elements, duration, speed=1.0, narration="", timed=()):
     """Let the emphasis text arrive rather than being there from the start.
 
     `appear` has existed since the first renderer, is faded in over
@@ -594,9 +619,14 @@ def _stagger(elements, duration, speed=1.0):
     nothing developing in it. The director can still set it deliberately; this
     guarantees the floor, because the measurement says asking has not worked.
 
+    A label whose words the narration says arrives as they are said - found in
+    `timed`, the shot's captions as `captions.spans` timed them against the
+    voice. Anything else arrives a quarter of the way in.
+
     Only labels and balloons, and only when there is more than one thing on
     screen: a lone label that is not there yet is an empty frame.
     """
+    import captions as captions_mod
     import timing
     if duration < timing.scale(STAGGER_MIN_SHOT, speed):
         return
@@ -606,7 +636,16 @@ def _stagger(elements, duration, speed=1.0):
     when = round(min(timing.scale(STAGGER_MAX, speed),
                      duration * STAGGER_FRACTION), 2)
     for el in text:
-        el.setdefault("appear", when)
+        if "appear" in el:
+            continue
+        heard = (captions_mod.spoken_at(el.get("text"), narration, timed)
+                 if el.get("type") == "label" else None)
+        if heard is None:
+            el["appear"] = when
+            continue
+        el["appear"] = round(min(max(heard, timing.scale(STAGGER_EARLIEST,
+                                                         speed)),
+                                 duration * STAGGER_LATEST), 2)
 
 
 def _ink(storyboard, project, lay, look):
@@ -648,6 +687,7 @@ def _ink(storyboard, project, lay, look):
 
 
 def stage_storyboard(project, plan, voice_index):
+    import captions as captions_mod
     import timing
     lay = project.layout
     speed = project.speed
@@ -722,16 +762,22 @@ def stage_storyboard(project, plan, voice_index):
         built = {"id": i, "subtitle": scene["narration"],
                  "framing": scene.get("framing", "medium"),
                  "elements": scene["elements"], "duration": duration}
-        _stagger(built["elements"], duration, speed)
+        # One line per caption, changing at the pauses the voice took.
+        timed = captions_mod.spans(
+            scene["narration"], duration, lay.subtitle_font_px(),
+            lay.subtitle_max_px, speech=entry.get("speech"),
+            pauses=entry.get("pauses") or ())
+        _stagger(built["elements"], duration, speed,
+                 narration=scene["narration"], timed=timed)
         # The director's reading of the sentence carries through. Sound cues
         # are chosen from the emotion and the action, and without this the
         # storyboard - which is all the cue planner sees - would have nothing
         # to choose on but which props happen to be present.
         if scene.get("beat"):
             built["beat"] = scene["beat"]
-        spans = _caption_spans(scene["narration"], duration)
-        built["captions"] = [{"text": t, "start": s, "end": e} for s, e, t in spans]
-        for s, e, t in spans:
+        built["captions"] = [{"text": t, "start": s, "end": e}
+                             for s, e, t, _, _ in timed]
+        for s, e, t, _, _ in timed:
             srt.append((clock + s, clock + e, t))
         scenes.append(built)
         clock += duration
@@ -742,6 +788,13 @@ def stage_storyboard(project, plan, voice_index):
     if ending_seconds:
         pieces.append((None, ending_seconds))
         clock += ending_seconds
+
+    # A shot that shares a character with the one before it cuts in rather
+    # than dissolving: dissolved, the character shows twice, at two sizes.
+    if look.get("cut_on_shared_character", True):
+        for before, after in zip(scenes, scenes[1:]):
+            if _characters(before) & _characters(after):
+                after["transition"] = "cut"
 
     storyboard = {
         "video": {
@@ -771,10 +824,15 @@ def stage_storyboard(project, plan, voice_index):
         },
         "scenes": scenes,
     }
+    # Card sizes come from the orientation: a title at 0.082 of the width
+    # is right across 1920 pixels and small across 1080.
+    card_width = float(lay.cfg.get("card_max_width", 0.84))
     if title_text:
         storyboard["title_card"] = {
             "text": title_text, "duration": title_seconds, "style": "title",
-            "size": float(project.get("title_size", 0.082))}
+            "size": float(project.get("title_size",
+                                      lay.cfg.get("title_size", 0.095))),
+            "max_width": card_width}
         # `voice` is a decision, and it is written either way - `null` rather
         # than an absent key - so a storyboard says plainly that a title is
         # deliberately silent instead of leaving a reader to wonder whether
@@ -796,10 +854,20 @@ def stage_storyboard(project, plan, voice_index):
         if card_image and (project.out / card_image).exists():
             storyboard["title_card"]["image"] = card_image
     if ending_text:
-        storyboard["ending_card"] = {"text": ending_text,
-                                     "highlight": ending.get("highlight"),
-                                     "duration": ending_seconds,
-                                     "size": float(project.get("ending_size", 0.062))}
+        storyboard["ending_card"] = {
+            "text": ending_text, "highlight": ending.get("highlight"),
+            "duration": ending_seconds,
+            "size": float(project.get("ending_size",
+                                      lay.cfg.get("ending_size", 0.07))),
+            "max_width": card_width}
+    # The question the video answers, held across the top of every shot where
+    # the layout asks for it (portrait). A project's `title_bar` names other
+    # words, or false turns it off.
+    bar = project.get("title_bar")
+    if bar is None or bar is True:
+        bar = title_text if (bar is True or lay.cfg.get("title_bar")) else ""
+    if bar and str(bar).strip():
+        storyboard["title_bar"] = {"text": str(bar).strip()}
 
     # Sprite sizes are only knowable now the PNGs exist, so collisions are
     # found and spread apart here rather than guessed at by the director.
@@ -818,17 +886,17 @@ def stage_storyboard(project, plan, voice_index):
     # never placed at all - which is precisely the kind of silent, plausible
     # wrongness this pipeline is full of traps for.
     import sfx as sfx_mod
-    storyboard["sound_cues"] = [
-        [round(when, 3), name] for when, name, _ in sfx_mod.plan(
-            storyboard, [s["duration"] for s in scenes],
-            cast=project.cast, look=look)]
-
     # The title card's stinger is a cue at t=0 like any other, recorded here
     # rather than laid into the mix separately. `carried` is read by BOTH the
     # mix and the draft writer, so a cue that lives anywhere else is a cue the
     # two can disagree about - which is the failure the cue list was moved onto
     # the storyboard to prevent in the first place.
     opening = project.get("opening_sfx", OPENING_SFX)
+    stinger = bool(title_text and opening and opening in sfx_mod.library())
+    storyboard["sound_cues"] = [
+        [round(when, 3), name] for when, name, _ in sfx_mod.plan(
+            storyboard, [s["duration"] for s in scenes],
+            cast=project.cast, look=look, taken=[0.0] if stinger else [])]
     for name, (paths, winner) in sfx_mod.duplicate_cues().items():
         others = ", ".join(p.name for p in paths if p != winner)
         log(f"  ! cue '{name}' exists more than once; using {winner.name} "
@@ -839,7 +907,7 @@ def stage_storyboard(project, plan, voice_index):
         # stand-in that merely resembles it is worse than saying it is missing.
         log(f"  ! opening cue '{opening}' is not in assets/sfx - the video "
             f"will open without one")
-    if title_text and opening and opening in sfx_mod.library():
+    if stinger:
         storyboard["sound_cues"].insert(
             0, [0.0, opening, float(project.get("opening_volume", OPENING_GAIN))])
 
@@ -852,6 +920,17 @@ def stage_storyboard(project, plan, voice_index):
         json.dumps(storyboard, ensure_ascii=False, indent=2), encoding="utf-8")
     audio_mod.write_srt(srt, project.out / f"{project.name}.srt")
     return storyboard, pieces, clock
+
+
+def _characters(scene):
+    """The cast members a shot shows, by name."""
+    names = set()
+    for el in scene.get("elements") or []:
+        if el.get("who"):
+            names |= set(el["who"])
+        elif el.get("asset") and not el["asset"].startswith(("prop_", "duo_")):
+            names.add(el["asset"].split("_", 1)[0])
+    return names
 
 
 def _music(project, plan, storyboard, total):
@@ -890,30 +969,6 @@ def _music(project, plan, storyboard, total):
             fallback=ROOT / "assets" / "bgm_default.wav")
     log(f"  music: {why}")
     return {"volume": volume, "duck": duck, "beds": beds}
-
-
-def _caption_spans(text, duration):
-    """Split a shot's narration into on-screen captions timed by length."""
-    parts, buf = [], ""
-    for ch in text:
-        buf += ch
-        if ch in "。！？；!?;" and len(buf.strip()) >= 10:
-            parts.append(buf.strip())
-            buf = ""
-    if buf.strip():
-        parts.append(buf.strip())
-    if not parts:
-        return []
-    if len(parts) == 1:
-        return [(0.0, duration, parts[0])]
-    weights = [max(1, len(p)) for p in parts]
-    total = sum(weights)
-    spans, cursor = [], 0.0
-    for part, w in zip(parts, weights):
-        span = duration * w / total
-        spans.append((cursor, cursor + span, part))
-        cursor += span
-    return spans
 
 
 # The code that decides what a frame looks like. A change to any of these is a

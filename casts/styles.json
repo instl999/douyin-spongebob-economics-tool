@@ -54,19 +54,61 @@
         "subtitle_max_width": 0.86,
         "label_size": 0.0344,
         "image_size": "2560x1440",
+        "title_size": 0.095,
+        "ending_size": 0.07,
+        "card_max_width": 0.84,
+        "bubble_max_width": 0.24,
+        "label_max_width": 0.34,
+        "safe_right": 0.0,
+        "title_bar": false,
+        "ui_zones": [],
         "_hint_subtitle_size": "占画面宽的比例，1920 宽下 = 62px（参考片实测值）",
         "_hint_subtitle_y": "字幕中心线在画面高的位置，参考片实测 90.3%",
         "_hint_label_size": "画面里的标签字号，比字幕略大才压得住"
       },
       "portrait": {
-        "stage": [0.0, 0.14, 1.0, 0.80],
+        "stage": [0.0, 0.10, 1.0, 0.735],
         "subtitle_size": 0.050,
-        "subtitle_y": 0.845,
-        "subtitle_max_width": 0.90,
+        "subtitle_y": 0.775,
+        "subtitle_max_width": 0.72,
         "label_size": 0.052,
         "image_size": "1440x2560",
-        "_hint": "竖屏字要更大才在手机上看得清：1080 宽下 = 54px"
+        "title_size": 0.14,
+        "ending_size": 0.1,
+        "card_max_width": 0.88,
+        "bubble_max_width": 0.40,
+        "label_max_width": 0.5,
+        "safe_right": 0.13,
+        "title_bar": true,
+        "ui_zones": [[0.0, 0.81, 1.0, 1.0], [0.87, 0.42, 1.0, 0.86]],
+        "_hint": [
+          "竖屏字要更大才在手机上看得清：1080 宽下 = 54px",
+          "抖音会在竖屏视频上盖自己的界面：底部约五分之一是账号名、文案和音乐条，",
+          "右侧是点赞/评论/分享那一列。所以字幕放在 0.775（角色脚下、界面之上），",
+          "宽度收窄到 0.72 避开右侧按钮；safe_right 让角色和标签都不进右边 13%。",
+          "ui_zones 是预览图上画出来的界面范围（近似值，用自己发过的视频截图校准）。",
+          "title_size / ending_size 是标题卡和金句卡的字号（占画面宽的比例），竖屏要更大。",
+          "bubble_max_width / label_max_width 是气泡和标签一行最宽占画面宽的比例：",
+          "竖屏画面窄，照横屏的比例一行只放得下五个字，「卖力」都会被拆成两行。",
+          "title_bar 打开竖屏顶部的固定标题条（用视频标题），样式在下面的 title_bar。"
+        ]
       }
+    },
+
+    "title_bar": {
+      "top": 0.035,
+      "height": 0.062,
+      "fill": [255, 214, 0],
+      "ink": [22, 22, 22],
+      "size": 0.056,
+      "radius": 0.018,
+      "margin": 0.04,
+      "_hint": [
+        "竖屏顶部的固定标题条：黄底黑字，写的是这条视频的标题。",
+        "中途刷到的人一眼知道在讲什么，也把竖屏上方空着的那块用起来。",
+        "top/height 是占画面高的比例，size/radius/margin 是占画面宽的比例。",
+        "project 里写 \"title_bar\": \"别的文字\" 可以换字，写 false 关掉。"
+      ]
     },
 
     "framing": {
@@ -103,12 +145,20 @@
       "dissolve": 0.5,
       "caption_fade": 0.12,
       "element_fade": 0.28,
+      "title_wipe": 0.45,
       "_hint": [
         "dissolve 是换镜时整镜溶解的秒数，参考片实测 0.65s，0.5 更利落。",
         "caption_fade 是一镜之内换字幕的淡入淡出；element_fade 是元素中途入场。",
+        "title_wipe 是开场标题从左到右「刷」出来的时长（参考片的标题卡是动画入场的）。",
         "这三个之外不要再加动效 —— 参考片里一个都没有，加了只会更不像。"
       ]
     },
+
+    "cut_on_shared_character": true,
+    "_hint_cut_on_shared_character": [
+      "前后两镜有同一个角色时，直接切，不溶解。",
+      "溶解会让同一个角色在两个位置、两种大小同时半透明地出现一次，像重影。"
+    ],
 
     "safe_zones": {
       "edge_tolerance": 0.06,
@@ -133,6 +183,7 @@
       "enabled": true,
       "gain": 0.34,
       "max_per_shot": 2,
+      "min_gap": 2.5,
       "cues": {
               "transition": [
                       "swoosh_up",
@@ -194,6 +245,8 @@
         "",
         "把某一类设成 [] 就是关掉那一类；enabled 设 false 全关。",
         "max_per_shot 是每镜最多几个音效 —— 两个已经不少了。",
+        "min_gap 是两个音效之间至少隔几秒（1.0 倍速下的秒数，会随整片速度缩短）。",
+        "意思优先于转场：同一时刻只能留一个时，留反应/金钱/金句，丢换镜的 swoosh。",
         "gain 是音量，相对旁白；实测每个音效比前一刻高约 10 dB。"
       ]
     },
