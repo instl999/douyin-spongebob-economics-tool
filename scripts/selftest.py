@@ -1478,9 +1478,11 @@ def main():
     speed_checks(suite)
     narration_alignment_checks(suite)
 
-    # The footage track's checks live in their own module. Two sessions work on
+    # The newer checks live in modules of their own. Two sessions work on
     # this repo at once; a single thousand-line test file is where their work
     # is guaranteed to collide.
+    import selftest_workflow
+    selftest_workflow.run(suite, lay)
     import selftest_footage
     selftest_footage.run(suite, lay)
 

@@ -730,6 +730,11 @@ def validate(data, beats, cast, max_sprites=None):
                 break
         ending_text = ending_text[:ENDING_MAX_CHARS].strip()
 
+    # Only what a shot still shows is drawn. An element can register its
+    # drawing and then be dropped - past the portrait sprite cap, or for
+    # repeating a character already in the shot - and its picture was still
+    # generated and paid for, for nothing.
+    used = {el.get("asset") for scene in scenes for el in scene["elements"]}
     import music
     return {
         "title": (data.get("title") or "").strip(),
@@ -743,7 +748,8 @@ def validate(data, beats, cast, max_sprites=None):
         "scenes": scenes,
         # Everything this video needs drawn, once each. Nothing is looked up in
         # a library and nothing survives to the next video.
-        "drawings": [drawings[name] for name in sorted(drawings)],
+        "drawings": [drawings[name] for name in sorted(drawings)
+                     if name in used],
         "problems": problems,
     }
 
@@ -870,7 +876,12 @@ def _vary_poses(scenes, problems, drawings):
                                         "who": list(spec["who"]), "shows": shows})
             for el in scene["elements"]:
                 if el.get("asset") == asset:
-                    el["asset"] = fresh
+                    # The description travels with the name. Left behind, the
+                    # element said one thing and its drawing another, and
+                    # `refresh_drawings` - which trusts the element, because
+                    # that is what a person edits - would put the old picture
+                    # straight back.
+                    el["asset"], el["shows"] = fresh, shows
                     break
             counts[asset] -= 1
             counts[fresh] = counts.get(fresh, 0) + 1
@@ -878,6 +889,95 @@ def _vary_poses(scenes, problems, drawings):
                             f"{seen} times, re-described from its beat")
 
 
+def _kind_of(who):
+    return "duo" if len(who) == 2 else "figure" if who else "prop"
+
+
+def refresh_drawings(plan, cast):
+    """Re-derive drawing names from the descriptions a person has edited.
+
+    A drawing's filename carries a hash of its description, and that name was
+    only ever computed when the director's answer was validated. So editing an
+    element's `shows` in plan.json - the documented way to ask for a shot to
+    be drawn differently - changed nothing at all: the element still named the
+    old file, the file was on disk, and the stage reported "already here".
+
+    Two places a person might edit, both honoured:
+
+    - an element's own `shows`: that element gets a drawing of its own, and
+      any other element still showing the old description keeps the old one
+    - an entry in the top-level `drawings` list: every element using that
+      drawing follows it
+
+    The `drawings` list is then rebuilt from what the shots actually use, so
+    a description edited away is not still drawn for nothing. Returns one line
+    per change, for the log. Edits the plan in place.
+    """
+    changes = []
+    drawings = {d["asset"]: dict(d) for d in plan.get("drawings") or []
+                if d.get("asset")}
+
+    # An edited entry in the list renames that drawing wherever it is used.
+    renamed = {}
+    for asset, spec in drawings.items():
+        shows = (spec.get("shows") or "").strip()
+        who = list(spec.get("who") or [])
+        if not shows:
+            continue
+        fresh = _sprite_name(spec.get("kind") or _kind_of(who), who, shows)
+        if fresh != asset:
+            renamed[asset] = (fresh, shows)
+    for old, (fresh, shows) in renamed.items():
+        spec = drawings[old]
+        drawings.setdefault(fresh, dict(spec, asset=fresh, shows=shows))
+        changes.append(f"drawing {old} was re-described, now {fresh}")
+
+    for scene in plan.get("scenes") or []:
+        for el in scene.get("elements") or []:
+            asset = el.get("asset")
+            if not asset or "shows" not in el:
+                continue                 # a label, a panel, or a legacy element
+            if asset in renamed:
+                el["asset"], el["shows"] = renamed[asset]
+                el["rel"] = cast.relative_height(el["asset"])
+                continue
+            shows = (el.get("shows") or "").strip()
+            recorded = (drawings.get(asset) or {}).get("shows")
+            if not shows or shows == recorded:
+                continue
+            if recorded and recorded.startswith(shows + ", "):
+                # Written by a `_vary_poses` that moved the name and left the
+                # description behind. The drawing is right; heal the record
+                # rather than "restore" the picture the variation replaced.
+                el["shows"] = recorded
+                continue
+            who = list(el.get("who") or (drawings.get(asset) or {}).get("who")
+                       or [])
+            problems = []
+            cleaned = shows[:DESCRIPTION_MAX]
+            cleaned = _unlettered(cleaned, scene.get("id", "?"), problems)
+            kind = _kind_of(who)
+            fresh = _sprite_name(kind, who, cleaned)
+            changes.extend(problems)
+            if fresh == asset:
+                continue
+            el["asset"], el["shows"], el["who"] = fresh, cleaned, who
+            el["rel"] = cast.relative_height(fresh)
+            drawings.setdefault(fresh, {"asset": fresh, "kind": kind,
+                                        "who": who, "shows": cleaned})
+            changes.append(f"shot {scene.get('id', '?')}: description edited, "
+                           f"drawing {fresh}")
+
+    used = {el.get("asset") for scene in plan.get("scenes") or []
+            for el in scene.get("elements") or [] if el.get("asset")}
+    kept = [drawings[name] for name in sorted(used) if name in drawings]
+    dropped = sorted(set(d["asset"] for d in plan.get("drawings") or []
+                         if d.get("asset")) - used)
+    if changes or dropped:
+        plan["drawings"] = kept
+    for name in dropped:
+        changes.append(f"{name} is no longer shown anywhere, not drawn")
+    return changes
 
 
 def offline_plan(script, cast, shot_seconds=5.0):

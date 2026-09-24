@@ -197,7 +197,22 @@ def stage_plan(project, force=False):
     target = project.out / "plan.json"
     if target.exists() and not force:
         log("  plan.json already present - reusing")
-        return json.loads(target.read_text(encoding="utf-8-sig"))
+        plan = json.loads(target.read_text(encoding="utf-8-sig"))
+        # A person editing a drawing's `shows` is asking for it to be drawn
+        # again, and the filename that decides whether it is was only ever
+        # computed when the director answered. Re-derived here, so the edit
+        # reaches the assets stage as a new file instead of "already here".
+        changes = plan_mod.refresh_drawings(plan, project.cast)
+        for line in changes:
+            log(f"  ~ {line}")
+        if changes:
+            target.write_text(json.dumps(plan, ensure_ascii=False, indent=2),
+                              encoding="utf-8")
+        missing = [d["asset"] for d in plan.get("drawings") or []
+                   if not (project.out / d["asset"]).exists()]
+        log(f"  {len(plan.get('drawings') or [])} drawings in the plan, "
+            f"{len(missing)} not drawn yet")
+        return plan
 
     cast = project.cast
     shot_seconds = float(project.get("shot_seconds", 5.0))
@@ -858,23 +873,70 @@ def _caption_spans(text, duration):
     return spans
 
 
+# The code that decides what a frame looks like. A change to any of these is a
+# different picture from the same storyboard, so it is part of what a cached
+# render was made from.
+RENDER_SOURCES = ("render.py", "textkit.py", "layout.py")
+
+
+def render_fingerprint(project, storyboard):
+    """Everything the mute render was made from, as one short hash.
+
+    The storyboard, every file it points at, and the renderer's own code. A
+    cached render used to be reused whenever it existed and was readable, so
+    an edited plan re-derived its storyboard and its draft and then shipped
+    the old picture: moving a character and changing a label produced a
+    byte-identical MP4, a draft that disagreed with it, and a check that said
+    the two matched because it compared the draft with the storyboard.
+    """
+    import hashlib
+    digest = hashlib.sha256(json.dumps(
+        storyboard, sort_keys=True, ensure_ascii=False).encode("utf-8"))
+    video = storyboard.get("video") or {}
+    names = {video.get("background", "background.png")}
+    for scene in storyboard.get("scenes") or []:
+        names |= {el["asset"] for el in scene.get("elements") or []
+                  if el.get("asset")}
+    for key in ("title_card", "ending_card"):
+        image = (storyboard.get(key) or {}).get("image")
+        if image:
+            names.add(image)
+    for name in sorted(names):
+        path = project.out / name
+        if path.exists():
+            stat = path.stat()
+            digest.update(f"{name}:{stat.st_size}:{stat.st_mtime_ns}".encode())
+        else:
+            digest.update(f"{name}:missing".encode())
+    here = Path(__file__).resolve().parent
+    for source in RENDER_SOURCES:
+        digest.update((here / source).read_bytes())
+    return digest.hexdigest()[:16]
+
+
 def stage_render(project, storyboard, force=False):
     import render as render_mod
     target = project.out / "video_mute.mp4"
+    record = project.out / "video_mute.json"
+    fingerprint = render_fingerprint(project, storyboard)
     if target.exists() and not force:
+        try:
+            made_from = json.loads(record.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            made_from = {}
         # Atomic writes stop an interrupted run leaving a truncated file, but a
         # cached render can still be damaged by something outside this process.
         # One ffprobe is cheap, and turns `moov atom not found` three stages
         # later into a line that says what happened and fixes itself.
-        expected = sum(s["duration"] for s in
-                       json.loads((project.out / "storyboard.json").read_text(
-                           encoding="utf-8")).get("scenes", [])) if (
-                       project.out / "storyboard.json").exists() else 0
+        expected = sum(s["duration"] for s in storyboard.get("scenes", []))
         readable = tts_mod.probe_duration(target)
-        if readable > 0 and (not expected or readable >= expected * 0.5):
-            log("  video_mute.mp4 already present - reusing")
+        current = made_from.get("fingerprint") == fingerprint
+        if current and readable > 0 and readable >= expected * 0.5:
+            log("  video_mute.mp4 is current - reusing")
             return target
-        log(f"  video_mute.mp4 is unreadable or truncated "
+        log("  video_mute.mp4 was made from a different storyboard - "
+            "rendering it again" if readable > 0 and not current else
+            f"  video_mute.mp4 is unreadable or truncated "
             f"({readable:.1f}s on disk) - rendering it again")
         target.unlink(missing_ok=True)
     durations = [s["duration"] for s in storyboard["scenes"]]
@@ -894,6 +956,10 @@ def stage_render(project, storyboard, force=False):
 
     with Atomic(target) as partial:
         total, frames = renderer.render(partial, durations, progress=progress)
+    # Written only once the render has landed, so an interrupted run leaves
+    # a record that matches nothing rather than one vouching for a half file.
+    record.write_text(json.dumps({"fingerprint": fingerprint}),
+                      encoding="utf-8")
     if live:
         print()
     log(f"  {frames} frames / {total:.1f}s rendered in {time.time() - started:.1f}s")
@@ -1211,9 +1277,17 @@ def run_build():
            f" ({estimate['total'] * speed:.1f}s at 1.00x)"))
     if fit and not fit["ok"]:
         log(f"  ! {fit['note']}")
+    # Checked here and after assets as well as after every later stage. It
+    # used to be checked from voice onward only, so `--stop-after plan` - the
+    # way to read the plan before paying for it - went on to draw every
+    # picture and speak every line, which is the whole bill.
+    if done("plan"):
+        return 0
 
     log("\n[2/8] assets")
     stage_assets(project, plan, force=should("assets"))
+    if done("assets"):
+        return 0
 
     log("\n[3/8] voice")
     voice_index = stage_voice(project, plan, force=should("voice"), speed=speed)
