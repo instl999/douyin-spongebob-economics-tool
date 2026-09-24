@@ -89,7 +89,41 @@ def cutout(img, lo=LO, hi=HI, pad=8, decontaminate=True, autocrop=True):
     return result
 
 
+# A patch of alpha is noise, not artwork, when it never becomes solid anywhere
+# or is smaller than any deliberate mark. Found on a real reference image: a
+# 13-pixel speck at alpha 57 in the corner of the frame survived the key, and
+# the crop reached out to include it - a 445x1323 figure became a 1168x1631
+# sprite, drawn at 81% of the height asked for and 90 px off its mark, with a
+# collision box three times too wide. Real artwork reaches full opacity
+# somewhere: its soft edges belong to a solid body.
+SPECK_PEAK = 128
+SPECK_AREA = 24
+
+
+def drop_specks(img, threshold=8):
+    """Clear isolated patches of alpha that are too faint or too small to be art.
+
+    The largest patch is never touched, and a small mark that is solid - a
+    sweat drop, a sparkle drawn apart from the figure - is kept.
+    """
+    rgba = np.array(img.convert("RGBA"))
+    alpha = rgba[:, :, 3]
+    labels, count = ndimage.label(alpha > threshold)
+    if count <= 1:
+        return img
+    index = np.arange(1, count + 1)
+    peaks = np.asarray(ndimage.maximum(alpha, labels, index))
+    areas = np.asarray(ndimage.sum(np.ones_like(alpha), labels, index))
+    noise = index[(peaks < SPECK_PEAK) | (areas < SPECK_AREA)]
+    noise = noise[noise != index[int(np.argmax(areas))]]
+    if not len(noise):
+        return img
+    alpha[np.isin(labels, noise)] = 0
+    return Image.fromarray(rgba, "RGBA")
+
+
 def crop_to_content(img, pad=8, threshold=8):
+    img = drop_specks(img, threshold)
     a = np.asarray(img)[:, :, 3]
     ys, xs = np.where(a > threshold)
     if not len(ys):

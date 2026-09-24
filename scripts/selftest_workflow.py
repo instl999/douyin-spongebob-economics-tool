@@ -65,6 +65,91 @@ def run(suite, lay):
     refresh_checks(suite)
     freshness_checks(suite)
     draft_parity_checks(suite)
+    verification_checks(suite)
+
+
+def verification_checks(suite):
+    """The checks that used to pass having looked at nothing can now fail."""
+    import config
+    import matting
+    import numpy as np
+    import plan as plan_mod
+    import verify as verify_mod
+
+    with tempfile.TemporaryDirectory() as tmp:
+        work = Path(tmp)
+        silent = work / "mute.mp4"
+        subprocess.run([config.FFMPEG, "-y", "-v", "error", "-f", "lavfi", "-i",
+                        "color=c=blue:s=320x180:d=1", "-c:v", "libx264",
+                        "-pix_fmt", "yuv420p", str(silent)], check=True)
+        voiced = work / "voiced.mp4"
+        subprocess.run([config.FFMPEG, "-y", "-v", "error", "-i", str(silent),
+                        "-f", "lavfi", "-i", "sine=f=440:d=1", "-c:v", "copy",
+                        "-c:a", "aac", "-shortest", str(voiced)], check=True)
+        board = {"video": {"width": 320, "height": 180, "fps": 25},
+                 "scenes": [{"duration": 1.0}]}
+        rows = {}
+        for name, video in (("mute", silent), ("voiced", voiced)):
+            report = verify_mod.Report()
+            verify_mod.check_container(report, video, board)
+            rows[name] = next(r for r in report.rows if r[1] == "audio track")
+        suite.check("verify: a video with no audio stream fails the audio check",
+                    not rows["mute"][0] and rows["voiced"][0]
+                    and rows["voiced"][2] == "aac",
+                    f"mute -> {rows['mute'][2]}, voiced -> {rows['voiced'][2]}")
+
+        def cutout(name, size, box=None, speck=None, fill=255):
+            image = Image.new("RGBA", size, (0, 0, 0, 0))
+            draw = ImageDraw.Draw(image)
+            if box:
+                draw.rectangle(box, fill=(200, 60, 60, fill))
+            if speck:                    # faint, like the one found for real
+                draw.rectangle(speck, fill=(200, 60, 60, 57))
+            image.save(work / name)
+            return name
+
+        board = {"scenes": [{"elements": [
+            {"asset": cutout("good.png", (400, 600), (10, 10, 390, 590))},
+            {"asset": cutout("whole.png", (1920, 1920), (0, 0, 1919, 1919))},
+            {"asset": cutout("empty.png", (400, 600), (190, 290, 196, 296))},
+            {"asset": cutout("held_open.png", (900, 900), (600, 300, 890, 890),
+                             speck=(4, 4, 8, 8))}]}]}
+        report = verify_mod.Report()
+        verify_mod.check_sprites(report, work, board)
+        ok, _, detail = report.rows[0]
+        flagged = [name for name in ("whole.png", "empty.png", "held_open.png")
+                   if name in detail]
+        suite.check("verify: the video's own cut-outs are examined",
+                    not ok and len(flagged) == 3 and "good.png" not in detail,
+                    detail[:120])
+
+    # A speck the key let through used to hold the crop open around it.
+    key = Image.new("RGB", (600, 800), (255, 0, 255))
+    draw = ImageDraw.Draw(key)
+    draw.ellipse([250, 200, 450, 700], fill=(30, 90, 200))
+    draw.ellipse([470, 180, 500, 210], fill=(30, 90, 200))       # a drawn drop
+    draw.rectangle([6, 6, 9, 9], fill=(215, 60, 215))            # the speck
+    cut, _ = matting.auto_cutout(key)
+    suite.check("matting: a stray speck no longer widens the crop",
+                cut.width < 300 and cut.height < 560,
+                f"{cut.width}x{cut.height} for a 250x520 drawing and its drop")
+    anchor = ROOT / "casts" / "flat_geo" / "anchors" / "boss.jpg"
+    if anchor.exists():
+        cut, _ = matting.auto_cutout(Image.open(anchor))
+        alpha = np.asarray(cut.getchannel("A"))
+        ys, xs = np.where(alpha > 128)
+        fill = min((xs.max() - xs.min() + 1) / cut.width,
+                   (ys.max() - ys.min() + 1) / cut.height)
+        suite.check("matting: the flat_geo reference crops to its figure",
+                    fill > 0.9, f"{cut.width}x{cut.height}, {fill:.0%} filled")
+
+    source = (SCRIPTS / "plan.py").read_text(encoding="utf-8-sig")
+    system = source[source.index('SYSTEM = """'):]
+    system = system[:system.index('"""', 12)]
+    suite.check("the director's system prompt fits every style",
+                "SpongeBob" not in system and "filenames" not in system)
+    suite.check("the director's system prompt names no catalogue",
+                "listed" not in plan_mod.SYSTEM)
 
 
 def draft_parity_checks(suite):

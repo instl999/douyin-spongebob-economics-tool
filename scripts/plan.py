@@ -9,11 +9,12 @@ eight shots, including an invented beat about a character running an experiment
 that appeared nowhere in the source. The narration is the user's product, so
 the model is not given the chance to touch it.
 
-What the model does choose - sprites, positions, framing, labels - is validated
-against the cast rather than trusted. Unknown sprite names snap to another pose
-of the same character or are dropped, coordinates are clamped, solid objects
-are put back on the ground, and a character cannot appear twice in one shot. A
-director that hallucinates should cost one element, not the run.
+What the model does choose - what each drawing shows, positions, framing,
+labels - is validated against the cast rather than trusted. A character the
+cast does not have is dropped, a request for lettering is taken out of a
+drawing, coordinates are clamped, solid objects are put back on the ground,
+and a character cannot appear twice in one shot. A director that hallucinates
+should cost one element, not the run.
 """
 import hashlib
 import re
@@ -76,14 +77,20 @@ WIDE_NEEDS_ELEMENTS = 3
 MIN_PANEL_WIDTH = 0.94
 MIN_PANEL_HEIGHT = 0.45
 
-SYSTEM = """You are the director of a SpongeBob-style animated explainer.
+# Style-neutral on purpose: this is sent for every cast, and the brief that
+# follows it describes the cast actually in use. It used to open "a
+# SpongeBob-style explainer" for the clay and cyberpunk casts too, and told the
+# model that "only the listed filenames exist" - a catalogue deleted long ago,
+# contradicted by the brief's own "there is no list of existing drawings".
+SYSTEM = """You are the director of an animated explainer video.
 
 The picture is built by compositing: one fixed background plate, with cut-out
-character and prop sprites placed on top of it. For each shot you choose which
-sprites appear and where.
+characters and objects placed on top of it. Every one of them is drawn for
+this video from your description, so for each shot you describe what each
+drawing shows and where it goes.
 
 You never write or change narration - it is fixed and given to you. You never
-invent a sprite; only the listed filenames exist.
+add a character the cast does not have.
 
 Return JSON only, no commentary."""
 

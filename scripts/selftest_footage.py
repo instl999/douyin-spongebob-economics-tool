@@ -194,6 +194,20 @@ def run(suite, lay):
                     "年通胀率是百分之七点二。")[0] is None)
     suite.check("graphics: an unknown kind is refused",
                 footage_mod.validate_graphic({"kind": "pie"}, beat_with)[0] is None)
+    # A word is not a quantity: 老百姓 holds 百 and 千万不要 means "never", and
+    # read as numbers they grounded an invented 100 and 10,000,000.
+    suite.check("graphics: a word that contains a numeral grounds nothing",
+                not footage_mod.numbers_in("老百姓的日子不好过")
+                and not footage_mod.numbers_in("千万不要这样做")
+                and footage_mod.validate_graphic(
+                    {"kind": "counter", "value": 100, "unit": "%"},
+                    "老百姓的日子不好过。")[0] is None)
+    suite.check("graphics: years, 亿 and 万 are read at the size they were said",
+                footage_mod.numbers_in("二零零八年金融危机") == {2008.0}
+                and {14.0, 1.4e9} <= footage_mod.numbers_in("全国有十四亿人")
+                and {100.0, 1e14} <= footage_mod.numbers_in("GDP超过一百万亿元")
+                and {3.5, 35000.0} <= footage_mod.numbers_in("人口3.5万"),
+                "二零零八 is 2008, 十四亿 is 14 and 1.4e9")
 
     # Nothing may be drawn into the subtitle band. A chart that puts its
     # category labels at 0.85 of frame height is drawing them under the
