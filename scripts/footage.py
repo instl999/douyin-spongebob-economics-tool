@@ -645,6 +645,47 @@ def _validate_queries(data, beats):
 
 CN_DIGITS = {"零": 0, "〇": 0, "一": 1, "二": 2, "两": 2, "三": 3, "四": 4,
              "五": 5, "六": 6, "七": 7, "八": 8, "九": 9}
+CN_RUN = re.compile(r"[零〇一二两三四五六七八九十百千万亿点]+")
+# What a trailing magnitude word multiplies by, for "3.5万" and "十四亿" alike.
+MAGNITUDE = {"万": 1e4, "亿": 1e8, "万亿": 1e12}
+
+
+def _spoken(text):
+    """[(value, unit)] for every number the narration states. unit is "%" or "".
+
+    Generous where a number plausibly was said, and no further. A run of
+    Chinese numeral characters is not always a number: 老百姓 holds 百 and
+    千万不要 is "never" - read as quantities they grounded 100 and 10,000,000,
+    so an invented "100%" passed as said. A run with no digit in it counts
+    only when it opens on 十, which is how 十年 and 十万 are spoken.
+
+    A figure is also recorded the way it is written next to its magnitude
+    word as well as at full size - 十四亿 as 14 and as 1.4e9, 3.5万 as 3.5 and
+    35000 - because a chart may carry either and both were spoken. A year read
+    digit by digit, 二零零八, is 2008 rather than the 8 it used to parse as.
+    """
+    out = []
+    body = text or ""
+    for match in re.finditer(r"(\d+(?:\.\d+)?)\s*(%|percent|万亿|亿|万)?", body):
+        try:
+            value = float(match.group(1))
+        except ValueError:
+            continue
+        unit = match.group(2) or ""
+        out.append((value, "%" if unit in ("%", "percent") else ""))
+        if unit in MAGNITUDE:
+            out.append((value * MAGNITUDE[unit], ""))
+    # 百分之X and X个百分点 mark a percentage; the marker itself is not a number.
+    percent = [m.group(1) for m in re.finditer(r"百分之\s*([零〇一二两三四五六七八九十百千万点]+)", body)]
+    percent += [m.group(1) for m in re.finditer(r"([零〇一二两三四五六七八九十百千万点]+)个?百分点", body)]
+    for run in percent:
+        for value in _cn_values(run):
+            out.append((value, "%"))
+    stripped = body.replace("百分之", "%").replace("百分点", "%")
+    for run in CN_RUN.findall(stripped):
+        for value in _cn_values(run):
+            out.append((value, ""))
+    return out
 
 
 def numbers_with_units(text):
@@ -654,25 +695,13 @@ def numbers_with_units(text):
     a bar chart and omitted it on the comparison in the same build, so two bars
     read "53" and "68" in a video whose voiceover said 百分之五十三. The unit is
     recoverable from how the figure was spoken, so recover it rather than ask
-    again.
+    again. A figure said once as a percentage stays one.
     """
     units = {}
-    body = text or ""
-    for match in re.finditer(r"(\d+(?:\.\d+)?)\s*(%|percent)?", body):
-        try:
-            value = float(match.group(1))
-        except ValueError:
-            continue
-        units[value] = "%" if match.group(2) else units.get(value, "")
-    # 百分之X / 百分点 mark a percentage; the marker itself is not a number.
-    for match in re.finditer(r"百分(?:之|点)\s*([零〇一二两三四五六七八九十百千万点]+)", body):
-        value = _cn_number(match.group(1))
-        if value is not None:
+    for value, unit in _spoken(text):
+        if unit == "%":
             units[value] = "%"
-    stripped = body.replace("百分之", "%").replace("百分点", "%")
-    for run in re.findall(r"[零〇一二两三四五六七八九十百千万点]+", stripped):
-        value = _cn_number(run)
-        if value is not None:
+        else:
             units.setdefault(value, "")
     return units
 
@@ -682,28 +711,48 @@ def numbers_in(text):
 
     Deliberately generous: a false positive here only permits a number the
     narration plausibly contains, while a false negative silently downgrades a
-    legitimate chart. Handles "7.2", "45%", "百分之七点二", "三十" and "两千".
+    legitimate chart. Handles "7.2", "45%", "百分之七点二", "三十", "两千",
+    "十四亿" and "二零零八".
     """
-    found = set()
-    for raw in re.findall(r"\d+(?:\.\d+)?", text or ""):
-        try:
-            found.add(float(raw))
-        except ValueError:
-            continue
-    # "百分之" and "百分点" are unit markers, not quantities, and the 百 in them
-    # otherwise parses as the number 100 - so every beat mentioning a
-    # percentage would silently ground an invented value of 100.
-    body = (text or "").replace("百分之", "%").replace("百分点", "%")
-    # Chinese numerals, including the decimal form used after 百分之.
-    for run in re.findall(r"[零〇一二两三四五六七八九十百千万点]+", body):
-        value = _cn_number(run)
+    return {value for value, _ in _spoken(text)}
+
+
+def _cn_values(run):
+    """Every value one run of Chinese numerals can honestly be read as."""
+    run = run.strip("点")
+    if not run:
+        return set()
+    if not any(c in CN_DIGITS for c in run) and not run.startswith("十"):
+        return set()                  # 百姓, 千万不要: a word, not a quantity
+    if all(c in CN_DIGITS for c in run):
+        digits = "".join(str(CN_DIGITS[c]) for c in run)
+        if len(run) >= 3:
+            return {float(digits)}    # a year or a code, read digit by digit
+        # 三四个 is "three or four", not thirty-four.
+        return {float(CN_DIGITS[c]) for c in run}
+    values = set()
+    whole = _cn_number(run)
+    if whole is not None:
+        values.add(whole)
+    # As written beside its magnitude word too: 十四亿 is also "14".
+    head = run
+    while head and head[-1] in "万亿":
+        head = head[:-1]
+        value = _cn_number(head) if head else None
         if value is not None:
-            found.add(value)
-    return found
+            values.add(value)
+    return values
 
 
 def _cn_number(run):
     """Parse a Chinese numeral run. None when it is not a number."""
+    if "亿" in run:
+        high, _, low = run.partition("亿")
+        high_value = _cn_number(high) if high else 1.0
+        low_value = _cn_number(low) if low else 0.0
+        if high_value is None or low_value is None:
+            return None
+        return high_value * 1e8 + low_value
     if "点" in run:
         whole, _, frac = run.partition("点")
         head = _cn_number(whole) if whole else 0

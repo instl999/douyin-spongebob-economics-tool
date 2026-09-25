@@ -9,11 +9,12 @@ eight shots, including an invented beat about a character running an experiment
 that appeared nowhere in the source. The narration is the user's product, so
 the model is not given the chance to touch it.
 
-What the model does choose - sprites, positions, framing, labels - is validated
-against the cast rather than trusted. Unknown sprite names snap to another pose
-of the same character or are dropped, coordinates are clamped, solid objects
-are put back on the ground, and a character cannot appear twice in one shot. A
-director that hallucinates should cost one element, not the run.
+What the model does choose - what each drawing shows, positions, framing,
+labels - is validated against the cast rather than trusted. A character the
+cast does not have is dropped, a request for lettering is taken out of a
+drawing, coordinates are clamped, solid objects are put back on the ground,
+and a character cannot appear twice in one shot. A director that hallucinates
+should cost one element, not the run.
 """
 import hashlib
 import re
@@ -69,21 +70,28 @@ MIN_DUO_HEIGHT = 0.58
 # 32 shots while averaging 2.7 elements, so "wide" just meant "smaller".
 WIDE_NEEDS_ELEMENTS = 3
 
-# A panel is a room, and a room does not stop two thirds of the way across the
-# picture. Below this the plate's grass shows down both sides and the wall
-# reads as a screen propped on a lawn rather than as somewhere the characters
-# are. Not 1.0: a little of the plate at the edges still reads as depth.
-MIN_PANEL_WIDTH = 0.94
+# A panel is a room, and a room does not stop short of the picture's edges.
+# Narrower, the plate's grass shows down both sides and the wall reads as a
+# screen propped on a lawn rather than as somewhere the characters are. It was
+# 0.94 while panels were translucent slabs; an opaque wall standing on a floor
+# with a strip of meadow at each side is a set piece, not a room.
+MIN_PANEL_WIDTH = 1.0
 MIN_PANEL_HEIGHT = 0.45
 
-SYSTEM = """You are the director of a SpongeBob-style animated explainer.
+# Style-neutral on purpose: this is sent for every cast, and the brief that
+# follows it describes the cast actually in use. It used to open "a
+# SpongeBob-style explainer" for the clay and cyberpunk casts too, and told the
+# model that "only the listed filenames exist" - a catalogue deleted long ago,
+# contradicted by the brief's own "there is no list of existing drawings".
+SYSTEM = """You are the director of an animated explainer video.
 
 The picture is built by compositing: one fixed background plate, with cut-out
-character and prop sprites placed on top of it. For each shot you choose which
-sprites appear and where.
+characters and objects placed on top of it. Every one of them is drawn for
+this video from your description, so for each shot you describe what each
+drawing shows and where it goes.
 
 You never write or change narration - it is fixed and given to you. You never
-invent a sprite; only the listed filenames exist.
+add a character the cast does not have.
 
 Return JSON only, no commentary."""
 
@@ -203,7 +211,9 @@ ORIENTATION_NOTES = {
     "portrait": ("The frame is TALL and NARROW (9:16). Only two things fit side "
                  "by side. Never put three or more sprites in one shot - use "
                  "two, or one character with one prop, and let the label or the "
-                 "balloon carry the rest."),
+                 "balloon carry the rest. The phone draws its like and share "
+                 "buttons down the right edge, so keep everything left of "
+                 "x 0.85: one character at x 0.44, two at x 0.26 and 0.64."),
 }
 
 
@@ -483,6 +493,12 @@ def _elements(raw_elements, cast, shot_id, problems, drawings):
             if kind == "label":
                 tone = el.get("tone", "neutral")
                 item["tone"] = tone if tone in LABEL_TONES else "neutral"
+                # Which character the label is about, when it is about one.
+                # It is placed just above that character's head.
+                named = el.get("for")
+                if isinstance(named, str) and \
+                        named.strip() in (cast.data.get("characters") or {}):
+                    item["for"] = named.strip()
             if kind == "bubble":
                 item["tail"] = el.get("tail", "left")
         else:
@@ -730,6 +746,11 @@ def validate(data, beats, cast, max_sprites=None):
                 break
         ending_text = ending_text[:ENDING_MAX_CHARS].strip()
 
+    # Only what a shot still shows is drawn. An element can register its
+    # drawing and then be dropped - past the portrait sprite cap, or for
+    # repeating a character already in the shot - and its picture was still
+    # generated and paid for, for nothing.
+    used = {el.get("asset") for scene in scenes for el in scene["elements"]}
     import music
     return {
         "title": (data.get("title") or "").strip(),
@@ -738,12 +759,17 @@ def validate(data, beats, cast, max_sprites=None):
         # invented matches nothing and would only push a real one down the
         # ranking. Absent entirely is fine - the script's own words answer.
         "mood": music.clean(data.get("mood")),
+        # Where the script's feeling turns, each with its own moods: the music
+        # changes there. Cleaned to a few sections of a few shots each, or
+        # none - a script that does not turn keeps one bed throughout.
+        "sections": music.clean_sections(data.get("sections"), len(scenes)),
         "ending": {"text": ending_text,
                    "highlight": (ending.get("highlight") or "").strip() or None},
         "scenes": scenes,
         # Everything this video needs drawn, once each. Nothing is looked up in
         # a library and nothing survives to the next video.
-        "drawings": [drawings[name] for name in sorted(drawings)],
+        "drawings": [drawings[name] for name in sorted(drawings)
+                     if name in used],
         "problems": problems,
     }
 
@@ -870,7 +896,12 @@ def _vary_poses(scenes, problems, drawings):
                                         "who": list(spec["who"]), "shows": shows})
             for el in scene["elements"]:
                 if el.get("asset") == asset:
-                    el["asset"] = fresh
+                    # The description travels with the name. Left behind, the
+                    # element said one thing and its drawing another, and
+                    # `refresh_drawings` - which trusts the element, because
+                    # that is what a person edits - would put the old picture
+                    # straight back.
+                    el["asset"], el["shows"] = fresh, shows
                     break
             counts[asset] -= 1
             counts[fresh] = counts.get(fresh, 0) + 1
@@ -878,6 +909,95 @@ def _vary_poses(scenes, problems, drawings):
                             f"{seen} times, re-described from its beat")
 
 
+def _kind_of(who):
+    return "duo" if len(who) == 2 else "figure" if who else "prop"
+
+
+def refresh_drawings(plan, cast):
+    """Re-derive drawing names from the descriptions a person has edited.
+
+    A drawing's filename carries a hash of its description, and that name was
+    only ever computed when the director's answer was validated. So editing an
+    element's `shows` in plan.json - the documented way to ask for a shot to
+    be drawn differently - changed nothing at all: the element still named the
+    old file, the file was on disk, and the stage reported "already here".
+
+    Two places a person might edit, both honoured:
+
+    - an element's own `shows`: that element gets a drawing of its own, and
+      any other element still showing the old description keeps the old one
+    - an entry in the top-level `drawings` list: every element using that
+      drawing follows it
+
+    The `drawings` list is then rebuilt from what the shots actually use, so
+    a description edited away is not still drawn for nothing. Returns one line
+    per change, for the log. Edits the plan in place.
+    """
+    changes = []
+    drawings = {d["asset"]: dict(d) for d in plan.get("drawings") or []
+                if d.get("asset")}
+
+    # An edited entry in the list renames that drawing wherever it is used.
+    renamed = {}
+    for asset, spec in drawings.items():
+        shows = (spec.get("shows") or "").strip()
+        who = list(spec.get("who") or [])
+        if not shows:
+            continue
+        fresh = _sprite_name(spec.get("kind") or _kind_of(who), who, shows)
+        if fresh != asset:
+            renamed[asset] = (fresh, shows)
+    for old, (fresh, shows) in renamed.items():
+        spec = drawings[old]
+        drawings.setdefault(fresh, dict(spec, asset=fresh, shows=shows))
+        changes.append(f"drawing {old} was re-described, now {fresh}")
+
+    for scene in plan.get("scenes") or []:
+        for el in scene.get("elements") or []:
+            asset = el.get("asset")
+            if not asset or "shows" not in el:
+                continue                 # a label, a panel, or a legacy element
+            if asset in renamed:
+                el["asset"], el["shows"] = renamed[asset]
+                el["rel"] = cast.relative_height(el["asset"])
+                continue
+            shows = (el.get("shows") or "").strip()
+            recorded = (drawings.get(asset) or {}).get("shows")
+            if not shows or shows == recorded:
+                continue
+            if recorded and recorded.startswith(shows + ", "):
+                # Written by a `_vary_poses` that moved the name and left the
+                # description behind. The drawing is right; heal the record
+                # rather than "restore" the picture the variation replaced.
+                el["shows"] = recorded
+                continue
+            who = list(el.get("who") or (drawings.get(asset) or {}).get("who")
+                       or [])
+            problems = []
+            cleaned = shows[:DESCRIPTION_MAX]
+            cleaned = _unlettered(cleaned, scene.get("id", "?"), problems)
+            kind = _kind_of(who)
+            fresh = _sprite_name(kind, who, cleaned)
+            changes.extend(problems)
+            if fresh == asset:
+                continue
+            el["asset"], el["shows"], el["who"] = fresh, cleaned, who
+            el["rel"] = cast.relative_height(fresh)
+            drawings.setdefault(fresh, {"asset": fresh, "kind": kind,
+                                        "who": who, "shows": cleaned})
+            changes.append(f"shot {scene.get('id', '?')}: description edited, "
+                           f"drawing {fresh}")
+
+    used = {el.get("asset") for scene in plan.get("scenes") or []
+            for el in scene.get("elements") or [] if el.get("asset")}
+    kept = [drawings[name] for name in sorted(used) if name in drawings]
+    dropped = sorted(set(d["asset"] for d in plan.get("drawings") or []
+                         if d.get("asset")) - used)
+    if changes or dropped:
+        plan["drawings"] = kept
+    for name in dropped:
+        changes.append(f"{name} is no longer shown anywhere, not drawn")
+    return changes
 
 
 def offline_plan(script, cast, shot_seconds=5.0):
@@ -902,7 +1022,7 @@ def offline_plan(script, cast, shot_seconds=5.0):
                              "rel": cast.relative_height(asset)})
         scenes.append({"id": i + 1, "narration": beat,
                        "framing": framings[i % 3], "elements": elements})
-    return {"title": "", "setting": "", "mood": [],
+    return {"title": "", "setting": "", "mood": [], "sections": [],
             "ending": {"text": scenes[-1]["narration"] if scenes else "",
                        "highlight": None},
             "scenes": scenes,

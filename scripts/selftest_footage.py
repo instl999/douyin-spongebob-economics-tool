@@ -8,6 +8,7 @@ nothing at all.
 
 Run through selftest.py, which owns the Suite and prints the summary.
 """
+import json
 import subprocess
 import tempfile
 from pathlib import Path
@@ -194,6 +195,20 @@ def run(suite, lay):
                     "年通胀率是百分之七点二。")[0] is None)
     suite.check("graphics: an unknown kind is refused",
                 footage_mod.validate_graphic({"kind": "pie"}, beat_with)[0] is None)
+    # A word is not a quantity: 老百姓 holds 百 and 千万不要 means "never", and
+    # read as numbers they grounded an invented 100 and 10,000,000.
+    suite.check("graphics: a word that contains a numeral grounds nothing",
+                not footage_mod.numbers_in("老百姓的日子不好过")
+                and not footage_mod.numbers_in("千万不要这样做")
+                and footage_mod.validate_graphic(
+                    {"kind": "counter", "value": 100, "unit": "%"},
+                    "老百姓的日子不好过。")[0] is None)
+    suite.check("graphics: years, 亿 and 万 are read at the size they were said",
+                footage_mod.numbers_in("二零零八年金融危机") == {2008.0}
+                and {14.0, 1.4e9} <= footage_mod.numbers_in("全国有十四亿人")
+                and {100.0, 1e14} <= footage_mod.numbers_in("GDP超过一百万亿元")
+                and {3.5, 35000.0} <= footage_mod.numbers_in("人口3.5万"),
+                "二零零八 is 2008, 十四亿 is 14 and 1.4e9")
 
     # Nothing may be drawn into the subtitle band. A chart that puts its
     # category labels at 0.85 of frame height is drawing them under the
@@ -333,17 +348,23 @@ def run(suite, lay):
         return np.abs(np.asarray(a.convert("L")).astype(int)
                       - np.asarray(b.convert("L")).astype(int)) > 25
 
+    #
+    # The type is isolated against other type of the same measured size, not
+    # against no type at all: the centred layout sizes the subject's box from
+    # the type block above it, so dropping the headline moves the subject too
+    # and the difference would count the subject as type.
     for layout in comp_mod.LAYOUTS:
         base_spec = {"layout": layout, "subject": "x"}
         head_spec = dict(base_spec, headline="再生化学纤维",
                          sub="regenerated fibre")
+        other_spec = dict(base_spec, headline="甲乙丙丁戊己",
+                          sub="xxxxxxxxxxxxxxxxx")
         def shot(spec):
             return comp_mod.frame(spec, (1920, 1080), 1.0, "clean",
                                   subject_image=art, drift=0)
-        subject_only = shot(base_spec)
         with_head = shot(head_spec)
         with_both = shot(dict(head_spec, note="原料"))
-        headline_at = ink(with_head, subject_only)
+        headline_at = ink(with_head, shot(other_spec))
         note_at = ink(with_both, with_head)
         overlap = int((headline_at & note_at).sum())
         suite.check(f"composite: {layout} keeps the note off the headline",
@@ -597,3 +618,296 @@ def run(suite, lay):
                     and abs(f[1] * 1.5 - s[1]) < 1e-6
                     for s, f in zip(slow_spans, fast_spans)),
                 f"ends {slow_spans[0][1]:.2f}s -> {fast_spans[0][1]:.2f}s")
+
+    _placement(suite)
+    _graphics_detail(suite)
+    _caption_bands(suite)
+    _voice_and_draft(suite)
+
+
+def _placement(suite):
+    """The composite's note goes beside the subject, not across it."""
+    import composite as comp_mod
+
+    # A standing figure, cut out tight: a head on a body, most of the height
+    # and a third of the width. The note used to sit at a fixed fraction of
+    # the subject's box - a third of the way down, just inside its edge -
+    # which on a figure like this is the face.
+    figure = Image.new("RGBA", (300, 900), (0, 0, 0, 0))
+    pen = ImageDraw.Draw(figure)
+    pen.ellipse([90, 10, 210, 150], fill=(40, 44, 60, 255))
+    pen.rounded_rectangle([30, 150, 270, 890], radius=40, fill=(40, 44, 60, 255))
+    # On the paper grade, whose light ground a dark figure stands out from.
+    for layout in ("subject_left", "subject_right", "card"):
+        spec = {"layout": layout, "headline": "偷懒的代价", "subject": "x"}
+        bare = comp_mod.frame(spec, (1920, 1080), 1.0, "vintage",
+                              subject_image=figure, drift=0)
+        noted = comp_mod.frame(dict(spec, note="被开除"), (1920, 1080), 1.0,
+                               "vintage", subject_image=figure, drift=0)
+        note = np.abs(np.asarray(noted.convert("L")).astype(int)
+                      - np.asarray(bare.convert("L")).astype(int)) > 25
+        # The subject's own pixels: the figure is far darker than anything
+        # else on the frame except the headline, which it never shares a
+        # column with.
+        subject = np.asarray(bare.convert("L")).astype(int) < 70
+        ground = comp_mod.frame({"layout": layout, "subject": "x"},
+                                (1920, 1080), 1.0, "vintage", drift=0)
+        subject &= np.asarray(ground.convert("L")).astype(int) > 150
+        on = int((note & subject).sum())
+        suite.check(f"composite: {layout} sets its note beside the subject",
+                    note.sum() > 500 and on < note.sum() * 0.08,
+                    f"{on} of {int(note.sum())} note pixels on the figure")
+
+    # And it points at it: the leader ends on the subject.
+    art = comp_mod._fit(figure, 972, 700)
+    spot = comp_mod._note_spot(art, (100, 120), (40, 110, 1010, 850),
+                               (190, 80), 67, 1)
+    inside = spot is not None and art.getchannel("A").getpixel(
+        (spot[1][0] - 100, spot[1][1] - 120)) > 0
+    suite.check("composite: the note's leader lands on the subject", inside,
+                f"{spot}")
+    suite.check("composite: a subject with nothing solid places no note",
+                comp_mod._note_spot(Image.new("RGBA", (200, 200)), (0, 0),
+                                    (0, 0, 400, 400), (100, 40), 40, 1)
+                is None)
+
+
+def _graphics_detail(suite):
+    import motion as motion_mod
+
+    # Record what the drawers print instead of reading it back off pixels.
+    printed = []
+    real_text = motion_mod._text
+
+    def recording(draw, xy, body, size, fill, anchor="mm", bold=True):
+        printed.append((xy, body, size))
+        return real_text(draw, xy, body, size, fill, anchor, bold)
+
+    motion_mod._text = recording
+    try:
+        spec = {"kind": "breakdown", "unit": "%", "show_values": True,
+                "items": [{"label": "消费", "value": 55},
+                          {"label": "投资", "value": 42},
+                          {"label": "净出口", "value": 3}]}
+        motion_mod.frame(spec, (1920, 1080), 1.0, "vintage", drift=0)
+        bodies = [body for _, body, _ in printed]
+        suite.check("graphics: a figure too wide for its segment joins the label",
+                    "净出口 3%" in bodies and "3%" not in bodies
+                    and "55%" in bodies, str(bodies))
+
+        printed.clear()
+        motion_mod.frame({"kind": "flow", "nodes": ["家庭", "银行", "企业"]},
+                         (1080, 1920), 1.0, "vintage", drift=0)
+        spots = {body: xy for xy, body, _ in printed}
+        column = [spots.get(n) for n in ("家庭", "银行", "企业")]
+        suite.check("graphics: a portrait flow runs top to bottom",
+                    all(column) and len({round(x) for x, _ in column}) == 1
+                    and column[0][1] < column[1][1] < column[2][1],
+                    str(column))
+    finally:
+        motion_mod._text = real_text
+
+    size, lines = motion_mod._fitted_label("中央银行的基础货币投放", 52, 300, 2)
+    suite.check("graphics: a long node label fits its box",
+                len(lines) <= 2 and all(
+                    textkit.advance(line, size, True) <= 300 for line in lines),
+                f"{lines} at {size}px")
+
+    # The tokens keep moving once the chart has built: two moments in the
+    # hold differ along the arrows, and nowhere else.
+    spec = {"kind": "flow", "nodes": ["家庭", "银行", "企业"]}
+    a = np.asarray(motion_mod.frame(spec, (1920, 1080), 0.80, "vintage",
+                                    drift=0).convert("L")).astype(int)
+    b = np.asarray(motion_mod.frame(spec, (1920, 1080), 0.86, "vintage",
+                                    drift=0).convert("L")).astype(int)
+    rows = np.where(np.abs(a - b).max(axis=1) > 25)[0]
+    suite.check("graphics: a flow's tokens move after it has built",
+                len(rows) > 0 and rows.max() - rows.min() < 60,
+                f"{len(rows)} rows changed")
+
+    # Nothing in a portrait graphic reaches the caption band, which sits
+    # higher in portrait to stay clear of the phone app's controls.
+    bare = np.asarray(motion_mod.backdrop(
+        (1080, 1920), motion_mod.palette("vintage")["bg"]).convert("L")).astype(int)
+    floor = int(1920 * motion_mod.safe_bottom(1080, 1920))
+    samples = {
+        "bar_chart": {"kind": "bar_chart", "title": "储蓄率", "unit": "%",
+                      "items": [{"label": "中国", "value": 45},
+                                {"label": "德国", "value": 28}]},
+        "flow": {"kind": "flow", "title": "钱的流动", "caption": "存款变成贷款",
+                 "nodes": ["家庭", "银行", "企业", "工厂"]},
+        "breakdown": {"kind": "breakdown", "title": "GDP", "unit": "%",
+                      "show_values": True,
+                      "items": [{"label": "消费", "value": 53},
+                                {"label": "投资", "value": 43},
+                                {"label": "净出口", "value": 4}]},
+        "comparison": {"kind": "comparison", "title": "工资与物价",
+                       "left": {"label": "工资", "value": 100},
+                       "right": {"label": "物价", "value": 140}},
+    }
+    for kind, spec in samples.items():
+        arr = np.asarray(motion_mod.frame(spec, (1080, 1920), 0.9, "vintage",
+                                          drift=0).convert("L")).astype(int)
+        inked = np.where(np.abs(arr - bare).max(axis=1) > 25)[0]
+        low = int(inked.max()) if len(inked) else 0
+        suite.check(f"graphics: portrait {kind} stays above the captions",
+                    low <= floor, f"ink ends {low}, floor {floor}")
+
+
+def _caption_bands(suite):
+    import footage_build as fb_mod
+    import footage_render as fr_mod
+    import motion as motion_mod
+
+    def block(lay, zh, en):
+        """Top and bottom of a caption block as set, stroke included."""
+        where = fr_mod.caption_layout(lay, zh, en)
+        edges = []
+        for lines, px, centre in (where["zh"], where["en"]):
+            lh = textkit.line_height(px, True)
+            total = lh * len(lines) + int(px * 0.20) * (len(lines) - 1)
+            pad = max(2, round(px * 0.085)) + 6
+            edges += [centre - total // 2 - pad, centre - total // 2 + total + pad]
+        return min(edges), max(edges)
+
+    english = ("So once you understand where the money goes, you understand "
+               "why prices keep rising.")
+    for orientation in ("landscape", "portrait"):
+        lay = layout_mod.Layout(orientation)
+        top, bottom = block(lay, "所以理解钱的流向。", english)
+        graphics = motion_mod.safe_bottom(lay.width, lay.height) * lay.height
+        suite.check(f"footage: {orientation} captions start below the graphics",
+                    top >= graphics, f"caption top {top}, graphics end {graphics:.0f}")
+        suite.check(f"footage: {orientation} captions end above the app's controls",
+                    bottom <= fr_mod.caption_floor(lay) * lay.height + 1,
+                    f"caption bottom {bottom}, floor "
+                    f"{fr_mod.caption_floor(lay) * lay.height:.0f}")
+
+    # A long beat is shown a line at a time, as every reference frame shows
+    # it, and its English stays up across all of its lines.
+    lay = layout_mod.Layout("landscape")
+    beat = ("在整个经济里，消费占百分之五十三，投资占百分之四十三，"
+            "净出口只占百分之四，政府支出占剩下的部分。")
+    spans = fb_mod.caption_spans(
+        [{"beat": beat, "en": "The parts of GDP."},
+         {"beat": "就是这样。", "en": "That's it."}], [9.0, 2.0],
+        gap=0.12, lay=lay)
+    first = [s for s in spans if s[4] == "The parts of GDP."]
+    suite.check("footage: a long beat is captioned a line at a time",
+                len(first) > 1 and all(
+                    len(textkit.wrap(s[2], lay.subtitle_font_px(),
+                                     lay.subtitle_max_px)) == 1 for s in first),
+                " | ".join(s[2] for s in first))
+    suite.check("footage: its lines run back to back and end on the gap",
+                all(abs(a[1] - b[0]) < 1e-9 for a, b in zip(first, first[1:]))
+                and abs(first[0][0]) < 1e-9 and abs(first[-1][1] - 8.88) < 1e-6,
+                f"{[(round(s[0], 2), round(s[1], 2)) for s in first]}")
+    paused = fb_mod.caption_spans(
+        [{"beat": beat, "en": ""}], [9.0], gap=0.12, lay=lay,
+        speech=[{"speech": [0.2, 8.6], "pauses": [[5.2, 5.5]]}])
+    # By length alone the second line would start at 4.94 s; the voice pauses
+    # from 5.2 to 5.5, so it starts just before the voice resumes.
+    suite.check("footage: a line changes where the voice pauses",
+                len(paused) == 2 and abs(paused[1][0] - (5.5 - 0.06)) < 1e-6,
+                f"{[round(s[0], 2) for s in paused]}")
+
+
+def _voice_and_draft(suite):
+    """The last beat's missing tail, and a whole offline build with its draft."""
+    import config as config_mod
+    import footage as footage_mod
+    import footage_build as fb_mod
+    import footage_draft as fd_mod
+    import footage_render as fr_mod
+    import tts as tts_mod
+
+    def tone(text, out_path, speaker=None, speed=1.0, emotion=None, timeout=180):
+        """A stand-in voice: a quiet tone as long as the line would be."""
+        seconds = tts_mod.estimate_duration(text, speed)
+        out = Path(out_path).with_suffix(".wav")
+        out.parent.mkdir(parents=True, exist_ok=True)
+        subprocess.run([config_mod.FFMPEG, "-y", "-v", "error", "-f", "lavfi",
+                        "-i", f"sine=frequency=220:sample_rate=24000:"
+                              f"duration={seconds:.3f}",
+                        "-af", "volume=0.3", str(out)], check=True)
+        return {"path": out, "duration": tts_mod.probe_duration(out),
+                "words": [], "degraded": False}
+
+    def plans(beats, durations=None, **_):
+        """What retrieval would return, without asking anyone: one beat that
+        wanted footage and found none, then a chart."""
+        out = []
+        for i, beat in enumerate(beats):
+            out.append({"id": i + 1, "beat": beat, "en": f"Line {i + 1}.",
+                        "needs": "a quiet street", "chosen": None,
+                        "graphic": None if i == 0 else {
+                            "kind": "counter", "value": 7.2, "unit": "%"},
+                        "composite": None, "graphic_notes": []})
+        return out
+
+    def plain(needs, target, seconds, size, grade, move_index=0):
+        subprocess.run([config_mod.FFMPEG, "-y", "-v", "error", "-f", "lavfi",
+                        "-i", f"color=c=0x556677:s={size[0]}x{size[1]}:r=30:"
+                              f"d={seconds:.3f}",
+                        "-c:v", "libx264", "-pix_fmt", "yuv420p", str(target)],
+                       check=True)
+        return target
+
+    saved = (footage_mod.select_footage, fr_mod.fill_shot, tts_mod.synth,
+             config_mod.ARK_API_KEY, config_mod.TTS_KEY)
+    try:
+        # Nothing here may reach a paid service, whatever the environment has.
+        config_mod.ARK_API_KEY, config_mod.TTS_KEY = "", ""
+        tts_mod.synth = tone
+        with tempfile.TemporaryDirectory() as tmp:
+            pieces = fb_mod.stage_voice(["第一句。", "第二句。"], Path(tmp),
+                                        speed=1.5)
+            index = fb_mod.voice_index(Path(tmp))
+            tail = fb_mod.paced(fb_mod.TAIL_PAD, 1.5)
+            suite.check("footage: the last beat carries no tail",
+                        abs(pieces[0][1] - index["1"]["duration"] - tail) < 1e-6
+                        and abs(pieces[1][1] - index["2"]["duration"]) < 1e-6,
+                        f"{pieces[0][1]:.2f}s and {pieces[1][1]:.2f}s")
+            suite.check("footage: the voice stage measures where speech is",
+                        index["1"].get("speech") is not None, str(index["1"]))
+
+        footage_mod.select_footage = plans
+        fr_mod.fill_shot = plain
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            script = work / "draftcheck.txt"
+            script.write_text("物价一直在涨。\n去年的通胀率，达到了百分之七点二，"
+                              "这是十年来最高的一次，比前年高出不少。",
+                              encoding="utf-8")
+            final, failures = fb_mod.build(
+                script, work / "out", grade="vintage", provider="commons",
+                hook="物价一直在涨", draft=True, draft_here=True)
+            draft_dir = work / "out" / "jianying" / "draftcheck"
+            rows = (fd_mod.check(work / "out", draft_dir)
+                    if (draft_dir / "draft_content.json").exists() else [])
+            suite.check("footage: an offline build writes an editable draft",
+                        failures == 0 and rows and all(ok for _, ok, _ in rows),
+                        "; ".join(f"{n}: {d}" for n, ok, d in rows if not ok)
+                        or f"{len(rows)} draft checks")
+            content = json.loads((draft_dir / "draft_content.json").read_text(
+                encoding="utf-8")) if draft_dir.exists() else {"tracks": []}
+            names = {t["name"]: len(t["segments"]) for t in content["tracks"]}
+            suite.check("footage: the draft carries the hook and the rule",
+                        names.get(fd_mod.HOOK) == 1 and names.get(fd_mod.RULE) == 1,
+                        str(names))
+            # A draft that does not match its timeline must fail the check -
+            # a check that cannot fail is not one.
+            if draft_dir.exists():
+                moved = json.loads(json.dumps(content))
+                picture = next(t for t in moved["tracks"]
+                               if t["name"] == fd_mod.PICTURE)
+                picture["segments"][-1]["target_timerange"]["start"] += 200000
+                (draft_dir / "draft_content.json").write_text(
+                    json.dumps(moved), encoding="utf-8")
+                broken = dict((n, ok) for n, ok, _ in
+                              fd_mod.check(work / "out", draft_dir))
+                suite.check("footage: the draft check notices a moved shot",
+                            broken.get("draft: every shot on its boundary") is False)
+    finally:
+        (footage_mod.select_footage, fr_mod.fill_shot, tts_mod.synth,
+         config_mod.ARK_API_KEY, config_mod.TTS_KEY) = saved

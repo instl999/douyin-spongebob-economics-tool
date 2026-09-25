@@ -27,7 +27,9 @@
 | `flat_geo` | 极简几何商务 | 扁平几何色块，剪影人物，科技商务风 | 3 角色 |
 
 画面按当句台词现画，不存素材库。每个画风只需要一次性画好「角色定妆参考图」
-（一个角色一张，约 20 秒/张）—— 这是唯一跨片子保留的图，靠它保证角色不走样：
+（一个角色一张，约 20 秒/张）—— 这是唯一跨片子保留的图，靠它保证角色不走样。
+比奇堡的 5 张已随仓库提交；其余 6 套画风各附 1 张，另外 2 个角色在第一次用到时
+自动补画（`new_project.py` 会报出张数）：
 
 ```bash
 python scripts/build_library.py clay --plates
@@ -58,13 +60,13 @@ python scripts/build_library.py clay --plates
 python scripts/new_project.py --list-styles                     # 列出全部画风
 python scripts/new_project.py --name demo --title "标题" \
     --script examples/sunk_cost.txt --cast clay                  # 用指定画风建项目
-python scripts/build_library.py clay --plates                   # 一次性生成某画风的全部素材
+python scripts/build_library.py clay --plates                   # 一次性画好某画风的角色定妆图和背景板
 python scripts/build.py --check                                 # 校验画风配置与全部 cast 文件
 ```
 
 ### 推荐：直接交给 Codex / Claude Code
 
-在 Codex 或 Claude Code 中直接打开本仓库，然后用自然语言描述文案、画风、横竖屏和目标时长即可，不需要额外封装。建议先让 Agent 阅读 `CLAUDE.md` 和本 README；第一次运行只做检查与离线测试，正式生成前先创建项目并报告预计生图数量。注意 `--preview` 也会先生成素材和配音，并不是免费预览。失败后从对应阶段续跑，避免重复生成和重复计费。
+在 Codex 或 Claude Code 中直接打开本仓库，然后用自然语言描述文案、画风、横竖屏和目标时长即可，不需要额外封装。建议先让 Agent 阅读 `CLAUDE.md` 和本 README；第一次运行只做检查与离线测试，正式生成前先创建项目并报告预计生图数量。`--preview` 只做规划（一次导演调用），不生图、不配音：还没画的素材用标注好的占位框代替，时长按估算，用来在花钱之前检查构图。失败后从对应阶段续跑，避免重复生成和重复计费。
 
 下面这些提示词可以直接复制给 Agent：
 
@@ -77,7 +79,7 @@ python scripts/build.py --check                                 # 校验画风�
 **从口播稿创建项目，先估算再生成**
 
 ```text
-把 examples/my_video.txt 做成“为什么工资越高反而效率越高”的科普视频项目，使用 clay 画风、竖屏、目标 60 秒。先用 new_project.py 创建项目，告诉我预计时长和生图数量；先不要运行 build.py 或 --preview。
+把 examples/my_video.txt 做成“为什么工资越高反而效率越高”的科普视频项目，使用 clay 画风、竖屏、目标 60 秒。先用 new_project.py 创建项目，告诉我预计时长和生图数量；再运行 --preview 看分镜预览（不生图、不配音），先不要正式构建。
 ```
 
 **完整生成视频和剪映草稿**
@@ -92,7 +94,7 @@ python scripts/build.py --check                                 # 校验画风�
 检查 out/my_video/plan.json 和质检结果，只修复构图拥挤或素材异常的镜头。能从 storyboard 或后续阶段重跑就不要重做素材；如果改成 watercolor_anime，先告诉我哪些参考图或镜头会重新计费。
 ```
 
-> 费用提醒：`scripts/selftest.py`、`scripts/build.py --check` 和 `new_project.py` 不触发生图费用；`build.py --preview` 会先执行素材生成与配音，可能产生费用。正式素材生成会计费。Agent Plan 不是免费额度，运行前请在火山方舟控制台确认当前价格与余额。
+> 费用提醒：`scripts/selftest.py`、`scripts/build.py --check` 和 `new_project.py` 不触发生图费用；`build.py --preview` 只调用一次导演（文本模型），不生图、不配音。正式素材生成会计费。Agent Plan 不是免费额度，运行前请在火山方舟控制台确认当前价格与余额。
 
 ---
 
@@ -159,10 +161,11 @@ crowds a character is a drag rather than another full run.
 | Resolution | 1920×1080 landscape or 1080×1920 portrait |
 | Frame rate | 30 fps |
 | Video | H.264, CRF 20 by default |
-| Audio | AAC 192 kbps — narration over a music bed chosen from your own library by mood, 20–25 dB under the voice |
+| Audio | AAC 192 kbps — narration over music chosen by mood from `assets/bgm` (or a folder of your own), a bed per section where the script turns, ducked under the voice; normalised to −17 LUFS |
 | Structure | title card → shots → closing card. The picture ends on the last subtitle; nothing is held after it |
 | Opening | whenever there is a title, the card is **read aloud** over a stinger at t=0; on by default, with no setting to turn the voice off |
-| Subtitles | burned into the MP4; a real editable subtitle track in the draft; `.srt` either way |
+| Subtitles | a phrase at a time, changing at the pauses the voice actually took; burned into the MP4, a real editable subtitle track in the draft, `.srt` either way |
+| Portrait | the phone app's own controls are kept clear — captions sit above them, labels stay left of the button column — and a title bar holds the video's question across the top |
 
 Six videos were produced during development: two art styles, both orientations,
 10 seconds to 2 minutes 44.
@@ -171,8 +174,11 @@ Six videos were produced during development: two art styles, both orientations,
 
 Tracks come out named and in order: `背景` (the plate and the two cards),
 `图层1…图层N` (one per simultaneous element, stacked in the renderer's own depth
-order), `配音` (narration: one clip per shot, plus one for the spoken title), `字幕`
-(subtitles, imported so they carry Jianying's native styling).
+order), `标题栏` (the portrait title bar), `文字` (labels and balloon words, as
+real text), `配音` (narration: one clip per shot, plus one for the spoken title),
+`音效` (the sound cues, at the levels the mix used), `配乐` (the music beds,
+faded and ducked under the voice with volume keyframes), `字幕` (subtitles,
+imported against a template carrying the MP4's fill, stroke and position).
 
 A build writes the draft into Jianying's own drafts folder, so the project
 simply appears in the app with nothing to copy by hand. The folder is found
@@ -247,7 +253,10 @@ in `.env`.
 
 A CJK font is needed for subtitles. On Windows this is found automatically
 (Microsoft YaHei Bold); elsewhere install Noto Sans CJK or PingFang and the
-lookup in `scripts/textkit.py` will pick it up.
+lookup in `scripts/textkit.py` will pick it up. The title and closing cards are
+lettered in Ma Shan Zheng, a brush face shipped in `assets/fonts/` under the SIL
+Open Font License; a card with a character it lacks is set in the subtitle
+font instead.
 
 Two checks confirm the install:
 
@@ -255,7 +264,8 @@ Two checks confirm the install:
   narration, every cast file, Python packages.
 - **`selftest.py`** — offline checks that spend nothing. They exercise the style
   registry, script splitting, the duration model, matting, layout repair,
-  rendering, mixing, draft export and verification, building a real MP4 from
+  captions, music, rendering, mixing, draft export and verification, the free
+  preview, and the footage track's build and draft, making real MP4s from
   synthetic assets. Run it after any
   edit, and whenever a build fails and it is not obvious whether the pipeline or
   the API is at fault.
@@ -269,9 +279,10 @@ Claude Code and describe the script, style, orientation and target duration in
 plain language. No wrapper is needed. Ask the agent to read `CLAUDE.md` and
 this README first, run only the checks and offline test on first setup, then
 create a project and report its image estimate before starting billed
-generation. Note that `--preview` generates assets and narration first, so it is
-not a free preview. After a failure, resume from the nearest reusable stage
-instead of regenerating successful assets.
+generation. `--preview` costs one director call and nothing else — drawings not
+made yet are labelled stand-ins and narration is estimated — so it is the place
+to check the composition before paying for it. After a failure, resume from the
+nearest reusable stage instead of regenerating successful assets.
 
 Copy-paste examples:
 
@@ -284,7 +295,7 @@ Read CLAUDE.md and README.md, install the dependencies, and run scripts/build.py
 **Create a project and estimate it first**
 
 ```text
-Turn examples/my_video.txt into an explainer titled “Why Higher Wages Can Raise Productivity”, using the clay style, portrait orientation, and a 60-second target. Use new_project.py to create the project and report its predicted duration and image count. Do not run build.py or --preview yet.
+Turn examples/my_video.txt into an explainer titled “Why Higher Wages Can Raise Productivity”, using the clay style, portrait orientation, and a 60-second target. Use new_project.py to create the project and report its predicted duration and image count, then run --preview for a free look at the planned shots. Do not start the full build yet.
 ```
 
 **Build the video and editable draft**
@@ -300,8 +311,8 @@ Inspect out/my_video/plan.json and the quality report. Repair only shots with cr
 ```
 
 > Cost note: `scripts/selftest.py`, `scripts/build.py --check`, and project
-> creation do not generate images. `build.py --preview` runs asset generation
-> and narration first, so it may incur charges. New generated assets are billed.
+> creation do not generate images. `build.py --preview` makes one director call
+> and nothing else. New generated assets are billed.
 > Agent Plan is not a free image allowance; check current pricing and balance in
 > the Ark console before a full build.
 
@@ -406,9 +417,12 @@ predicted result
   total       86.5s at 1.00x speed
 
 what this will generate
-  drawings    one per element, made for this script and not reused
+  drawings    about 15-30, one per element, made for this script and not reused
   background  reuse the cached plate
+  title card  one, its lettering read back by the vision model
+  setting     one more if the script names no place of its own
   narration   15 clips
+  images      16-32 in all, about 2-3 min at 4 at a time
 ```
 
 Exit code `2` means the requested length is not reachable from this script, and
@@ -420,13 +434,15 @@ it says by how many characters.
 python scripts/build.py projects/my_video.json --preview
 ```
 
-> `--preview` is not a free dry run: it completes the plan, asset-generation and
-> narration stages before writing the contact sheet. Use the estimate printed by
-> `new_project.py` to review the expected image count before running it.
+`--preview` runs straight after the plan and costs nothing else: drawings not
+made yet are labelled stand-ins the shape the real ones will be, and lines not
+spoken yet are timed by estimate. Run it again after a build and it shows the
+real drawings.
 
 `out/my_video/preview.jpg` is a contact sheet of every shot with its framing and
-duration. **Look at it.** Several real defects during development were caught
-here and nowhere else.
+duration, and in portrait the phone app's control zones outlined in red.
+**Look at it.** Several real defects during development were caught here and
+nowhere else.
 
 ### 4. Build
 
@@ -434,8 +450,9 @@ here and nowhere else.
 python scripts/build.py projects/my_video.json
 ```
 
-Seven stages run, then the finished file is checked automatically and a
-pass/fail table is printed.
+Eight stages run, then the finished file is checked automatically and a
+pass/fail table is printed. Drawings and narration are made four at a time
+(`workers` in the project, or `--workers N`).
 
 ### 5. Fix and re-run
 
@@ -681,7 +698,8 @@ Tall scenery framing the picture makes every character look small and lost.
 | Check the pipeline, offline and free | `python scripts/selftest.py` |
 | List every available style | `python scripts/new_project.py --list-styles` |
 | Create a project and see its cost | `python scripts/new_project.py --name … --title … --script … --cast <style key> --orientation …` |
-| Contact sheet of the shots | `python scripts/build.py <project> --preview` |
+| Contact sheet of the planned shots, free | `python scripts/build.py <project> --preview` |
+| Draw and speak N at a time | `python scripts/build.py <project> --workers N` |
 | Build (checks the result automatically) | `python scripts/build.py <project>` |
 | Build at another speed | `python scripts/build.py <project> --speed 1.2` |
 | Check a finished video on its own | `python scripts/verify.py <project> --verbose` |
@@ -693,6 +711,8 @@ Tall scenery framing the picture makes every character look small and lost.
 | Regenerate the sound-effect library | `python scripts/gen_sfx.py` |
 | Export the editable Jianying project | `python scripts/draft.py out/<name>` |
 | Check an exported draft | `python scripts/check_draft.py out/<name>` |
+| Build on the footage track | `python scripts/footage_build.py --script examples/<name>.txt` |
+| Export a footage build's draft | `python scripts/footage_draft.py out/<name>` |
 
 ### Stages
 
@@ -720,8 +740,8 @@ before it is reused.
 
 ## Quality control
 
-`verify.py` runs twelve checks and exits non-zero on failure, so it can gate a
-loop. It runs automatically at the end of every build.
+`verify.py` runs thirteen checks and exits non-zero on failure, so it can gate
+a loop. It runs automatically at the end of every build.
 
 | Check | Threshold |
 |---|---|
@@ -732,7 +752,8 @@ loop. It runs automatically at the end of every build.
 | Subtitle timing, fit | no overlaps, ends before the video does |
 | Sprite cutouts | nothing kept the whole frame or almost nothing |
 | Plan carried through | every field the plan decided reached the storyboard |
-| Shot layout | no collisions, nothing off-frame or in the caption band |
+| Composition | the foreground covers at least 7% of the frame |
+| Shot layout | no collisions, nothing off-frame, in the caption band or under the phone app's controls |
 
 The background check is the important one: it is the property the whole format
 rests on, and it is measured the same way the references were.
@@ -770,12 +791,17 @@ as a fault in the pipeline rather than in your input — because it is.
 | `layout.py` | Landscape/portrait geometry |
 | `timing.py` | Duration prediction and target fitting |
 | `ark.py` / `tts.py` | The two APIs, with retries |
-| `audio.py` | Narration track, music bed, SRT |
+| `audio.py` | Narration track, music beds and ducking, loudness, the voice's pauses, SRT |
+| `captions.py` | Cuts narration into captions a phrase at a time, and times them at the voice's pauses |
+| `music.py` | Chooses the beds by mood, one per section where the script turns |
+| `sfx.py` | Chooses the sound cues from each beat's meaning |
 | `draft.py` | Exports the editable Jianying project - the deliverable |
 | `check_draft.py` | Rebuilds the draft's frames from its own JSON and compares them to the render |
-| `verify.py` | The twelve checks |
-| `selftest.py` | Offline checks (style registry, matting, layout, draft export); needs no credentials |
-| `preview.py` | Contact sheet |
+| `verify.py` | The thirteen checks |
+| `selftest.py` | Offline checks, with `selftest_workflow.py`, `selftest_look.py` and `selftest_footage.py`; needs no credentials |
+| `preview.py` | Contact sheet, and the stand-ins that make `--preview` free |
+| `footage_build.py` | The footage track: retrieved and made shots, hard cuts, bilingual captions |
+| `footage_draft.py` | The footage track's editable Jianying project, from `timeline.json` |
 | `new_project.py` | Settings in, project file out, with a cost and length estimate |
 | `build_library.py` | Draw the one reference image each character needs |
 | `styles.py` | The art-style registry: which styles exist, which is default |
@@ -904,7 +930,9 @@ eighty-seven — and **coverage goes from 8–10% to 24%.**
 ### Sound is chosen from meaning, and never repeats while it can help it
 
 The library is 25 synthesised effects, rebuilt from one command
-(`python scripts/gen_sfx.py`), so there is no licensing question. The first
+(`python scripts/gen_sfx.py`), so there is no licensing question — plus the
+opening cue, which is supplied rather than synthesised and plays exactly as
+supplied, at unity gain. The first
 version had six, and they were the reason the sound did not fit: `ding`, `coin`
 and `pop` measured a spectral **flatness of 0.001–0.003**, which is to say they
 were pure sine tones, and `whoosh` was white noise ring-modulated by a sine, so
@@ -928,6 +956,11 @@ before anything repeats.
 
 Measured on the same video: **4 distinct sounds and 53% the same effect, to 12
 distinct and 13%.**
+
+Fewer, too. No two cues land closer than `sound.min_gap` (2.5 s at 1.0×), and
+where two compete the one about the sentence wins over the one about the cut —
+a punchline, then a reaction, then a transition. A swoosh on every cut and a
+reaction on every shot was nine cues in seventeen seconds; it is six now.
 
 ### Motion lives in the draft, never in the renderer
 
@@ -1005,12 +1038,15 @@ across eight shots, including an invented beat about a character running an
 experiment that appeared nowhere in the source. The narration is the user's
 product, so the model is not given the chance to touch it.
 
-### Sprites are generated once
+### Every picture is drawn for its video
 
-Character consistency across fifty shots is the hard problem in this format.
-Reusing a fixed library sidesteps it rather than fighting a prompt into
-behaving. The background plate is cached per cast too, so every episode in a
-series sits on the identical plate.
+There is no sprite library. Every drawing is generated for the line it
+illustrates and reused by nothing after that video; a shared library is what
+made every output look like the last one. Character consistency comes from one
+committed reference per character (`casts/<style>/anchors/`), which every
+drawing of that character is conditioned on — 98% palette match against 82%
+drawn from description alone. The background plate is cached per cast, so every
+episode in a series sits on the identical plate.
 
 ### Sprites are generated on magenta, not white
 
@@ -1106,7 +1142,8 @@ former plus the measured narration lengths.
 
 - **Word-level caption timing is not available.** The API returns an empty
   `sentence.words` array for this resource. Shot lengths are exact, measured
-  from the audio; captions are timed inside a shot by character count.
+  from the audio; inside a shot, captions change at the pauses measured in the
+  clip, and by length where it has none.
 - **Depth is banded.** Panels behind, hanging props, characters, foreground
   furniture — plus an explicit `z` when that is not enough. There is no
   per-pixel occlusion.
@@ -1127,9 +1164,10 @@ former plus the measured narration lengths.
   to confirm that.
 - **Element layers select as full-canvas boxes**, not tight around the artwork.
   See [The Jianying draft](#the-jianying-draft).
-- **Labels and balloons are pictures in the draft, not text objects.** They can
-  be moved, scaled and deleted, but not retyped — the styling is drawn by PIL
-  and Jianying has no equivalent. Subtitles *are* real text.
+- **Labels and balloon words are text in the draft, pictures in the MP4.** They
+  can be retyped in Jianying, but the MP4's are drawn by PIL, so the two can
+  differ slightly in weight and edge. `look.text.native_labels: false` exports
+  them as pictures instead, pixel-identical and not retypeable.
 
 ---
 
@@ -1142,7 +1180,7 @@ README.md                 this file
 casts/
   styles.json             the art-style registry - default style, labels, notes
   _template.json          annotated template for a new art style
-  bikini_bottom.json      cartoon cast: 5 characters, 26 props (the default)
+  bikini_bottom.json      cartoon cast: 5 characters (the default)
   watercolor_anime.json   watercolour anime cast: seaside town
   clay.json               claymation cast: snowy storybook forest
   neon_cyberpunk.json     cyberpunk cast: neon night city
@@ -1154,9 +1192,14 @@ examples/*.txt            narration scripts
 scripts/                  see "How it works"
 references/
   reference-findings.md   the frame-by-frame measurements the design rests on
+  footage-findings.md     the same for the footage track's references
+  director-brief.md       what the director is asked, and why
   storyboard-schema.md    every field in plan.json and storyboard.json
   api-notes.md            verified endpoint behaviour, and the errors that mislead
-assets/                   default music bed and sound effects
+assets/
+  bgm/                    the music library, labelled by mood (see its README)
+  sfx/                    sound effects, and the supplied opening cue
+  fonts/                  the brush face the cards are lettered in (OFL)
 out/                      generated; not tracked
   <name>/jianying/<name>/ the editable Jianying project - the deliverable
 ```
@@ -1170,8 +1213,8 @@ that.
 
 ## A note on generated artwork
 
-The sprite libraries are AI-generated in the style of existing animated
-properties. That is one thing for private use and study and another for
+The drawings and character references are AI-generated in the style of
+existing animated properties. That is one thing for private use and study and another for
 publication, so **check your own position before publishing videos made with the
 `bikini_bottom` cast commercially, or before making a repository containing
 those assets public**. The six other casts raise no such question, and the

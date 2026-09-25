@@ -44,6 +44,16 @@ FRAMING = _LOOK["framing"]
 # the bad one in red - so it is chosen by naming the meaning, not the colour.
 LABEL_TONES = {k: tuple(v) for k, v in _LOOK["label_tones"].items()}
 
+# A balloon's type, as a multiple of the label size. One number, because the
+# draft sets the same words as text over the balloon and has to size them the
+# way this does.
+BUBBLE_SIZE = 0.82
+
+# Where a wall's floor begins, in stage coordinates: a little above y = 0.97,
+# where feet land, so the characters stand on the floor rather than on the
+# skirting board.
+FLOOR_LINE = 0.93
+
 # Baseline fades, for a caller holding no storyboard. A Renderer takes its own
 # from the storyboard's `look` instead: build.py has already put those on the
 # video's clock, and a fade left at 1.0 in a 1.5x video is a subtitle still
@@ -208,6 +218,22 @@ def outline_against(plate, el, image, lay, options):
     return tuple(max(options, key=lambda o: _contrast(o, ink)))
 
 
+def panel_color_of(storyboard):
+    """The slab colour a storyboard carries, from where build.py writes it.
+
+    Under `video`, beside the rest of what the renderer needs. The draft
+    exporter, its checker, the verifier and the critic all read it from the
+    top level instead, found nothing, and drew every panel in the default
+    blue-grey - on the six styles whose panels are not that colour, the draft
+    disagreed with the MP4 on every walled shot and the checker, reading the
+    same wrong key, said they matched. The top level is still read, for a
+    storyboard written by hand.
+    """
+    colour = ((storyboard.get("video") or {}).get("panel_color")
+              or storyboard.get("panel_color"))
+    return tuple(int(c) for c in colour)[:3] if colour else None
+
+
 def plate_for(assets, name, lay):
     """The background image, covered and cropped to the frame.
 
@@ -238,8 +264,26 @@ def _paste(canvas, sprite, origin, opacity=1.0):
     canvas.alpha_composite(sprite, origin)
 
 
-def build_element_image(el, assets, lay, framing=1.0, panel_color=None):
-    """Return the RGBA image for one element, at final pixel size."""
+def text_width(el, lay):
+    """How wide one line of a label or balloon may run, in pixels.
+
+    A fraction of the frame's width, from the layout: portrait is 1080 wide,
+    and at landscape's fraction a balloon held five characters a line and
+    split 卖力 across two. An element's own `max_width` still wins.
+    """
+    key = "bubble_max_width" if el.get("type") == "bubble" else "label_max_width"
+    default = 0.24 if el.get("type") == "bubble" else 0.34
+    return int(lay.width * float(el.get("max_width",
+                                        lay.cfg.get(key, default))))
+
+
+def build_element_image(el, assets, lay, framing=1.0, panel_color=None,
+                        bare=False):
+    """Return the RGBA image for one element, at final pixel size.
+
+    `bare` draws a speech balloon without its words, for the draft, which
+    sets the words as editable text over it.
+    """
     kind = el.get("type", "sprite")
     if kind == "label":
         # The references colour labels by meaning, not decoration: green on the
@@ -251,19 +295,25 @@ def build_element_image(el, assets, lay, framing=1.0, panel_color=None):
             size=lay.label_font_px(el.get("size", 1.0)),
             fill=tuple(el.get("color", tone)) + (255,),
             stroke_fill=tuple(el.get("outline", (255, 255, 255))) + (255,),
-            max_width=int(lay.width * el.get("max_width", 0.34)))
+            max_width=text_width(el, lay))
     if kind == "panel":
+        # The floor meets the wall just behind where the characters' feet
+        # land, so they stand on the floor in front of it.
+        height = el.get("ph", 0.3) * lay.height
+        top = lay.height - int(max(1, height))
+        feet = lay.stage_y + lay.stage_h * FLOOR_LINE
         return textkit.render_panel(
-            el.get("w", 0.4) * lay.width, el.get("ph", 0.3) * lay.height,
+            el.get("w", 0.4) * lay.width, height,
             fill=tuple(el.get("color", panel_color or (176, 196, 205))),
-            alpha=int(el.get("alpha", 235)),
-            radius=int(el.get("radius", 0) * lay.width))
+            alpha=int(el.get("alpha", 255)),
+            radius=int(el.get("radius", 0) * lay.width),
+            floor_top=feet - top if feet > top else None)
     if kind == "bubble":
         return textkit.render_bubble(
             el["text"],
-            size=lay.label_font_px(el.get("size", 0.82)),
-            max_width=int(lay.width * el.get("max_width", 0.24)),
-            tail=el.get("tail", "left"))
+            size=lay.label_font_px(el.get("size", BUBBLE_SIZE)),
+            max_width=text_width(el, lay),
+            tail=el.get("tail", "left"), words=not bare)
     image = assets.sized(
         el["asset"],
         lay.sprite_height(el.get("h", 0.4) * framing * el.get("rel", 1.0)))
@@ -275,17 +325,46 @@ def build_element_image(el, assets, lay, framing=1.0, panel_color=None):
     return image
 
 
-def compose_plate(scene, background, assets, lay, panel_color=None):
+def chrome_for(storyboard, lay):
+    """The fixed title bar a storyboard asks for, as a canvas-sized RGBA, or None.
+
+    Drawn over every shot and never over the cards, on top of the elements
+    and under the caption - it is the frame's furniture, not part of a scene.
+    One function for the renderer, the draft and its checker, so all three
+    draw the same bar.
+    """
+    text = ((storyboard.get("title_bar") or {}).get("text") or "").strip()
+    if not text:
+        return None
+    look = styles_mod.look(carried=(storyboard.get("video") or {}).get("look"))
+    style = look.get("title_bar") or {}
+    return textkit.render_title_bar(
+        lay.size, text, top=float(style.get("top", 0.035)),
+        height=float(style.get("height", 0.062)),
+        fill=tuple(style.get("fill", (255, 214, 0))),
+        ink=tuple(style.get("ink", (22, 22, 22))),
+        size=float(style.get("size", 0.056)),
+        radius=float(style.get("radius", 0.018)),
+        margin=float(style.get("margin", 0.04)))
+
+
+def compose_plate(scene, background, assets, lay, panel_color=None,
+                  bare_bubbles=False, chrome=None):
     """Background plus every element of one shot, as an RGB uint8 array.
 
     Elements that appear part-way through the shot are drawn here at full
     opacity as well; the frame loop fades them in over this plate.
+    `bare_bubbles` draws balloons without their words - what the draft's
+    picture layers hold, with the words set over them as text. `chrome` is
+    the title bar, laid over everything.
     """
     canvas = background.copy()
     framing = FRAMING.get(scene.get("framing", "medium"), 1.0)
     for el in scene.get("elements", []):
         try:
-            img = build_element_image(el, assets, lay, framing, panel_color)
+            img = build_element_image(
+                el, assets, lay, framing, panel_color,
+                bare=bare_bubbles and el.get("type") == "bubble")
         except FileNotFoundError as exc:
             # One deleted PNG should cost one element, not the whole render -
             # this runs after the storyboard, the narration and the artwork are
@@ -295,10 +374,13 @@ def compose_plate(scene, background, assets, lay, panel_color=None):
         if img is None:
             continue
         _paste(canvas, img, element_origin(el, img, lay))
+    if chrome is not None:
+        canvas.alpha_composite(chrome)
     return np.asarray(canvas.convert("RGB"), dtype=np.uint8)
 
 
-def compose_partial(scene, background, assets, lay, opacities, panel_color=None):
+def compose_partial(scene, background, assets, lay, opacities, panel_color=None,
+                    chrome=None):
     """Plate with per-element opacity - only used while something is arriving."""
     canvas = background.copy()
     framing = FRAMING.get(scene.get("framing", "medium"), 1.0)
@@ -313,6 +395,8 @@ def compose_partial(scene, background, assets, lay, opacities, panel_color=None)
         if img is None:
             continue
         _paste(canvas, img, element_origin(el, img, lay), opacity)
+    if chrome is not None:
+        canvas.alpha_composite(chrome)
     return np.asarray(canvas.convert("RGB"), dtype=np.uint8)
 
 
@@ -336,7 +420,8 @@ def compose_card(card, lay, assets=None):
 
     text = card.get("text", "")
     size = int(lay.width * card.get("size", 0.072))
-    if card.get("style") == "title":
+    title = card.get("style") == "title"
+    if title:
         # The references open on red lettering with a grey copy behind it.
         fill = tuple(card.get("color", (222, 28, 28))) + (255,)
         offset = (int(size * 0.06), int(size * 0.06))
@@ -344,10 +429,15 @@ def compose_card(card, lay, assets=None):
     else:
         fill = tuple(card.get("color", (255, 255, 255))) + (255,)
         offset, offset_fill = None, (150, 150, 150, 255)
+    # Both cards are brush lettering in the references - the red title and the
+    # white closing line with its keyword in gold, glowing. The drawn fallback
+    # used to be the bold sans the captions use, which read as a slide title.
     layer = textkit.render_card(
-        (W, H), text, size=size, max_width=int(W * 0.84),
+        (W, H), text, size=size,
+        max_width=int(W * float(card.get("max_width", 0.84))),
         highlight=card.get("highlight"), fill=fill,
-        stroke=max(3, size // 18), offset=offset, offset_fill=offset_fill)
+        stroke=max(3, size // 18), offset=offset, offset_fill=offset_fill,
+        face=card.get("face", "brush"), glow=not title)
     canvas.alpha_composite(layer)
     return np.asarray(canvas.convert("RGB"), dtype=np.uint8)
 
@@ -421,6 +511,20 @@ def scene_captions(scene, duration):
     return spans
 
 
+def brush_reveal(plate, progress, edge=0.12):
+    """`plate` revealed left to right up to `progress`, over black.
+
+    A soft edge rather than a hard line, and eased, so the lettering reads as
+    brushed on. Only the few frames of the wipe pay for it.
+    """
+    progress = smoothstep(progress)
+    width = plate.shape[1]
+    x = np.arange(width, dtype=np.float32) / width
+    reach = progress * (1.0 + edge)
+    alpha = np.clip((reach - x) / edge, 0.0, 1.0)[None, :, None]
+    return (plate.astype(np.float32) * alpha).astype(np.uint8)
+
+
 # --- the frame stream ------------------------------------------------------
 
 class Renderer:
@@ -435,12 +539,16 @@ class Renderer:
         pace = self.look.get("timing") or {}
         self.caption_fade = float(pace.get("caption_fade", CAPTION_FADE))
         self.element_fade = float(pace.get("element_fade", ELEMENT_FADE))
+        # Already on the video's clock, like the fades: build.py paces the
+        # whole `timing` block before it is carried.
+        self.title_wipe = float(pace.get("title_wipe", 0.0))
         # Carried in the storyboard rather than looked up from the cast, so a
         # storyboard renders on its own without the cast file being present.
-        self.panel_color = tuple(cfg.get("panel_color") or (176, 196, 205))
+        self.panel_color = panel_color_of(storyboard) or (176, 196, 205)
         self.assets = Assets(self.workdir)
         bg_name = cfg.get("background", "background.png")
         self.background = plate_for(self.assets, bg_name, self.lay)
+        self.chrome = chrome_for(storyboard, self.lay)
         self._plates = {}
         self._captions = {}
         self._frame_cache = {}
@@ -454,7 +562,7 @@ class Renderer:
             if segment.kind == "scene":
                 self._plates[key] = compose_plate(
                     segment.data, self.background, self.assets, self.lay,
-                    self.panel_color)
+                    self.panel_color, chrome=self.chrome)
             else:
                 self._plates[key] = compose_card(segment.data, self.lay, self.assets)
         return self._plates[key]
@@ -506,11 +614,20 @@ class Renderer:
         seg = self._segment_at(t, segments)
         local_t = t - seg.start
 
-        # Dissolve into this segment from the previous one.
+        # Dissolve into this segment from the previous one - unless the
+        # storyboard marked it a cut, which it does when the same character
+        # is in both shots: dissolved, they show twice at two sizes.
         blend = None
-        if self.dissolve > 0 and local_t < self.dissolve and seg.pos > 0:
+        if (self.dissolve > 0 and local_t < self.dissolve and seg.pos > 0
+                and seg.data.get("transition") != "cut"):
             prev = segments[seg.pos - 1]
             blend = (prev, smoothstep(local_t / self.dissolve))
+
+        # The opening title is brushed on rather than sitting there complete.
+        wipe = None
+        if seg.kind == "title" and self.title_wipe > 0 \
+                and local_t < self.title_wipe:
+            wipe = local_t / self.title_wipe
 
         opacities = (self._element_opacities(seg.data, local_t)
                      if seg.kind == "scene" else None)
@@ -526,7 +643,7 @@ class Renderer:
                     break
 
         # Hold frames repeat; cache them by everything that can vary.
-        cacheable = blend is None and opacities is None and (
+        cacheable = blend is None and opacities is None and wipe is None and (
             caption is None or caption[2] >= 0.999)
         key = (seg.kind, seg.index, caption[0] if caption else None,
                caption[1] if caption else None)
@@ -535,9 +652,12 @@ class Renderer:
 
         if opacities is not None:
             base = compose_partial(seg.data, self.background, self.assets,
-                                   self.lay, opacities, self.panel_color)
+                                   self.lay, opacities, self.panel_color,
+                                   chrome=self.chrome)
         else:
             base = self.plate(seg)
+        if wipe is not None:
+            base = brush_reveal(base, wipe)
 
         if blend is not None:
             prev_seg, k = blend

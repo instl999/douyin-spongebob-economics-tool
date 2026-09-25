@@ -106,7 +106,7 @@ def run(project, limit=None, verbose=False):
         project / video.get("background", "background.png")).convert("RGBA")
     if background.size != lay.size:
         background = background.resize(lay.size, Image.LANCZOS)
-    panel_color = sb.get("panel_color")
+    panel_color = render_mod.panel_color_of(sb)
 
     scenes = sb.get("scenes", [])[:limit] if limit else sb.get("scenes", [])
     weak, unclear = [], 0

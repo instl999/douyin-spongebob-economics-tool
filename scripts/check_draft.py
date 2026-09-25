@@ -185,13 +185,17 @@ def keyframed(segment, offset_us):
     return out
 
 
-def rebuild(draft_dir, t_us, materials, W, H):
-    """The frame the draft describes at `t_us`, composited from scratch."""
+def rebuild(draft_dir, t_us, materials, W, H, skip=()):
+    """The frame the draft describes at `t_us`, composited from scratch.
+
+    `skip` names video tracks to leave out - the title bar, which does not
+    move with a camera push and would make a correct one look wrong.
+    """
     content = json.loads((draft_dir / "draft_content.json").read_text(
         encoding="utf-8"))
     canvas = Image.new("RGBA", (W, H), (0, 0, 0, 255))
     for track in content["tracks"]:
-        if track["type"] != "video":
+        if track["type"] != "video" or track.get("name") in skip:
             continue
         seg = _covering(track, t_us)
         if seg is None:
@@ -255,6 +259,7 @@ def compare(project, draft_dir):
     native_labels = bool((look.get("text") or {}).get("native_labels", True))
     durations = [float(s.get("duration", 3.0)) for s in sb.get("scenes", [])]
     segments, _ = render_mod.build_timeline(sb, durations)
+    chrome = render_mod.chrome_for(sb, lay)
     diffs = []
     for seg in segments:
         if seg.kind != "scene":
@@ -279,12 +284,16 @@ def compare(project, draft_dir):
         # arrived yet has to come out of the comparison, or a correct draft is
         # reported broken. Same reason labels come out when they are exported
         # as text: these are the two places the outputs legitimately differ.
+        # A balloon keeps its picture on a video layer and only its words go
+        # to text, so it stays in - drawn empty, as the draft holds it.
         scene = dict(seg.data, elements=[
             el for el in seg.data.get("elements", [])
-            if not (native_labels and el.get("type") in ("label", "bubble"))
+            if not (native_labels and el.get("type") == "label")
             and not float(el.get("appear", 0.0) or 0.0) > 0.0])
         want = render_mod.compose_plate(scene, background, assets, lay,
-                                        sb.get("panel_color"))
+                                        render_mod.panel_color_of(sb),
+                                        bare_bubbles=native_labels,
+                                        chrome=chrome)
         diffs.append((seg.data.get("id", seg.index + 1),
                       float(np.abs(got - np.asarray(want, dtype=np.int16)).mean())))
     return diffs or None
@@ -460,8 +469,10 @@ def main():
                     for sg in tr["segments"]
                     if sg["target_timerange"]["start"] == start
                     and sg.get("common_keyframes"))
-        first = rebuild(draft_dir, start + 1000, materials, W, H)
-        last = rebuild(draft_dir, start + span - 1000, materials, W, H)
+        still = ("标题栏",)
+        first = rebuild(draft_dir, start + 1000, materials, W, H, skip=still)
+        last = rebuild(draft_dir, start + span - 1000, materials, W, H,
+                       skip=still)
         zoom = 1.0 + float(motion.get("push_in", 0.05))
         grown = Image.fromarray(np.uint8(np.clip(first, 0, 255))).resize(
             (round(W * zoom), round(H * zoom)), Image.LANCZOS)
@@ -505,7 +516,21 @@ def main():
     print(f"  {'ok ' if not late else 'FAIL'} {len(cues)} sound cue(s), "
           f"all inside the video")
 
-    # 8. tracks that should exist
+    # 8. the music the mix used. The bed used to be chosen inside the mix and
+    #    never reach the draft at all, so the deliverable was silent under its
+    #    narration while the preview beside it had music.
+    beds = [bed for bed in (sb.get("music") or {}).get("beds") or []
+            if Path(bed["path"]).exists()]
+    laid = [seg for tr in content["tracks"]
+            if tr["type"] == "audio" and str(tr.get("name", "")).startswith("配乐")
+            for seg in tr["segments"]]
+    if beds and not laid:
+        failures.append(f"{len(beds)} music bed(s) in the storyboard, none in "
+                        "the draft")
+    print(f"  {'ok ' if laid or not beds else 'FAIL'} {len(beds)} music bed(s), "
+          f"{len(laid)} segment(s) on the music track")
+
+    # 9. tracks that should exist
     names = {tr.get("name") for tr in content["tracks"]}
     for wanted, why in (("背景", "background"), ("配音", "narration"),
                         ("字幕", "subtitles")):

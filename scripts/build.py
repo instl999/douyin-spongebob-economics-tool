@@ -44,6 +44,31 @@ def log(message=""):
     print(message, flush=True)
 
 
+# How many drawings and narration clips are in flight at once, and the most a
+# project may ask for. Past a handful the service only answers 429 sooner.
+DEFAULT_WORKERS = 4
+MAX_WORKERS = 8
+
+
+def _concurrently(jobs, work, workers):
+    """Yield (job, result, error) for each job as it finishes, `workers` at once.
+
+    Ctrl+C cancels whatever has not started instead of sitting through the
+    rest of the queue; a call already in flight finishes and writes its file.
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    pool = ThreadPoolExecutor(max_workers=max(1, int(workers)))
+    try:
+        running = {pool.submit(work, job): job for job in jobs}
+        for future in as_completed(running):
+            try:
+                yield running[future], future.result(), None
+            except Exception as exc:                  # reported by the caller
+                yield running[future], None, exc
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
+
+
 class Project:
     def __init__(self, path, out_override=None):
         self.path = Path(path).resolve()
@@ -125,6 +150,21 @@ class Project:
         import timing
         self._speed = timing.clamp(value)
 
+    @property
+    def workers(self):
+        """How many drawings are made, and lines spoken, at the same time.
+
+        Each is a network call that spends nearly all its time waiting on the
+        service, so made one after another a twenty-drawing video waited in
+        line for seven minutes. 1 goes back to strictly one at a time; the
+        services' own rate limits are met by the retries in ark and tts.
+        """
+        try:
+            wanted = int(self.get("workers", DEFAULT_WORKERS))
+        except (TypeError, ValueError):
+            wanted = DEFAULT_WORKERS
+        return max(1, min(MAX_WORKERS, wanted))
+
     def seconds(self, key, default):
         """A configured duration in timeline time.
 
@@ -197,7 +237,22 @@ def stage_plan(project, force=False):
     target = project.out / "plan.json"
     if target.exists() and not force:
         log("  plan.json already present - reusing")
-        return json.loads(target.read_text(encoding="utf-8-sig"))
+        plan = json.loads(target.read_text(encoding="utf-8-sig"))
+        # A person editing a drawing's `shows` is asking for it to be drawn
+        # again, and the filename that decides whether it is was only ever
+        # computed when the director answered. Re-derived here, so the edit
+        # reaches the assets stage as a new file instead of "already here".
+        changes = plan_mod.refresh_drawings(plan, project.cast)
+        for line in changes:
+            log(f"  ~ {line}")
+        if changes:
+            target.write_text(json.dumps(plan, ensure_ascii=False, indent=2),
+                              encoding="utf-8")
+        missing = [d["asset"] for d in plan.get("drawings") or []
+                   if not (project.out / d["asset"]).exists()]
+        log(f"  {len(plan.get('drawings') or [])} drawings in the plan, "
+            f"{len(missing)} not drawn yet")
+        return plan
 
     cast = project.cast
     shot_seconds = float(project.get("shot_seconds", 5.0))
@@ -224,6 +279,39 @@ def stage_plan(project, force=False):
     return result
 
 
+def stage_preview(project, plan):
+    """A contact sheet of the planned shots, before anything is paid for.
+
+    `--preview` used to run the assets and voice stages first - every picture
+    and every line, which is the whole bill - to show a sheet whose point was
+    to catch a bad composition before paying for one. Now it runs straight
+    after the plan. A drawing already made is used as it is; one not made yet
+    is a labelled stand-in the shape the real one will be. A line already
+    spoken is timed by its clip; one not spoken yet, by estimate.
+    """
+    import copy
+    import preview as preview_mod
+
+    plan = copy.deepcopy(plan)
+    folder = project.out / "preview"
+    real, standing = preview_mod.stand_ins(project, plan, folder)
+    index_path = project.out / "voice" / "index.json"
+    index = (json.loads(index_path.read_text(encoding="utf-8-sig"))
+             if index_path.exists() else {})
+    spoken = sum(1 for i in range(1, len(plan["scenes"]) + 1)
+                 if (index.get(str(i)) or {}).get("duration")
+                 and not (index.get(str(i)) or {}).get("degraded"))
+    storyboard, _, total = stage_storyboard(project, plan, index, out=folder)
+    sheet = preview_mod.contact_sheet(storyboard, folder,
+                                      project.out / "preview.jpg",
+                                      columns=3, thumb_width=640)
+    log(f"  {len(storyboard['scenes'])} shots, about {total:.1f}s")
+    log(f"  drawings: {real} made, {standing} shown as stand-ins")
+    log(f"  narration: {spoken}/{len(plan['scenes'])} lines spoken, "
+        f"the rest timed by estimate")
+    return sheet
+
+
 def stage_assets(project, plan, force=False):
     cast = project.cast
     lay = project.layout
@@ -248,16 +336,20 @@ def stage_assets(project, plan, force=False):
                 f"{name} will be drawn from description alone")
 
     drawings = plan.get("drawings") or []
-    failed = []
-    for i, spec in enumerate(drawings, 1):
-        try:
-            _, made = library.build_drawing(spec, project.out,
-                                            assets_mod.SPRITE_SIZE, force=force)
-        except Exception as exc:
-            failed.append((spec["asset"], f"{type(exc).__name__}: {exc}"))
+    failed, finished = [], 0
+
+    def draw(spec):
+        return library.build_drawing(spec, project.out, assets_mod.SPRITE_SIZE,
+                                     force=force)
+
+    # Several at a time: each is twenty seconds of waiting on the service.
+    for spec, result, error in _concurrently(drawings, draw, project.workers):
+        finished += 1
+        if error is not None:
+            failed.append((spec["asset"], f"{type(error).__name__}: {error}"))
             continue
-        log(f"  [{i}/{len(drawings)}] {spec['asset']}  "
-            f"{'drawn' if made else 'already here'}")
+        log(f"  [{finished}/{len(drawings)}] {spec['asset']}  "
+            f"{'drawn' if result[1] else 'already here'}")
     for name, err in failed:
         log(f"  ! {name}: {err}")
     title_text = project.get("title") or plan.get("title") or ""
@@ -465,11 +557,19 @@ def stage_voice(project, plan, force=False, speed=None):
             title_text, [s["narration"] for s in plan["scenes"]]):
         log("  title voice skipped: the script's opening already says it")
         title_text = ""
-    jobs = [("title", title_text)] if title_text else []
-    jobs += [(str(i), scene["narration"])
+    # Each line's feeling, in the speech service's own words - opt-in, since
+    # only some speakers take one. The director writes `beat.emotion` for the
+    # pictures and the sound cues; `voice.emotion: true` lets the voice hear
+    # it too. The title is read plainly.
+    feel = bool(voice.get("emotion"))
+    jobs = [("title", title_text, None)] if title_text else []
+    jobs += [(str(i), scene["narration"],
+              tts_mod.emotion_for((scene.get("beat") or {}).get("emotion"))
+              if feel else None)
              for i, scene in enumerate(plan["scenes"], 1)]
 
-    for key, text in jobs:
+    todo = []
+    for key, text, emotion in jobs:
         cached = index.get(key)
         # A shot that fell back to silence is cached like any other, so without
         # this a transient network fault becomes a permanent hole: every later
@@ -483,29 +583,81 @@ def stage_voice(project, plan, force=False, speed=None):
         # would report eight cached shots and look entirely successful.
         was = float(cached.get("speed", 1.0)) if cached else speed
         respeed = abs(was - speed) > 1e-6
-        if (cached and not stale and not respeed and cached.get("text") == text
+        # The same for the feeling it was read with: turning emotion on is a
+        # request to hear the lines read differently.
+        refeel = bool(cached) and (cached.get("emotion") or "") != (emotion or "")
+        if (cached and not stale and not respeed and not refeel
+                and cached.get("text") == text
                 and Path(cached["path"]).exists()):
+            # A clip spoken before its pauses were measured is measured now:
+            # it is a local read of a file already paid for.
+            if key != "title" and "speech" not in cached and not cached.get(
+                    "degraded"):
+                _measure_speech(cached, speed)
             continue
         label = "title" if key == "title" else f"shot {key}"
         if stale:
             log(f"  {label}: retrying (was silent from an earlier failure)")
         elif respeed and cached and cached.get("text") == text:
             log(f"  {label}: re-reading at {speed:.2f}x (was {was:.2f}x)")
+        elif refeel and cached.get("text") == text:
+            log(f"  {label}: re-reading {emotion or 'neutrally'}")
         out = project.out / "voice" / (
             "title.mp3" if key == "title" else f"scene_{int(key):02d}.mp3")
+        todo.append((key, text, emotion, out, label))
+
+    def speak(job):
+        """One line, read. Returns (index entry, things to report)."""
+        key, text, emotion, out, _label = job
+        notes = []
         try:
-            result = tts_mod.synth(text, out, speaker=speaker, speed=speed)
+            try:
+                result = tts_mod.synth(text, out, speaker=speaker, speed=speed,
+                                       emotion=emotion)
+            except tts_mod.TTSError as exc:
+                if not emotion:
+                    raise
+                # A speaker without that emotion refuses the whole line. The
+                # line matters more than the feeling, so it is read plainly.
+                notes.append(f"{emotion} refused ({exc}); read without it")
+                result = tts_mod.synth(text, out, speaker=speaker, speed=speed)
+                result["refused"] = True
         except tts_mod.TTSError as exc:
-            log(f"  ! {label}: {exc}")
-            log("    falling back to an estimated duration for this shot")
+            notes.append(str(exc))
+            notes.append("falling back to an estimated duration for this shot")
             result = tts_mod._silent(text, out, speed)
-        if result["degraded"]:
+        entry = {"text": text, "path": str(result["path"]),
+                 "duration": result["duration"], "speed": speed,
+                 "words": result["words"], "degraded": result["degraded"]}
+        # Recorded as asked for, so a refusal is not asked again every run.
+        if emotion:
+            entry["emotion"] = emotion
+            if result.get("refused"):
+                entry["emotion_refused"] = True
+        if key != "title" and not result["degraded"]:
+            _measure_speech(entry, speed)
+        return entry, notes
+
+    # Several lines at a time, like the drawings: each is mostly waiting.
+    for job, done_, error in _concurrently(todo, speak, project.workers):
+        key, label = job[0], job[4]
+        if error is not None:
+            raise error
+        entry, notes = done_
+        for note in notes:
+            log(f"  ! {label}: {note}")
+        if entry["degraded"]:
             degraded += 1
-        index[key] = {"text": text, "path": str(result["path"]),
-                      "duration": result["duration"], "speed": speed,
-                      "words": result["words"], "degraded": result["degraded"]}
-        log(f"  {label:>8}: {result['duration']:5.2f}s"
-            f"{'  (estimated - no TTS)' if result['degraded'] else ''}")
+        index[key] = entry
+        # Written as each line lands, not once at the end: an interrupted run
+        # keeps the clips it already paid for.
+        index_path.write_text(json.dumps(index, ensure_ascii=False, indent=2),
+                              encoding="utf-8")
+        feeling = ("" if entry.get("emotion_refused")
+                   else entry.get("emotion") or "")
+        log(f"  {label:>8}: {entry['duration']:5.2f}s"
+            f"{'  (estimated - no TTS)' if entry['degraded'] else ''}"
+            f"{'  ' + feeling if feeling else ''}")
 
     index_path.write_text(json.dumps(index, ensure_ascii=False, indent=2),
                           encoding="utf-8")
@@ -515,6 +667,20 @@ def stage_voice(project, plan, force=False, speed=None):
                        "`--from voice` to fill just those shots")
         log(f"  ! {degraded} shot(s) have no real narration - {reason}")
     return index
+
+
+def _measure_speech(entry, speed):
+    """Record where the voice is in one clip: onset, offset and its pauses.
+
+    Captions change at these pauses instead of at a guess from character
+    counts, and labels arrive when their words are heard. Nothing is recorded
+    when the clip cannot be read - the captions then fall back to the guess.
+    """
+    measured = audio_mod.speech_pauses(entry["path"], speed)
+    if measured:
+        onset, offset, pauses = measured
+        entry["speech"] = [onset, offset]
+        entry["pauses"] = [list(p) for p in pauses]
 
 
 # A shot shorter than this has no room for anything to arrive; the element
@@ -528,6 +694,10 @@ STAGGER_MIN_SHOT = 3.6
 # expressed in the only clock that matters here.
 STAGGER_FRACTION = 0.26
 STAGGER_MAX = 1.4
+# A label heard late in its shot still arrives with time left to read it.
+STAGGER_LATEST = 0.7
+# ...and one heard at once still arrives a beat in, not on the cut.
+STAGGER_EARLIEST = 0.2
 
 
 def _paced_look(look, speed):
@@ -544,7 +714,7 @@ def _paced_look(look, speed):
     return paced
 
 
-def _plate(project, plan):
+def _plate(project, plan, out=None):
     """Which image the whole video sits on: the script's own room, or the cast's.
 
     A generated setting is the *plate*, not a prop. The first version made it a
@@ -561,7 +731,7 @@ def _plate(project, plan):
     if not project.get("fallback_setting", True) or not (
             plan.get("setting") or "").strip():
         return "background.png"
-    if (project.out / "setting.png").is_file():
+    if ((out or project.out) / "setting.png").is_file():
         return "setting.png"
     # The plan asked for a room and there is no room: generation failed, or an
     # earlier stage was skipped past. Falling back to the cast plate is right,
@@ -570,7 +740,7 @@ def _plate(project, plan):
     return "background.png"
 
 
-def _stagger(elements, duration, speed=1.0):
+def _stagger(elements, duration, speed=1.0, narration="", timed=()):
     """Let the emphasis text arrive rather than being there from the start.
 
     `appear` has existed since the first renderer, is faded in over
@@ -579,9 +749,14 @@ def _stagger(elements, duration, speed=1.0):
     nothing developing in it. The director can still set it deliberately; this
     guarantees the floor, because the measurement says asking has not worked.
 
+    A label whose words the narration says arrives as they are said - found in
+    `timed`, the shot's captions as `captions.spans` timed them against the
+    voice. Anything else arrives a quarter of the way in.
+
     Only labels and balloons, and only when there is more than one thing on
     screen: a lone label that is not there yet is an empty frame.
     """
+    import captions as captions_mod
     import timing
     if duration < timing.scale(STAGGER_MIN_SHOT, speed):
         return
@@ -591,10 +766,19 @@ def _stagger(elements, duration, speed=1.0):
     when = round(min(timing.scale(STAGGER_MAX, speed),
                      duration * STAGGER_FRACTION), 2)
     for el in text:
-        el.setdefault("appear", when)
+        if "appear" in el:
+            continue
+        heard = (captions_mod.spoken_at(el.get("text"), narration, timed)
+                 if el.get("type") == "label" else None)
+        if heard is None:
+            el["appear"] = when
+            continue
+        el["appear"] = round(min(max(heard, timing.scale(STAGGER_EARLIEST,
+                                                         speed)),
+                                 duration * STAGGER_LATEST), 2)
 
 
-def _ink(storyboard, project, lay, look):
+def _ink(storyboard, project, lay, look, out=None):
     """Pick each label's outline from the plate it will sit on.
 
     Decided once, here, and written into the storyboard - the same way `look`
@@ -621,10 +805,11 @@ def _ink(storyboard, project, lay, look):
         return
 
     name = (storyboard.get("video") or {}).get("background")
-    if not name or not (project.out / name).is_file():
+    folder = out or project.out
+    if not name or not (folder / name).is_file():
         return
     options = [tuple(look["caption"]["fill"]), tuple(look["caption"]["stroke_fill"])]
-    assets = render_mod.Assets(project.out)
+    assets = render_mod.Assets(folder)
     plate = render_mod.plate_for(assets, name, lay)
     for el in labels:
         image = render_mod.build_element_image(el, assets, lay)
@@ -632,8 +817,16 @@ def _ink(storyboard, project, lay, look):
             plate, el, image, lay, options))
 
 
-def stage_storyboard(project, plan, voice_index):
+def stage_storyboard(project, plan, voice_index, out=None):
+    """Shots, cards, cues and music as one timeline, written to storyboard.json.
+
+    `out` is where the drawings are read from and the storyboard written to:
+    the project's own folder, or the free preview's, whose drawings are the
+    real ones where they exist and stand-ins where they do not.
+    """
+    import captions as captions_mod
     import timing
+    out = Path(out) if out else project.out
     lay = project.layout
     speed = project.speed
     # The look's own durations are baseline seconds like everything else, and
@@ -707,16 +900,22 @@ def stage_storyboard(project, plan, voice_index):
         built = {"id": i, "subtitle": scene["narration"],
                  "framing": scene.get("framing", "medium"),
                  "elements": scene["elements"], "duration": duration}
-        _stagger(built["elements"], duration, speed)
+        # One line per caption, changing at the pauses the voice took.
+        timed = captions_mod.spans(
+            scene["narration"], duration, lay.subtitle_font_px(),
+            lay.subtitle_max_px, speech=entry.get("speech"),
+            pauses=entry.get("pauses") or ())
+        _stagger(built["elements"], duration, speed,
+                 narration=scene["narration"], timed=timed)
         # The director's reading of the sentence carries through. Sound cues
         # are chosen from the emotion and the action, and without this the
         # storyboard - which is all the cue planner sees - would have nothing
         # to choose on but which props happen to be present.
         if scene.get("beat"):
             built["beat"] = scene["beat"]
-        spans = _caption_spans(scene["narration"], duration)
-        built["captions"] = [{"text": t, "start": s, "end": e} for s, e, t in spans]
-        for s, e, t in spans:
+        built["captions"] = [{"text": t, "start": s, "end": e}
+                             for s, e, t, _, _ in timed]
+        for s, e, t, _, _ in timed:
             srt.append((clock + s, clock + e, t))
         scenes.append(built)
         clock += duration
@@ -728,13 +927,20 @@ def stage_storyboard(project, plan, voice_index):
         pieces.append((None, ending_seconds))
         clock += ending_seconds
 
+    # A shot that shares a character with the one before it cuts in rather
+    # than dissolving: dissolved, the character shows twice, at two sizes.
+    if look.get("cut_on_shared_character", True):
+        for before, after in zip(scenes, scenes[1:]):
+            if _characters(before) & _characters(after):
+                after["transition"] = "cut"
+
     storyboard = {
         "video": {
             "orientation": (project.get("orientation")
                             or styles_mod.default_orientation()),
             "width": lay.width, "height": lay.height,
             "fps": int(project.get("fps", 30)),
-            "background": _plate(project, plan),
+            "background": _plate(project, plan, out),
             # A project's own `dissolve` is written at the baseline like the
             # style's, so it goes through the same division; the style's has
             # already had it applied by `_paced_look`.
@@ -756,10 +962,15 @@ def stage_storyboard(project, plan, voice_index):
         },
         "scenes": scenes,
     }
+    # Card sizes come from the orientation: a title at 0.082 of the width
+    # is right across 1920 pixels and small across 1080.
+    card_width = float(lay.cfg.get("card_max_width", 0.84))
     if title_text:
         storyboard["title_card"] = {
             "text": title_text, "duration": title_seconds, "style": "title",
-            "size": float(project.get("title_size", 0.082))}
+            "size": float(project.get("title_size",
+                                      lay.cfg.get("title_size", 0.095))),
+            "max_width": card_width}
         # `voice` is a decision, and it is written either way - `null` rather
         # than an absent key - so a storyboard says plainly that a title is
         # deliberately silent instead of leaving a reader to wonder whether
@@ -778,24 +989,34 @@ def stage_storyboard(project, plan, voice_index):
             # 0.45s in while the MP4's sat at 0.30s.
             storyboard["title_card"]["lead"] = lead
         card_image = plan.get("_title_card_image")
-        if card_image and (project.out / card_image).exists():
+        if card_image and (out / card_image).exists():
             storyboard["title_card"]["image"] = card_image
     if ending_text:
-        storyboard["ending_card"] = {"text": ending_text,
-                                     "highlight": ending.get("highlight"),
-                                     "duration": ending_seconds,
-                                     "size": float(project.get("ending_size", 0.062))}
+        storyboard["ending_card"] = {
+            "text": ending_text, "highlight": ending.get("highlight"),
+            "duration": ending_seconds,
+            "size": float(project.get("ending_size",
+                                      lay.cfg.get("ending_size", 0.07))),
+            "max_width": card_width}
+    # The question the video answers, held across the top of every shot where
+    # the layout asks for it (portrait). A project's `title_bar` names other
+    # words, or false turns it off.
+    bar = project.get("title_bar")
+    if bar is None or bar is True:
+        bar = title_text if (bar is True or lay.cfg.get("title_bar")) else ""
+    if bar and str(bar).strip():
+        storyboard["title_bar"] = {"text": str(bar).strip()}
 
     # Sprite sizes are only knowable now the PNGs exist, so collisions are
     # found and spread apart here rather than guessed at by the director.
     import checks as checks_mod
     import render as render_mod
     findings = checks_mod.inspect(
-        storyboard, render_mod.Assets(project.out), lay, repair=True)
+        storyboard, render_mod.Assets(out), lay, repair=True)
     for line in findings:
         log(f"  {line}")
 
-    _ink(storyboard, project, lay, look)
+    _ink(storyboard, project, lay, look, out)
 
     # Cues are planned last, after both cards are attached and after the
     # layout repair has moved things. Planned any earlier, build_timeline sees
@@ -803,17 +1024,17 @@ def stage_storyboard(project, plan, voice_index):
     # never placed at all - which is precisely the kind of silent, plausible
     # wrongness this pipeline is full of traps for.
     import sfx as sfx_mod
-    storyboard["sound_cues"] = [
-        [round(when, 3), name] for when, name, _ in sfx_mod.plan(
-            storyboard, [s["duration"] for s in scenes],
-            cast=project.cast, look=look)]
-
     # The title card's stinger is a cue at t=0 like any other, recorded here
     # rather than laid into the mix separately. `carried` is read by BOTH the
     # mix and the draft writer, so a cue that lives anywhere else is a cue the
     # two can disagree about - which is the failure the cue list was moved onto
     # the storyboard to prevent in the first place.
     opening = project.get("opening_sfx", OPENING_SFX)
+    stinger = bool(title_text and opening and opening in sfx_mod.library())
+    storyboard["sound_cues"] = [
+        [round(when, 3), name] for when, name, _ in sfx_mod.plan(
+            storyboard, [s["duration"] for s in scenes],
+            cast=project.cast, look=look, taken=[0.0] if stinger else [])]
     for name, (paths, winner) in sfx_mod.duplicate_cues().items():
         others = ", ".join(p.name for p in paths if p != winner)
         log(f"  ! cue '{name}' exists more than once; using {winner.name} "
@@ -824,57 +1045,134 @@ def stage_storyboard(project, plan, voice_index):
         # stand-in that merely resembles it is worse than saying it is missing.
         log(f"  ! opening cue '{opening}' is not in assets/sfx - the video "
             f"will open without one")
-    if title_text and opening and opening in sfx_mod.library():
+    if stinger:
         storyboard["sound_cues"].insert(
             0, [0.0, opening, float(project.get("opening_volume", OPENING_GAIN))])
 
-    (project.out / "storyboard.json").write_text(
+    # The music is decided here and carried, like the cues: the mix and the
+    # draft both lay it from this record. The draft used to have no music at
+    # all - the bed was chosen inside the mix and nothing else ever saw it.
+    storyboard["music"] = _music(project, plan, storyboard, clock)
+
+    (out / "storyboard.json").write_text(
         json.dumps(storyboard, ensure_ascii=False, indent=2), encoding="utf-8")
-    audio_mod.write_srt(srt, project.out / f"{project.name}.srt")
+    audio_mod.write_srt(srt, out / f"{project.name}.srt")
     return storyboard, pieces, clock
 
 
-def _caption_spans(text, duration):
-    """Split a shot's narration into on-screen captions timed by length."""
-    parts, buf = [], ""
-    for ch in text:
-        buf += ch
-        if ch in "。！？；!?;" and len(buf.strip()) >= 10:
-            parts.append(buf.strip())
-            buf = ""
-    if buf.strip():
-        parts.append(buf.strip())
-    if not parts:
-        return []
-    if len(parts) == 1:
-        return [(0.0, duration, parts[0])]
-    weights = [max(1, len(p)) for p in parts]
-    total = sum(weights)
-    spans, cursor = [], 0.0
-    for part, w in zip(parts, weights):
-        span = duration * w / total
-        spans.append((cursor, cursor + span, part))
-        cursor += span
-    return spans
+def _characters(scene):
+    """The cast members a shot shows, by name."""
+    names = set()
+    for el in scene.get("elements") or []:
+        if el.get("who"):
+            names |= set(el["who"])
+        elif el.get("asset") and not el["asset"].startswith(("prop_", "duo_")):
+            names.add(el["asset"].split("_", 1)[0])
+    return names
+
+
+def _music(project, plan, storyboard, total):
+    """Which beds run under the video, where, and how loud. Decided once.
+
+    `bgm` in the project names one track and is not second-guessed; empty
+    means no music. Otherwise the director's sections, when it marked any,
+    each get the bed that fits their own mood and place, crossfading at the
+    boundary - and a script with no sections gets one bed start to finish.
+    """
+    import music as music_mod
+    import render as render_mod
+    duck = bool(project.get("duck_music", True))
+    volume = float(project.get(
+        "bgm_volume",
+        audio_mod.BGM_DUCKED_VOLUME if duck else audio_mod.BGM_VOLUME))
+    named = project.get("bgm", None)
+    if named is not None:
+        # Present and empty is how a project has always said "no music", and
+        # it stays a choice rather than an invitation to search a folder.
+        chosen = _resolve(named) if named else None
+        path = chosen if chosen and chosen.exists() else None
+        beds = ([{"path": str(path), "start": 0.0, "end": round(total, 3),
+                  "fade_in": music_mod.FADE_IN,
+                  "fade_out": music_mod.FADE_OUT}] if path else [])
+        why = path.name if path else "none (set by the project)"
+    else:
+        segments, _ = render_mod.build_timeline(
+            storyboard, [s["duration"] for s in storyboard["scenes"]])
+        starts = {seg.data.get("id"): seg.start for seg in segments
+                  if seg.kind == "scene"}
+        beds, why = music_mod.plan_beds(
+            _resolve(project.get("bgm_library"), ROOT / "assets" / "bgm"),
+            project.script, plan.get("mood") or (), plan.get("sections") or (),
+            starts=starts, total=total,
+            fallback=ROOT / "assets" / "bgm_default.wav")
+    log(f"  music: {why}")
+    return {"volume": volume, "duck": duck, "beds": beds}
+
+
+# The code that decides what a frame looks like. A change to any of these is a
+# different picture from the same storyboard, so it is part of what a cached
+# render was made from.
+RENDER_SOURCES = ("render.py", "textkit.py", "layout.py")
+
+
+def render_fingerprint(project, storyboard):
+    """Everything the mute render was made from, as one short hash.
+
+    The storyboard, every file it points at, and the renderer's own code. A
+    cached render used to be reused whenever it existed and was readable, so
+    an edited plan re-derived its storyboard and its draft and then shipped
+    the old picture: moving a character and changing a label produced a
+    byte-identical MP4, a draft that disagreed with it, and a check that said
+    the two matched because it compared the draft with the storyboard.
+    """
+    import hashlib
+    digest = hashlib.sha256(json.dumps(
+        storyboard, sort_keys=True, ensure_ascii=False).encode("utf-8"))
+    video = storyboard.get("video") or {}
+    names = {video.get("background", "background.png")}
+    for scene in storyboard.get("scenes") or []:
+        names |= {el["asset"] for el in scene.get("elements") or []
+                  if el.get("asset")}
+    for key in ("title_card", "ending_card"):
+        image = (storyboard.get(key) or {}).get("image")
+        if image:
+            names.add(image)
+    for name in sorted(names):
+        path = project.out / name
+        if path.exists():
+            stat = path.stat()
+            digest.update(f"{name}:{stat.st_size}:{stat.st_mtime_ns}".encode())
+        else:
+            digest.update(f"{name}:missing".encode())
+    here = Path(__file__).resolve().parent
+    for source in RENDER_SOURCES:
+        digest.update((here / source).read_bytes())
+    return digest.hexdigest()[:16]
 
 
 def stage_render(project, storyboard, force=False):
     import render as render_mod
     target = project.out / "video_mute.mp4"
+    record = project.out / "video_mute.json"
+    fingerprint = render_fingerprint(project, storyboard)
     if target.exists() and not force:
+        try:
+            made_from = json.loads(record.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            made_from = {}
         # Atomic writes stop an interrupted run leaving a truncated file, but a
         # cached render can still be damaged by something outside this process.
         # One ffprobe is cheap, and turns `moov atom not found` three stages
         # later into a line that says what happened and fixes itself.
-        expected = sum(s["duration"] for s in
-                       json.loads((project.out / "storyboard.json").read_text(
-                           encoding="utf-8")).get("scenes", [])) if (
-                       project.out / "storyboard.json").exists() else 0
+        expected = sum(s["duration"] for s in storyboard.get("scenes", []))
         readable = tts_mod.probe_duration(target)
-        if readable > 0 and (not expected or readable >= expected * 0.5):
-            log("  video_mute.mp4 already present - reusing")
+        current = made_from.get("fingerprint") == fingerprint
+        if current and readable > 0 and readable >= expected * 0.5:
+            log("  video_mute.mp4 is current - reusing")
             return target
-        log(f"  video_mute.mp4 is unreadable or truncated "
+        log("  video_mute.mp4 was made from a different storyboard - "
+            "rendering it again" if readable > 0 and not current else
+            f"  video_mute.mp4 is unreadable or truncated "
             f"({readable:.1f}s on disk) - rendering it again")
         target.unlink(missing_ok=True)
     durations = [s["duration"] for s in storyboard["scenes"]]
@@ -894,6 +1192,10 @@ def stage_render(project, storyboard, force=False):
 
     with Atomic(target) as partial:
         total, frames = renderer.render(partial, durations, progress=progress)
+    # Written only once the render has landed, so an interrupted run leaves
+    # a record that matches nothing rather than one vouching for a half file.
+    record.write_text(json.dumps({"fingerprint": fingerprint}),
+                      encoding="utf-8")
     if live:
         print()
     log(f"  {frames} frames / {total:.1f}s rendered in {time.time() - started:.1f}s")
@@ -908,40 +1210,36 @@ def _resolve(value, default=None):
     return path if path.is_absolute() else ROOT / path
 
 
-def stage_audio(project, pieces, total, storyboard=None, script="", moods=()):
-    import music as music_mod
+def stage_audio(project, pieces, total, storyboard):
+    """Narration, the beds the storyboard chose, and its cues, in one mix.
+
+    Normalised to `audio.TARGET_LUFS`, the band the references measure in, so
+    a series plays back at one level whatever the voice service hands over.
+    The drawn track used to be limited only, and came out as loud as that
+    day's narration happened to be. A project's `"loudness": null` restores
+    that.
+    """
+    import sfx as sfx_mod
 
     narration = audio_mod.build_narration(pieces, project.out / "narration.wav")
-    # `bgm` names one track and is not second-guessed; `bgm_library` is a
-    # folder to choose from. Neither set means the library at its default
-    # location, falling back to the single bed that has always shipped.
-    named = project.get("bgm", None)
-    if named is not None:
-        # Present and empty is how a project has always said "no music", and
-        # it stays a choice rather than an invitation to search a folder.
-        chosen = _resolve(named) if named else None
-        bgm = chosen if chosen and chosen.exists() else None
-        log(f"  music: {bgm.name if bgm else 'none (set by the project)'}")
-    else:
-        bgm, why = music_mod.choose(
-            _resolve(project.get("bgm_library"), ROOT / "assets" / "bgm"),
-            script, moods, fallback=ROOT / "assets" / "bgm_default.wav")
-        log(f"  music: {why}")
-    cues = []
-    if storyboard is not None:
-        import sfx as sfx_mod
-        cues = sfx_mod.carried(storyboard)
-        if cues:
-            log(f"  {len(cues)} sound cue(s): {sfx_mod.describe(cues)}")
+    music = storyboard.get("music") or {}
+    beds = music.get("beds") or []
+    log(f"  music: {len(beds)} bed(s)"
+        + (", ducked under the voice" if beds and music.get("duck") else ""))
+    cues = sfx_mod.carried(storyboard)
+    if cues:
+        log(f"  {len(cues)} sound cue(s): {sfx_mod.describe(cues)}")
 
+    loudness = project.get("loudness", audio_mod.TARGET_LUFS)
     track = project.out / "audio.wav"
     with Atomic(track) as partial:
-        audio_mod.mix(narration, partial, total, bgm=bgm,
-                      bgm_volume=float(project.get("bgm_volume",
-                                                   audio_mod.BGM_VOLUME)),
+        audio_mod.mix(narration, partial, total, beds=beds,
+                      bgm_volume=float(music.get("volume", audio_mod.BGM_VOLUME)),
+                      duck=bool(music.get("duck")),
                       cues=cues,
                       cue_volume=float(project.get(
-                          "sfx_volume", project.look["sound"].get("gain", 0.34))))
+                          "sfx_volume", project.look["sound"].get("gain", 0.34))),
+                      loudness=None if loudness is None else float(loudness))
     return track
 
 
@@ -995,7 +1293,9 @@ def report_usage(log=log):
     log(f"  api: {', '.join(parts)}")
     if t["retries"]:
         log(f"       {t['retries']} narration retry/retries were needed")
-    log(f"       {a['seconds'] + t['seconds']:.0f}s waiting on the service")
+    # Summed over every call, and calls run several at once - so this can
+    # exceed the wall clock, and says what the service spent, not the run.
+    log(f"       {a['seconds'] + t['seconds']:.0f}s of calls to the service")
 
 
 def tidy(project, log=log):
@@ -1119,7 +1419,9 @@ def run_build():
     ap.add_argument("--no-verify", action="store_true",
                     help="skip the automatic check of the finished file")
     ap.add_argument("--preview", action="store_true",
-                    help="write a contact sheet of the shots and stop")
+                    help="write a contact sheet of the planned shots and stop. "
+                         "Free: runs after the plan, and anything not drawn "
+                         "or spoken yet is a labelled stand-in or an estimate")
     ap.add_argument("--no-draft", action="store_true",
                     help="skip the editable Jianying project, leaving only the mp4")
     ap.add_argument("--draft-here", action="store_true",
@@ -1129,6 +1431,10 @@ def run_build():
                     help="how fast the whole video runs - narration, shots, "
                          "cards and subtitles together. 1.0 is natural pace; "
                          f"the project's own `speed`, else {timing.DEFAULT_SPEED}")
+    ap.add_argument("--workers", type=int, default=None, metavar="N",
+                    help="drawings and narration clips made at once "
+                         f"(the project's `workers`, else {DEFAULT_WORKERS}; "
+                         "1 is one at a time)")
     args = ap.parse_args()
 
     if args.check or not args.project:
@@ -1146,6 +1452,8 @@ def run_build():
         # what pace it wants, and two answers to one question is how the voice
         # and the picture came to disagree in the first place.
         project.data["speed"] = args.speed
+    if args.workers is not None:
+        project.data["workers"] = args.workers
     # --from names one stage to redo, not everything downstream. Later
     # stages have their own caches - assets fingerprint each prompt, voice
     # keys on the text - so they re-derive exactly what actually changed.
@@ -1211,9 +1519,21 @@ def run_build():
            f" ({estimate['total'] * speed:.1f}s at 1.00x)"))
     if fit and not fit["ok"]:
         log(f"  ! {fit['note']}")
+    # Checked here and after assets as well as after every later stage. It
+    # used to be checked from voice onward only, so `--stop-after plan` - the
+    # way to read the plan before paying for it - went on to draw every
+    # picture and speak every line, which is the whole bill.
+    if args.preview:
+        log("\npreview")
+        log(f"\npreview: {stage_preview(project, plan)}")
+        return 0
+    if done("plan"):
+        return 0
 
     log("\n[2/8] assets")
     stage_assets(project, plan, force=should("assets"))
+    if done("assets"):
+        return 0
 
     log("\n[3/8] voice")
     voice_index = stage_voice(project, plan, force=should("voice"), speed=speed)
@@ -1224,12 +1544,6 @@ def run_build():
     storyboard, pieces, total = stage_storyboard(project, plan, voice_index)
     log(f"  {len(storyboard['scenes'])} shots, {total:.1f}s total")
 
-    if args.preview:
-        import preview as preview_mod
-        sheet = preview_mod.contact_sheet(storyboard, project.out,
-                                          project.out / "preview.jpg")
-        log(f"\npreview: {sheet}")
-        return 0
     if done("storyboard"):
         return 0
 
@@ -1239,8 +1553,7 @@ def run_build():
         return 0
 
     log("\n[6/8] audio")
-    track = stage_audio(project, pieces, total, storyboard,
-                        script=project.script, moods=plan.get("mood", ()))
+    track = stage_audio(project, pieces, total, storyboard)
     if done("audio"):
         return 0
 

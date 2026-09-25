@@ -76,8 +76,52 @@ def _overlap(a, b):
     return dx * dy if dx > 0 and dy > 0 else 0.0
 
 
-def _place_text(scene, assets, lay, framing, W, H, caption_top):
-    """Keep text off faces, and on the boards that exist to carry it.
+def ceiling_for(storyboard, lay):
+    """The highest pixel row anything may reach: under the title bar, or 0."""
+    if not ((storyboard.get("title_bar") or {}).get("text") or "").strip():
+        return 0
+    look = styles_mod.look(carried=(storyboard.get("video") or {}).get("look"))
+    bar = look.get("title_bar") or {}
+    return int(lay.height * (float(bar.get("top", 0.035))
+                             + float(bar.get("height", 0.062)) + 0.012))
+
+
+# How far a label may float above the thing it names before it is brought
+# down to sit on it, as a fraction of the frame's height, and the gap it keeps
+# above that thing once it is there.
+LABEL_DRIFT = 0.10
+LABEL_GAP = 0.02
+
+
+def _subject(el, blockers, box, H):
+    """The box of the sprite a label names, and so belongs above, or None.
+
+    Named outright by `for`, when the director says which character the label
+    is about. Otherwise only a label the director already put over something
+    counts - centred above a sprite and floating well clear of it - because
+    moving a label that names an idea onto the nearest character would say
+    something the sentence does not.
+    """
+    wanted = (el.get("for") or "").strip()
+    if wanted:
+        for other, obox in blockers:
+            if wanted in (other.get("who") or []) or \
+                    (other.get("asset") or "").startswith(wanted + "_"):
+                return obox
+    if el.get("type") != "label":
+        return None
+    centre = (box[0] + box[2]) / 2
+    under = [obox for _, obox in blockers
+             if obox[0] <= centre <= obox[2] and obox[1] > box[3]]
+    if not under:
+        return None
+    nearest = min(under, key=lambda b: b[1] - box[3])
+    return nearest if nearest[1] - box[3] > LABEL_DRIFT * H else None
+
+
+def _place_text(scene, assets, lay, framing, W, H, caption_top,
+                ceiling=0, right=None):
+    """Keep text off faces, on the boards that carry it, and by what it names.
 
     Measured across five finished videos, 15% of labels landed on top of a
     sprite - one covered 91% of a character. The fix is not "never overlap":
@@ -86,8 +130,16 @@ def _place_text(scene, assets, lay, framing, W, H, caption_top):
     that prop's centre, which is better than where the director put it. Text on
     a character is moved to the nearest free spot, searched outward from where
     the director wanted it so the association with the subject survives.
-    """
 
+    A label is also brought down to what it names. The references put labels
+    beside the thing they name; the director's floated in the empty sky half
+    a frame above it. One that names a character (`for`), or that sits over a
+    sprite and well clear of it, now sits just above that sprite's head.
+
+    `ceiling` is the highest row text may reach - under the title bar - and
+    `right` the furthest right, short of a phone's button column.
+    """
+    right = W if right is None else right
     findings = []
     elements = scene.get("elements", [])
 
@@ -104,6 +156,7 @@ def _place_text(scene, assets, lay, framing, W, H, caption_top):
             blockers.append((el, box))
 
     margin = W * SIDE_MARGIN
+    top_limit = max(margin, ceiling)
     for el in elements:
         box = _text_extent(el, assets, lay, framing)
         if not box:
@@ -132,10 +185,23 @@ def _place_text(scene, assets, lay, framing, W, H, caption_top):
             findings.append(
                 f"shot {scene.get('id','?')}: {el.get('text','')!r} could not go "
                 f"on {_name(best_surface[0])} - somebody is standing in front of it")
+        else:
+            subject = _subject(el, blockers, box, H)
+            if subject is not None:
+                cx = (subject[0] + subject[2]) / 2
+                cy = subject[1] - LABEL_GAP * H - th / 2
+                if cy - th / 2 >= top_limit:
+                    box = [cx - tw / 2, cy - th / 2, cx + tw / 2, cy + th / 2]
+                    el["x"] = round((cx - lay.stage_x) / lay.stage_w, 4)
+                    el["y"] = round((cy - lay.stage_y) / lay.stage_h, 4)
+                    el["anchor"] = "center"
+                    findings.append(f"shot {scene.get('id','?')}: "
+                                    f"{el.get('text','')!r} brought down to "
+                                    "what it names")
 
         clashing = sum(_overlap(box, b) for _, b in blockers)
-        in_frame = (box[0] >= margin and box[2] <= W - margin
-                    and box[1] >= margin and box[3] <= caption_top)
+        in_frame = (box[0] >= margin and box[2] <= right - margin
+                    and box[1] >= top_limit and box[3] <= caption_top)
         if clashing <= 0.02 * tw * th and in_frame:
             continue
 
@@ -148,8 +214,8 @@ def _place_text(scene, assets, lay, framing, W, H, caption_top):
                     for sign_x in ((-1, 1) if dx else (1,)):
                         cx, cy = cx0 + sign_x * dx, cy0 + sign_y * dy
                         cand = [cx - tw / 2, cy - th / 2, cx + tw / 2, cy + th / 2]
-                        if (cand[0] < margin or cand[2] > W - margin
-                                or cand[1] < margin or cand[3] > caption_top):
+                        if (cand[0] < margin or cand[2] > right - margin
+                                or cand[1] < top_limit or cand[3] > caption_top):
                             continue
                         hit = sum(_overlap(cand, b) for _, b in blockers)
                         if hit > 0:
@@ -180,8 +246,13 @@ def _place_text(scene, assets, lay, framing, W, H, caption_top):
     return findings
 
 
-def _repair_scene(scene, assets, lay, framing, W):
-    """One repair pass over one shot. Returns what it changed."""
+def _repair_scene(scene, assets, lay, framing, W, ceiling=0, right=None):
+    """One repair pass over one shot. Returns what it changed.
+
+    `right` is the furthest right a sprite may reach - short of a phone's
+    button column in portrait - and `ceiling` the highest, under a title bar.
+    """
+    right = W if right is None else right
     findings = []
     elements = scene.get("elements", [])
     sprites = [(el, box) for el, box in
@@ -190,7 +261,7 @@ def _repair_scene(scene, assets, lay, framing, W):
         return findings
 
     # 1. Nothing may be wider than the frame. Placement cannot fix size.
-    limit = W * (1.0 - 2 * SIDE_MARGIN)
+    limit = right - 2 * W * SIDE_MARGIN
     for el, box in sprites:
         width = box[2] - box[0]
         if width <= limit:
@@ -212,10 +283,10 @@ def _repair_scene(scene, assets, lay, framing, W):
     # ground line means.
     for el, box in sprites:
         top = box[1]
-        if top >= -EDGE_TOLERANCE * lay.height:
+        if top >= (ceiling or -EDGE_TOLERANCE * lay.height):
             continue
         height = box[3] - box[1]
-        room = box[3] - TOP_MARGIN * lay.height
+        room = box[3] - max(TOP_MARGIN * lay.height, ceiling)
         if height <= 0 or room <= 0:
             continue
         shrink = room / height
@@ -236,7 +307,7 @@ def _repair_scene(scene, assets, lay, framing, W):
     margin = W * SIDE_MARGIN
     for el, box in floating:
         shift = (margin - box[0]) if box[0] < margin else (
-            (W - margin) - box[2] if box[2] > W - margin else 0.0)
+            (right - margin) - box[2] if box[2] > right - margin else 0.0)
         if shift:
             el["x"] = round(el.get("x", 0.5) + shift / W, 4)
             box[0] += shift
@@ -248,12 +319,14 @@ def _repair_scene(scene, assets, lay, framing, W):
     if len(standing) >= 1:
         gaps = REPAIR_GAP * W * max(0, len(standing) - 1)
         needed = sum(box[2] - box[0] for _, box in standing) + gaps
-        available = W * (1.0 - 2 * SIDE_MARGIN)
+        available = right - 2 * W * SIDE_MARGIN
         overlapping = any(
             standing[i + 1][1][0] - standing[i][1][2] < MIN_GAP * W
             for i in range(len(standing) - 1))
-        off_frame = any(box[0] < -EDGE_TOLERANCE * W
-                        or box[2] > W + EDGE_TOLERANCE * W
+        # Leaning off the frame's edge is tolerated; running under the
+        # buttons drawn over it is not - that part is simply not seen.
+        reach = W + EDGE_TOLERANCE * W if right >= W else right
+        off_frame = any(box[0] < -EDGE_TOLERANCE * W or box[2] > reach
                         for _, box in standing)
         # Only intervene when something is wrong. The director's placement
         # carries intent - a character at 0.30 with the prop they are using at
@@ -284,8 +357,10 @@ def _repair_scene(scene, assets, lay, framing, W):
     return findings
 
 
-def _report_scene(scene, assets, lay, framing, W, H, caption_top):
+def _report_scene(scene, assets, lay, framing, W, H, caption_top, ceiling=0,
+                  right=None):
     """What is still wrong with one shot, changing nothing."""
+    right = W if right is None else right
     findings = []
     sid = scene.get("id", "?")
     elements = scene.get("elements", [])
@@ -307,8 +382,14 @@ def _report_scene(scene, assets, lay, framing, W, H, caption_top):
         if box[0] < -EDGE_TOLERANCE * W or box[2] > W + EDGE_TOLERANCE * W:
             findings.append(f"shot {sid}: {_name(el)} runs off the side "
                             f"(x {box[0]:.0f}..{box[2]:.0f} of {W})")
+        elif right < W and box[2] > right + 1:
+            findings.append(f"shot {sid}: {_name(el)} runs under the app's "
+                            f"buttons (x to {box[2]:.0f}, clear to {right})")
         if box[1] < -EDGE_TOLERANCE * H:
             findings.append(f"shot {sid}: {_name(el)} is cut off at the top")
+        elif ceiling and box[1] < ceiling - 1:
+            findings.append(f"shot {sid}: {_name(el)} reaches under the "
+                            f"title bar")
         if el.get("anchor", "bottom") != "bottom" and box[3] > caption_top:
             findings.append(f"shot {sid}: {_name(el)} hangs into the caption")
 
@@ -323,6 +404,12 @@ def _report_scene(scene, assets, lay, framing, W, H, caption_top):
         if tbox[3] > caption_top:
             findings.append(f"shot {sid}: the {el['type']} "
                             f"{el.get('text','')!r} sits in the caption band")
+        if ceiling and tbox[1] < ceiling - 1:
+            findings.append(f"shot {sid}: the {el['type']} "
+                            f"{el.get('text','')!r} sits under the title bar")
+        if right < W and tbox[2] > right + 1:
+            findings.append(f"shot {sid}: the {el['type']} "
+                            f"{el.get('text','')!r} runs under the app's buttons")
         area = max(1.0, (tbox[2] - tbox[0]) * (tbox[3] - tbox[1]))
         for b_el, b in blockers:
             covered = _overlap(tbox, b) / area
@@ -344,22 +431,25 @@ def inspect(storyboard, assets, lay, repair=True):
 
     W, H = lay.size
     caption_top = lay.subtitle_center_y - lay.subtitle_font_px() * 1.1
+    ceiling = ceiling_for(storyboard, lay)
+    right = W - lay.safe_right_px
     findings = []
 
     for scene in storyboard.get("scenes", []):
         framing = render_mod.FRAMING.get(scene.get("framing", "medium"), 1.0)
         if repair:
             for _ in range(MAX_PASSES):
-                changed = _repair_scene(scene, assets, lay, framing, W)
+                changed = _repair_scene(scene, assets, lay, framing, W,
+                                        ceiling, right)
                 findings.extend(changed)
                 if not changed:
                     break
             # Text goes last: it is placed around wherever the sprites ended
             # up, so it has to run after the row is final.
             findings.extend(_place_text(scene, assets, lay, framing, W, H,
-                                        caption_top))
+                                        caption_top, ceiling, right))
         findings.extend(_report_scene(scene, assets, lay, framing, W, H,
-                                      caption_top))
+                                      caption_top, ceiling, right))
     return findings
 
 

@@ -75,6 +75,9 @@ PALETTES = {
 # stays square because it is anchored to the axis.
 FILL_GAP = 2
 END_RADIUS = 4
+# A figure printed inside a breakdown segment keeps this much of the frame's
+# width clear on either side, or it is printed with the segment's label instead.
+FIGURE_INSET = 0.008
 
 # The references do not put their graphics on a flat fill. Every backdrop in
 # the Mach video is a soft radial gradient, brighter in the middle, and a flat
@@ -125,6 +128,12 @@ def backdrop(size, base):
 BUILD_FRACTION = 0.55
 # Bars, points and nodes come in one after another rather than together.
 STAGGER = 0.18
+# A flow's tokens: up to this many on each arrow at once, no closer together
+# than FLOW_SPACING of the frame's long side, each crossing its arrow this many
+# times over the hold after the build.
+FLOW_TOKENS = 3
+FLOW_SPACING = 0.06
+FLOW_LAPS = 2
 
 # Everything a graphic draws stays inside this band. The bottom fifth of the
 # frame belongs to the subtitles - Chinese centred on scanline 975 of 1080 with
@@ -133,6 +142,13 @@ STAGGER = 0.18
 # may cross SAFE_BOTTOM.
 SAFE_TOP = 0.10
 SAFE_BOTTOM = 0.78
+# A portrait frame is watched inside the phone app, whose own text and buttons
+# cover the bottom fifth of the screen, so its captions sit above them - and
+# the graphics have to stop above the captions. Measured off
+# `footage_render.caption_layout`: a Chinese line with its English under it,
+# kept clear of the app, starts at 0.726 of the height, and with two lines of
+# English at 0.703. A selftest holds the two together.
+SAFE_BOTTOM_PORTRAIT = 0.69
 
 # How far the composition drifts across a shot, in pixels of an oversized
 # canvas. Small enough that nobody reads it as a camera move, large enough that
@@ -140,16 +156,21 @@ SAFE_BOTTOM = 0.78
 DRIFT = 12
 
 
-def layout_floor(H):
+def safe_bottom(W=None, H=None):
+    """The lowest a graphic may reach, as a fraction of frame height."""
+    return SAFE_BOTTOM_PORTRAIT if (W and H and H > W) else SAFE_BOTTOM
+
+
+def layout_floor(H, W=None):
     """The bottom the drawers lay out against, drift already reserved.
 
     SAFE_BOTTOM is a guarantee about the finished frame. The drift moves the
     whole composition by up to DRIFT pixels, so laying out flush against the
     guarantee puts content past it at one end of the move - measured, bar
     labels landed 6 px inside the subtitle band at t=0. Drawers use this;
-    tests check the output against SAFE_BOTTOM.
+    tests check the output against `safe_bottom`.
     """
-    return SAFE_BOTTOM - (DRIFT / float(H))
+    return safe_bottom(W, H) - (DRIFT / float(H))
 
 
 def palette(grade):
@@ -202,7 +223,7 @@ def furniture(image, pal, spec, progress=None):
         _text(draw, (int(W * 0.05), int(H * EYEBROW_Y)), topic,
               max(16, int(W * EYEBROW)), pal["dim"], anchor="lm")
 
-    base = int(H * SAFE_BOTTOM)
+    base = int(H * safe_bottom(W, H))
     draw.line([(int(W * 0.05), base), (int(W * 0.95), base)],
               fill=pal["grid"], width=2)
     return image
@@ -313,7 +334,7 @@ def draw_bar_chart(draw, spec, pal, W, H, t):
     """Vertical bars growing from a baseline, each labelled with its value."""
     items = spec["items"]
     top = _title(draw, spec, pal, W, H)
-    base = int(H * (layout_floor(H) - 0.075))  # leave room for the labels below
+    base = int(H * (layout_floor(H, W) - 0.075))  # leave room for the labels below
     left, right = int(W * 0.12), int(W * 0.88)
     span = right - left
     slot = span / max(1, len(items))
@@ -357,7 +378,7 @@ def draw_line_chart(draw, spec, pal, W, H, t):
     """One or more series drawing on left to right."""
     series = spec["series"]
     top = _title(draw, spec, pal, W, H)
-    base = int(H * (layout_floor(H) - 0.06))
+    base = int(H * (layout_floor(H, W) - 0.06))
     left, right = int(W * 0.12), int(W * 0.88)
     usable = base - top - int(H * 0.04)
     every = [float(v) for s in series for v in s["points"]]
@@ -422,65 +443,126 @@ def draw_counter(draw, spec, pal, W, H, t):
 
 
 def draw_flow(draw, spec, pal, W, H, t):
-    """Labelled nodes with a token travelling between them.
+    """Labelled nodes, arrows between them, and tokens streaming along.
 
-    This is the money-flow shot: households -> bank -> firms. The moving token
-    is the whole point, so it keeps moving after the nodes have settled.
+    This is the money-flow shot: households -> bank -> firms. The movement is
+    the whole point, so it keeps moving after the nodes have settled - and it
+    moves along the arrows. A single token travelling node centre to node
+    centre spent most of its trip hidden under the boxes, and the arrows it
+    ran along were drawn in the gridline colour, a shade off the ground.
+
+    A portrait frame stacks the chain top to bottom. Across 1080 pixels four
+    boxes left no arrow between them to speak of.
     """
     nodes = spec["nodes"]
+    count = len(nodes)
     top = _title(draw, spec, pal, W, H)
-    cy = (top + int(H * (layout_floor(H) - 0.08))) // 2
-    left, right = int(W * 0.15), int(W * 0.85)
-    xs = [left + (right - left) * i / max(1, len(nodes) - 1)
-          for i in range(len(nodes))]
-    box_w, box_h = int(W * 0.19), int(H * 0.20)
+    vertical = H > W
+    if vertical:
+        bottom = int(H * (layout_floor(H, W) - 0.06))
+        pitch = (bottom - top) / max(1, count)
+        centres = [(W / 2, top + pitch * (i + 0.5)) for i in range(count)]
+        box_w, box_h = int(W * 0.58), int(min(H * 0.10, pitch * 0.56))
+        axis = (0.0, 1.0)
+    else:
+        cy = (top + int(H * (layout_floor(H, W) - 0.08))) // 2
+        left, right = int(W * 0.15), int(W * 0.85)
+        pitch = (right - left) / max(1, count - 1)
+        centres = [(left + pitch * i, cy) for i in range(count)]
+        box_w, box_h = int(min(W * 0.19, pitch * 0.64)), int(H * 0.20)
+        axis = (1.0, 0.0)
+    reach = (box_w if axis[0] else box_h) / 2 + max(12, int(W * 0.008))
+    stroke = max(4, int(min(W, H) * 0.005))
+    head = max(14, int(min(W, H) * 0.016))
 
-    for i, x in enumerate(xs[:-1]):
-        p = _progress(t, i, len(nodes))
-        x0, x1 = x + box_w / 2 + 12, xs[i + 1] - box_w / 2 - 12
-        tip = x0 + (x1 - x0) * p
-        draw.line([(x0, cy), (tip, cy)], fill=pal["grid"], width=max(3, int(W * 0.003)))
+    links = []
+    for i, ((ax, ay), (bx, by)) in enumerate(zip(centres, centres[1:])):
+        start = (ax + axis[0] * reach, ay + axis[1] * reach)
+        end = (bx - axis[0] * reach, by - axis[1] * reach)
+        links.append((start, end))
+        p = _progress(t, i, count)
+        if p <= 0:
+            continue
+        tip = (start[0] + (end[0] - start[0]) * p,
+               start[1] + (end[1] - start[1]) * p)
+        # The shaft stops at the head's base, so the point stays sharp.
+        base = (tip[0] - axis[0] * head * 0.8, tip[1] - axis[1] * head * 0.8)
+        draw.line([start, base if p > 0.9 else tip], fill=pal["dim"],
+                  width=stroke)
         if p > 0.9:
-            a = max(10, int(W * 0.010))
-            draw.polygon([(x1, cy), (x1 - a, cy - a * 0.6), (x1 - a, cy + a * 0.6)],
-                         fill=pal["grid"])
+            across = (axis[1] * head * 0.62, axis[0] * head * 0.62)
+            draw.polygon([tip, (tip[0] - axis[0] * head + across[0],
+                                tip[1] - axis[1] * head + across[1]),
+                          (tip[0] - axis[0] * head - across[0],
+                           tip[1] - axis[1] * head - across[1])],
+                         fill=pal["dim"])
 
-    # The token loops along the whole chain once the arrows are drawn.
-    if t > BUILD_FRACTION and len(xs) > 1:
-        k = ((t - BUILD_FRACTION) / max(1e-6, 1 - BUILD_FRACTION)) % 1.0
-        seg = k * (len(xs) - 1)
-        i = min(int(seg), len(xs) - 2)
-        x = xs[i] + (xs[i + 1] - xs[i]) * (seg - i)
-        r = max(9, int(W * 0.009))
-        draw.ellipse([x - r, cy - r, x + r, cy + r], fill=pal["accent"])
+    # Once the arrows are drawn, a stream of tokens runs along every one of
+    # them at once: a flow reads as continuous, a lone dot as a cursor.
+    if t > BUILD_FRACTION and links:
+        run = (t - BUILD_FRACTION) / max(1e-6, 1.0 - BUILD_FRACTION)
+        radius = max(8, int(min(W, H) * 0.009))
+        for (sx, sy), (ex, ey) in links:
+            # As many as the arrow has room for: three on a short arrow
+            # between four boxes ran together into one smudge.
+            room = math.hypot(ex - sx, ey - sy) / (max(W, H) * FLOW_SPACING)
+            tokens = max(1, min(FLOW_TOKENS, int(room)))
+            for k in range(tokens):
+                where = (run * FLOW_LAPS + k / tokens) % 1.0
+                # Each grows out of the arrow's tail and shrinks into its
+                # head, so none pops into being mid-shaft.
+                r = radius * min(1.0, where / 0.15, (1.0 - where) / 0.15)
+                if r < 1.0:
+                    continue
+                x, y = sx + (ex - sx) * where, sy + (ey - sy) * where
+                draw.ellipse([x - r, y - r, x + r, y + r], fill=pal["accent"])
 
-    for i, (x, name) in enumerate(zip(xs, nodes)):
-        p = _progress(t, i, len(nodes))
+    face = _blend(pal["muted"], pal["bg"], 0.16)
+    size = max(26, int(W * 0.027)) if not vertical else max(30, int(W * 0.05))
+    for i, ((x, y), name) in enumerate(zip(centres, nodes)):
+        p = _progress(t, i, count)
         if p <= 0.02:
             continue
         h = box_h * ease(min(1.0, p * 1.4))
-        draw.rectangle([x - box_w / 2, cy - h / 2, x + box_w / 2, cy + h / 2],
-                       fill=pal["bg"], outline=pal["ink"], width=max(3, int(W * 0.002)))
+        draw.rounded_rectangle(
+            [x - box_w / 2, y - h / 2, x + box_w / 2, y + h / 2],
+            radius=max(4, int(min(box_w, h) * 0.14)), fill=face,
+            outline=pal["muted"], width=max(3, int(W * 0.0025)))
         # The label arrives with the box, not half a second after it. Waiting
         # until p > 0.5 left three empty rectangles on screen for a beat, which
         # reads as a rendering fault rather than an animation.
         if p > 0.22:
             fade = min(1.0, (p - 0.22) / 0.25)
-            ink = tuple(int(b + (c - b) * fade)
-                        for c, b in zip(pal["ink"], pal["bg"]))
-            _text(draw, (x, cy), str(name), max(26, int(W * 0.027)),
-                  ink, anchor="mm")
+            ink = _blend(pal["ink"], face, fade)
+            px, lines = _fitted_label(str(name), size, box_w * 0.84, 2)
+            lh = textkit.line_height(px, True)
+            for n, line in enumerate(lines):
+                _text(draw, (x, y + (n - (len(lines) - 1) / 2) * lh), line,
+                      px, ink, anchor="mm")
 
     if spec.get("caption"):
-        _text(draw, (W // 2, int(H * (layout_floor(H) - 0.03))), str(spec["caption"]),
+        _text(draw, (W // 2, int(H * (layout_floor(H, W) - 0.03))), str(spec["caption"]),
               max(26, int(W * 0.027)), pal["dim"], anchor="mm")
+
+
+def _fitted_label(text, size, width, max_lines):
+    """(size, lines) for text wrapped into `width`, shrunk to fit `max_lines`.
+
+    A flow node's label is up to fourteen characters, and set on one line at
+    the node's type size that is twice as wide as the node.
+    """
+    lines = textkit.wrap(text, size, width)
+    while len(lines) > max_lines and size > 18:
+        size -= 2
+        lines = textkit.wrap(text, size, width)
+    return size, lines
 
 
 def draw_comparison(draw, spec, pal, W, H, t):
     """Two quantities side by side, which is most of applied economics."""
     left_item, right_item = spec["left"], spec["right"]
     top = _title(draw, spec, pal, W, H)
-    base = int(H * (layout_floor(H) - 0.075))
+    base = int(H * (layout_floor(H, W) - 0.075))
     usable = base - top - int(H * 0.04)
     peak = max(abs(float(left_item["value"])), abs(float(right_item["value"]))) or 1.0
     bar_w = int(W * 0.23)
@@ -553,14 +635,28 @@ def draw_breakdown(draw, spec, pal, W, H, t):
             label_y = bar_top + bar_h + int(H * 0.055) + (
                 int(H * 0.055) if i % 2 else 0)
             cx = x + seg / 2
+            label = str(item.get("label", ""))
+            label_px = max(22, int(W * 0.023))
+            value_px = max(20, int(W * 0.021))
+            figure = (_fmt(float(item["value"]), spec.get("unit", ""))
+                      if total > 0 and spec.get("show_values", True) else "")
+            # A figure too wide for its own segment moves out to the label.
+            # Drawn inside regardless, the 4% of net exports ran past the
+            # segment's edges onto the ground - and it is set in the ground's
+            # own colour, so the part outside simply vanished.
+            room = seg - 2 * FIGURE_INSET * W
+            if figure and textkit.advance(figure, value_px, True) > room:
+                label, figure = f"{label} {figure}", ""
+            # And the label stays in frame: the last segment's centre can sit
+            # close enough to the edge that a long label crosses it.
+            half = textkit.advance(label, label_px, True) / 2
+            lx = min(max(cx, W * 0.03 + half), W * 0.97 - half)
             draw.line([(cx, bar_top + bar_h), (cx, label_y - int(H * 0.022))],
                       fill=pal["grid"], width=2)
-            _text(draw, (cx, label_y), str(item.get("label", "")),
-                  max(22, int(W * 0.023)), pal["ink"], anchor="mm")
-            if total > 0 and spec.get("show_values", True):
-                _text(draw, (cx, bar_top + bar_h / 2),
-                      _fmt(float(item["value"]), spec.get("unit", "")),
-                      max(20, int(W * 0.021)), pal["bg"], anchor="mm")
+            _text(draw, (lx, label_y), label, label_px, pal["ink"], anchor="mm")
+            if figure:
+                _text(draw, (cx, bar_top + bar_h / 2), figure, value_px,
+                      pal["bg"], anchor="mm")
         x += seg
 
 

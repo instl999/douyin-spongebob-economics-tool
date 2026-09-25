@@ -75,6 +75,15 @@ class Layout:
         return self.cfg["image_size"]
 
     @property
+    def safe_right_px(self):
+        """Pixels at the right edge nothing is placed in.
+
+        On a phone feed that is where the like, comment and share buttons
+        are drawn over a portrait video; landscape has none.
+        """
+        return int(round(float(self.cfg.get("safe_right", 0.0)) * self.width))
+
+    @property
     def size(self):
         return (self.width, self.height)
 

@@ -1,16 +1,22 @@
-"""The sprite library: generate once, matte, cache, reuse.
+"""What a video is drawn with: its own drawings, and what a cast keeps.
 
-Character consistency across fifty-odd shots is the hard problem in this
-format, and the way out is not to fight a prompt into behaving. Each pose is
-generated exactly once, cut out, and stored under the cast; every video that
-uses that cast composites the same PNG. A character therefore cannot drift,
-because nothing regenerates it.
+There is no sprite library. Every picture in a video is generated for that
+video from the director's description of the line it illustrates, cut out,
+and written into the video's own folder - shared inside the video when two
+elements are described in the same words, and by nothing after it. A shared
+library is what made every output look alike: one pile of gold coins
+appeared in five videos out of eight.
+
+Identity comes from one committed reference per character, the anchor in
+casts/<style>/anchors/, which every drawing of that character is conditioned
+on and the only drawing that outlives a video. The cast also keeps its plate,
+so a series sits in one place.
 
 Sprites are generated on a saturated chroma background rather than white. See
 matting.py for why that choice does most of the cutout work.
 
-The cache key is the full prompt, so editing a pose description regenerates
-only that pose and leaves the rest of the library alone.
+A drawing's filename carries a hash of its description, so an edited
+description is a new file and every other drawing is left alone.
 """
 import hashlib
 import json
@@ -37,8 +43,8 @@ PROP_RULES = ("a single inanimate object on its own, no characters, no people, "
               "no text, no watermark")
 
 # Two figures in one image, for a beat where one acts on the other. Everything
-# else here is one character per sprite, which is what makes the library
-# reusable - but it also means a handover can never actually connect, because
+# else here is one character per sprite, which keeps each figure simple to
+# draw and place - but it also means a handover can never actually connect, because
 # the envelope lives in one PNG and the hands that take it live in another. No
 # arrangement of two rectangles fixes that. For the beats where the interaction
 # *is* the sentence, the two figures have to be drawn together.
@@ -90,9 +96,8 @@ COMPARE_PROMPT = """这 {count} 张图画的是同一个内容：
 只回一个数字（1 到 {count}），不要任何其他内容。"""
 
 # Sprites are generated square and cropped to their own bounds, so the video's
-# orientation is irrelevant to them. Keeping the size fixed means one library
-# serves landscape and portrait projects instead of two. 1920x1920 is exactly
-# the plan's 3,686,400 pixel minimum.
+# orientation is irrelevant to them: one size serves landscape and portrait
+# alike. 1920x1920 is exactly the plan's 3,686,400 pixel minimum.
 SPRITE_SIZE = "1920x1920"
 
 # Matches the reference title cards: red brush lettering, grey offset copy,
@@ -303,6 +308,11 @@ class Cast:
 
 
 
+# One video's own records, beside its files: the title card and setting
+# fingerprints that used to be written into the cast's committed manifest.
+VIDEO_RECORD = "assets.json"
+
+
 class Library:
     """Draws what one video needs, and the references a cast keeps."""
 
@@ -319,6 +329,39 @@ class Library:
     def _save_manifest(self):
         self.manifest_path.write_text(
             json.dumps(self.manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    # --- one video's own records ------------------------------------------
+    # The title lettering and the script's setting belong to one video, and
+    # their bookkeeping used to go in the cast's manifest anyway - a committed
+    # file that gained two entries with every video anybody built, in every
+    # checkout. It lives beside the video's own files now, in VIDEO_RECORD.
+    # The manifest is still read, so a video built before this keeps the card
+    # it already paid for, and the entry moves across the first time it is.
+
+    @staticmethod
+    def _video_record(out_path):
+        path = Path(out_path).parent / VIDEO_RECORD
+        try:
+            return path, json.loads(path.read_text(encoding="utf-8-sig"))
+        except (OSError, ValueError):
+            return path, {}
+
+    def _recorded(self, out_path, key):
+        """This video's record under `key`: its own, else the legacy one."""
+        _, record = self._video_record(out_path)
+        if key in record:
+            return record[key]
+        legacy = self.manifest.get(key)
+        if legacy:
+            self._record(out_path, key, legacy)
+        return legacy or {}
+
+    def _record(self, out_path, key, entry):
+        path, record = self._video_record(out_path)
+        record[key] = entry
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(record, ensure_ascii=False, indent=2),
+                        encoding="utf-8")
 
     @staticmethod
     def _fingerprint(prompt, size):
@@ -364,26 +407,23 @@ class Library:
     def build_setting(self, description, out_path, size, force=False):
         """Generate the video's fallback backdrop. Returns (path, made).
 
-        The *file* belongs to one video - it is derived from that script's
+        The file belongs to one video - it is derived from that script's
         subject, unlike the plate, which is what makes a series look like a
-        series and must never drift. The bookkeeping still lives in the cast's
-        manifest, so the key carries the description: on a single "setting"
-        key, two scripts sharing a style would each find the other's
-        fingerprint and regenerate a backdrop the other had already paid for,
-        every time the two were built in turn.
+        series and must never drift - and so does its record, which is kept
+        beside it (see `_video_record`). The key still carries the description,
+        as it did when two scripts sharing a style shared one manifest.
         """
         prompt = self.cast.setting_prompt(description)
         fingerprint = self._fingerprint(prompt, size)
         key = f"setting::{fingerprint}"
         out_path = Path(out_path)
         if (not force and out_path.exists()
-                and self.manifest.get(key, {}).get("fingerprint") == fingerprint):
+                and self._recorded(out_path, key).get("fingerprint") == fingerprint):
             return out_path, False
         ark.generate_image(prompt, out_path, size=size)
-        self.manifest[key] = {"fingerprint": fingerprint, "prompt": prompt,
-                              "size": size,
-                              "built": time.strftime("%Y-%m-%d %H:%M:%S")}
-        self._save_manifest()
+        self._record(out_path, key, {"fingerprint": fingerprint, "prompt": prompt,
+                                     "size": size,
+                                     "built": time.strftime("%Y-%m-%d %H:%M:%S")})
         return out_path, True
 
     def build_anchor(self, character, size, force=False):
@@ -459,7 +499,7 @@ class Library:
         fingerprint = self._fingerprint(prompt, size)
         out_path = Path(out_path)
         if (not force and out_path.exists()
-                and self.manifest.get(key, {}).get("fingerprint") == fingerprint):
+                and self._recorded(out_path, key).get("fingerprint") == fingerprint):
             return out_path, "cached"
 
         wanted = "".join(ch for ch in text if not ch.isspace())
@@ -476,10 +516,10 @@ class Library:
                 return None, f"could not verify the lettering: {exc}"
             got = "".join(ch for ch in seen if not ch.isspace())
             if got == wanted:
-                self.manifest[key] = {"fingerprint": fingerprint, "prompt": prompt,
-                                      "size": size, "verified": got,
-                                      "built": time.strftime("%Y-%m-%d %H:%M:%S")}
-                self._save_manifest()
+                self._record(out_path, key, {
+                    "fingerprint": fingerprint, "prompt": prompt, "size": size,
+                    "verified": got,
+                    "built": time.strftime("%Y-%m-%d %H:%M:%S")})
                 return out_path, f"verified on attempt {attempt}"
             self.log(f"  title lettering read back as {got!r}, wanted {wanted!r}"
                      f" - attempt {attempt}/{attempts}")

@@ -194,10 +194,25 @@ def normalize(src, out_path, target_i=TARGET_LUFS, target_lra=TARGET_LRA,
 # where a bed under continuous narration belongs.
 BGM_VOLUME = 0.056
 
+# The same bed when it is ducked under the voice, which the drawn track now
+# is. A constant -25 dB is right under speech and almost nothing everywhere
+# else: the title card, the closing card and every breath between shots sat
+# on a bed too quiet to hear. Ducked, the bed sits at -16 dB when nobody is
+# talking and the sidechain pulls it about 10 dB further down under the
+# voice, which lands it back inside the 20-25 dB band where it matters.
+BGM_DUCKED_VOLUME = 0.16
+
+# How far under the voice the ducked bed goes, for the draft - which has no
+# sidechain and draws the dip as volume keyframes instead. Measured off the
+# mix's own compressor on narration at a typical level.
+DUCK_DB = 10.0
+DUCK_ATTACK = 0.05
+DUCK_RELEASE = 0.35
+
 
 def mix(narration, out_path, total, bgm=None, bgm_volume=BGM_VOLUME,
         narration_volume=1.0, rate=44100, cues=(), cue_volume=0.34,
-        loudness=None, duck=False):
+        loudness=None, duck=False, beds=None):
     """Narration, optional music, and any sound cues, limited and trimmed.
 
     `cues` is [(seconds, name, path[, gain])] from sfx.plan. Each one becomes
@@ -208,16 +223,27 @@ def mix(narration, out_path, total, bgm=None, bgm_volume=BGM_VOLUME,
     cue: the title card's stinger is a deliberate accent and sits well above
     the level the library cues want.
 
+    `beds` is [{path, start, end, fade_in, fade_out}], the music as the
+    storyboard records it - one bed for a whole video, or one per section
+    with neighbours overlapping to crossfade. `bgm` is the older single-file
+    form, laid as one bed start to finish.
+
     `loudness` is a target LUFS; when given the mix is normalised to it as a
-    final step. Left None the track is only limited, which is what the drawn
-    track has always done - changing its sound is not this parameter's job.
+    final step. Left None the track is only limited.
 
     `duck` pulls the music under the voice. Worth +0.3 LU of loudness range at
-    a 0.10 bed on the footage track, and off by default because the drawn
-    track's mix was measured without it.
+    a 0.10 bed on the footage track, and it is what lets the drawn track's bed
+    be heard between lines without competing with them.
     """
     inputs = ["-i", str(narration)]
-    has_bed = bool(bgm and Path(bgm).exists())
+    if beds is None:
+        beds = ([{"path": str(bgm), "start": 0.0, "end": float(total),
+                  "fade_in": 1.2, "fade_out": 2.0}]
+                if bgm and Path(bgm).exists() else [])
+    beds = [bed for bed in beds
+            if Path(bed["path"]).exists()
+            and float(bed["end"]) - float(bed["start"]) > 0.05]
+    has_bed = bool(beds)
     # Only split the voice when something downstream keys off it. An
     # unconnected filter output is a hard error, not a warning, so a spare
     # [voicekey] would break every music-free mix.
@@ -231,12 +257,32 @@ def mix(narration, out_path, total, bgm=None, bgm_volume=BGM_VOLUME,
     count = 1
 
     if has_bed:
-        inputs += ["-stream_loop", "-1", "-i", str(bgm)]
-        count += 1
-        fade_out_at = max(0.0, total - 2.0)
-        chains.append(
-            f"[1:a]volume={bgm_volume:.3f},atrim=0:{total:.3f},"
-            f"afade=t=in:st=0:d=1.2,afade=t=out:st={fade_out_at:.3f}:d=2.0[bed0]")
+        # Each bed is its own looping input, trimmed to its span, faded at
+        # both ends and delayed to where it starts - so two sections overlap
+        # by exactly their crossfade and nothing needs rendering in between.
+        parts = []
+        for bed in beds:
+            index = count
+            count += 1
+            inputs += ["-stream_loop", "-1", "-i", str(bed["path"])]
+            start, end = float(bed["start"]), min(float(bed["end"]), total)
+            length = max(0.05, end - start)
+            fade_in = min(float(bed.get("fade_in", 1.2)), length / 2)
+            fade_out = min(float(bed.get("fade_out", 2.0)), length / 2)
+            delay = max(0, int(round(start * 1000)))
+            chains.append(
+                f"[{index}:a]aformat=sample_rates={rate}:channel_layouts=stereo,"
+                f"volume={bgm_volume:.3f},atrim=0:{length:.3f},"
+                f"afade=t=in:st=0:d={fade_in:.3f},"
+                f"afade=t=out:st={length - fade_out:.3f}:d={fade_out:.3f},"
+                f"adelay={delay}|{delay}[bedpart{index}]")
+            parts.append(f"[bedpart{index}]")
+        if len(parts) == 1:
+            chains.append(f"{parts[0]}anull[bed0]")
+        else:
+            chains.append(f"{''.join(parts)}amix=inputs={len(parts)}:"
+                          f"duration=longest:dropout_transition=0:"
+                          f"normalize=0[bed0]")
         if ducking:
             # An earlier measurement said ducking did nothing; that was taken
             # through single-pass loudnorm, whose own compression swamped the
@@ -277,6 +323,61 @@ def mix(narration, out_path, total, bgm=None, bgm_volume=BGM_VOLUME,
         normalize(target, out_path, target_i=loudness, rate=rate)
         target.unlink(missing_ok=True)
     return out_path
+
+
+# Quieter than this is a pause. The voice service's pauses at a comma run
+# 0.2-0.3 s at natural pace and shorten with the speech rate; a stop consonant
+# inside a word is well under 0.07 s, so the floor keeps those out.
+PAUSE_DB = -38.0
+MIN_PAUSE = 0.14
+
+
+def speech_pauses(path, speed=1.0):
+    """Where the voice is in one narration clip: (onset, offset, pauses).
+
+    `onset` is where speech starts after the clip's leading silence, `offset`
+    where it stops before the trailing one, and `pauses` the (start, end) of
+    every silence between. Captions switch at these rather than at a guess
+    from character counts. None when the clip cannot be read.
+    """
+    shortest = max(0.07, MIN_PAUSE / max(float(speed), 0.1))
+    proc = subprocess.run(
+        [config.FFMPEG, "-nostats", "-i", str(path), "-af",
+         f"silencedetect=noise={PAUSE_DB}dB:d={shortest:.3f}", "-f", "null", "-"],
+        capture_output=True, text=True, encoding="utf-8", errors="replace")
+    if proc.returncode != 0:
+        return None
+    length = None
+    for line in (proc.stderr or "").splitlines():
+        if "Duration:" in line and length is None:
+            stamp = line.split("Duration:")[1].split(",")[0].strip()
+            try:
+                h, m, s = stamp.split(":")
+                length = int(h) * 3600 + int(m) * 60 + float(s)
+            except ValueError:
+                length = None
+    if not length:
+        return None
+    silences, opened = [], None
+    for match in re.finditer(r"silence_(start|end): (-?[\d.]+)", proc.stderr or ""):
+        value = max(0.0, float(match.group(2)))
+        if match.group(1) == "start":
+            opened = value
+        elif opened is not None:
+            silences.append((opened, value))
+            opened = None
+    if opened is not None:
+        silences.append((opened, length))
+    onset, offset = 0.0, length
+    if silences and silences[0][0] <= 0.02:
+        onset = silences.pop(0)[1]
+    if silences and silences[-1][1] >= length - 0.02:
+        offset = silences.pop()[0]
+    if offset <= onset:
+        return None
+    pauses = [(round(a, 3), round(b, 3)) for a, b in silences
+              if onset < a and b < offset]
+    return round(onset, 3), round(offset, 3), pauses
 
 
 def mux(video, audio, out_path):

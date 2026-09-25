@@ -99,8 +99,14 @@ def check_container(report, video, storyboard):
     actual = float(info.get("duration", 0))
     report.add(abs(actual - expected) <= MAX_DURATION_DRIFT, "duration",
                f"{actual:.2f}s (storyboard says {expected:.2f}s)")
-    report.add("aac" in probe(video, "stream=codec_name").get("codec_name", "")
-               or True, "audio track", info.get("codec_name", "present"))
+    # The audio stream on its own. This used to read the first stream's codec
+    # - the video's - and then pass with `or True`, so it printed "h264" and
+    # could not fail at all.
+    audio = subprocess.run(
+        [config.FFPROBE, "-v", "error", "-select_streams", "a:0",
+         "-show_entries", "stream=codec_name", "-of", "default=nw=1:nk=1",
+         str(video)], capture_output=True, text=True).stdout.strip()
+    report.add(bool(audio), "audio track", audio or "no audio stream")
     return actual
 
 
@@ -200,39 +206,60 @@ def check_subtitles(report, srt_path, duration):
                f"last cue ends {last_end:.2f}s of {duration:.2f}s")
 
 
-def check_sprites(report, cast_dir):
-    """Catch cutouts that kept everything or almost nothing.
+# What a drawing is generated at before it is cut out. A cut-out still this
+# size was never cropped, because nothing in it was transparent enough to trim.
+GENERATED_SIZE = (1920, 1920)
+# How much of a cut-out's own box its solid pixels may leave empty on one
+# axis before the box is being held open by something that is not the drawing.
+MIN_CROP_FILL = 0.6
+
+
+def check_sprites(report, project_dir, storyboard):
+    """Catch cutouts that kept everything, almost nothing, or a stray speck.
+
+    The drawings this video actually shows, read off the storyboard. This
+    used to read a manifest in the cast folder that stopped recording anything
+    once drawings became per video, so it passed every build having looked at
+    nothing.
 
     Coverage alone is not the test: a whiteboard is a filled rectangle and
     legitimately covers ~96% of its own bounding box. What distinguishes a
     failed matte is that nothing got cropped - the sprite comes back at the
-    full generated size, because no pixel was transparent enough to trim.
+    full generated size, because no pixel was transparent enough to trim. And
+    a crop much wider than the solid drawing inside it is being held open by
+    noise, which draws the figure small and off its mark.
     """
-    manifest = Path(cast_dir) / "manifest.json"
-    if not manifest.exists():
-        report.add(True, "sprite cutouts", "no manifest to check")
-        return
-    data = json.loads(manifest.read_text(encoding="utf-8-sig"))
-    bad = []
-    for name, entry in data.items():
-        coverage, pixels, size = (entry.get("coverage"), entry.get("pixels"),
-                                  entry.get("size"))
-        if coverage is None or not pixels:
+    names = sorted({el["asset"] for scene in storyboard.get("scenes") or []
+                    for el in scene.get("elements") or [] if el.get("asset")})
+    bad, looked = [], 0
+    for name in names:
+        path = Path(project_dir) / name
+        if not path.exists():
             continue
-        uncropped = False
-        if isinstance(size, str) and "x" in size:
-            gw, _, gh = size.partition("x")
-            try:
-                uncropped = (pixels[0] >= int(gw) * 0.95
-                             and pixels[1] >= int(gh) * 0.95)
-            except ValueError:
-                uncropped = False
+        looked += 1
+        with Image.open(path) as image:
+            if image.mode != "RGBA":
+                bad.append(f"{name} has no transparency at all")
+                continue
+            alpha = np.asarray(image.getchannel("A"))
+        coverage = float((alpha > 8).mean())
+        uncropped = (alpha.shape[1] >= GENERATED_SIZE[0] * 0.95
+                     and alpha.shape[0] >= GENERATED_SIZE[1] * 0.95)
         if coverage < MIN_SPRITE_COVERAGE:
             bad.append(f"{name} kept almost nothing ({coverage:.2f})")
-        elif uncropped and coverage > MAX_SPRITE_COVERAGE:
+            continue
+        if uncropped and coverage > MAX_SPRITE_COVERAGE:
             bad.append(f"{name} kept the whole frame ({coverage:.2f})")
+            continue
+        ys, xs = np.where(alpha > 128)
+        if len(xs):
+            fill_x = (xs.max() - xs.min() + 1) / alpha.shape[1]
+            fill_y = (ys.max() - ys.min() + 1) / alpha.shape[0]
+            if min(fill_x, fill_y) < MIN_CROP_FILL:
+                bad.append(f"{name} is cropped wider than its drawing "
+                           f"({fill_x:.2f} x {fill_y:.2f} filled)")
     report.add(not bad, "sprite cutouts",
-               "all within range" if not bad
+               f"{looked} drawing(s) within range" if not bad
                else f"{len(bad)} suspicious: {'; '.join(bad[:3])}")
 
 
@@ -294,7 +321,8 @@ def check_composition(report, storyboard, project_dir, lay):
         for el in scene.get("elements", []):
             try:
                 img = render_mod.build_element_image(
-                    el, assets, lay, framing, storyboard.get("panel_color"))
+                    el, assets, lay, framing,
+                    render_mod.panel_color_of(storyboard))
             except Exception:
                 continue
             if img is not None:
@@ -344,7 +372,7 @@ def run(project, verbose=False):
     check_background(report, video, duration)
     check_audio(report, video)
     check_subtitles(report, project.out / f"{project.name}.srt", duration)
-    check_sprites(report, project.cast.dir)
+    check_sprites(report, project.out, storyboard)
     check_plan_carried(report, storyboard, project.out / "plan.json")
     check_composition(report, storyboard, project.out, project.layout)
     findings = check_layout(report, storyboard, project.out, project.layout)

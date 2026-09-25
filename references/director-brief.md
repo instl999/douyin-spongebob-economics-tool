@@ -39,11 +39,11 @@ thing the sentence mentions does not pass: "拿到工资" is not a person and a 
 of money in the same frame, it is a person **being handed** money and pleased
 about it. Cast the *action*, then let the object and the feeling follow from it.
 
-- **action** decides the pose. Pick the pose whose description contains that
-  verb, not merely the character the sentence is about
-- **emotion** decides which of the near-matching poses to use. The same beat
-  ends differently if the subject is pleased or dismayed, and that difference
-  is most of what the shot is for
+- **action** decides what the drawing shows. Write its `shows` around that
+  verb - the character doing it, not merely the character the sentence is about
+- **emotion** decides how they look doing it. The same beat ends differently if
+  the subject is pleased or dismayed, and that difference is most of what the
+  shot is for
 - **object** goes in the frame, positioned so it is being acted on: held,
   handed over, pointed at, worked at - not parked beside someone
 - **relation** also decides *facing*. A sprite points whichever way it was
@@ -175,9 +175,9 @@ everyone for that shot:
 {{"type": "panel", "x": 0.5, "y": 0.99, "w": 0.94, "ph": 0.5}}
 
 x,y is the bottom centre in stage coordinates; w and ph are fractions of the
-frame. **A wall reaches the frame edges**: w below 0.94 and ph below 0.45 are
-raised to those, because a narrow slab reads as a card floating on the backdrop
-rather than as a room. Add the furniture that belongs there on top of it - a
+frame. **A wall spans the whole width** and stands on a floor the characters
+stand on; ph below 0.45 is raised to that, because a short slab reads as a card
+floating on the backdrop rather than as a room. Add the furniture that belongs there on top of it - a
 desk, a counter, a meeting table - and the place is built.
 
 **Look through the shot list for every sentence that names a location and give
@@ -231,7 +231,9 @@ x and y are 0-1 across the stage. y is where the *bottom* of a sprite sits.
   the thing they name, y 0.20-0.55. Two or three words - a figure, a name, a
   before/after. Never a whole sentence. Add "tone": "good" when it names an
   improvement, "bad" for a loss or a problem, "money" for a figure or a price,
-  and leave it off otherwise - it colours the label green, red or amber
+  and leave it off otherwise - it colours the label green, red or amber.
+  When a label is about one character - their wage, their mood, their loss -
+  add "for": "<their name>" and it is placed just above their head
 - Speech bubbles: "type": "bubble" with "text", "anchor": "center", y 0.18-0.34,
   "tail": "left" or "right" leaning back toward the speaker. Under 15
   characters, used sparingly, for a character's own line
@@ -251,12 +253,23 @@ x and y are 0-1 across the stage. y is where the *bottom* of a sprite sits.
 Never put the same character on screen twice in one shot. Do not overlap two
 characters.
 
+# Where the script turns
+
+The music can change where the script's feeling changes: a puzzle posed, then
+the turn that explains it, then the payoff. Mark those places as `sections`,
+each with the id of the shot it starts on and one or two moods from the same
+list as `mood`. Two to four sections, each at least three shots long; the first
+starts at shot 1. A script that never turns needs no sections at all - leave
+the list empty and one bed runs under the whole video. Do not invent a turn to
+fill the field.
+
 # Output
 
 {{"title": "<= 10 characters, the question the video answers",
   "setting": "one place this whole script could sit in, 10-20 words, in the cast's world - a back kitchen, a small office, a shop counter, a bank hall. Used as the backdrop for every shot whose sentence names nowhere in particular, so pick the one that suits the subject rather than the first sentence",
   "ending": {{"text": "the closing line, may contain \\n", "highlight": "<= 4 characters from it"}},
   "mood": ["one or two of {moods}, most telling first - how the script feels; it chooses the music"],
+  "sections": [{{"from": 1, "mood": ["疑问"]}}, {{"from": 7, "mood": ["转机"]}}, {{"from": 12, "mood": ["升华"]}}],
   "shots": [
     {{"id": 1, "framing": "medium",
       "beat": {{"subject": "sponge", "action": "is handed his pay packet",

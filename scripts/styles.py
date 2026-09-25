@@ -46,15 +46,52 @@ LOOK_DEFAULTS = {
             "subtitle_max_width": 0.86,
             "label_size": 0.0344,
             "image_size": "2560x1440",
+            "title_size": 0.095,
+            "ending_size": 0.07,
+            "card_max_width": 0.84,
+            "bubble_max_width": 0.24,
+            "label_max_width": 0.34,
+            "safe_right": 0.0,
+            "title_bar": False,
+            "ui_zones": [],
         },
+        # A phone feed draws its own furniture over a portrait video: the
+        # account name, description and music line across roughly the bottom
+        # fifth, and the like/comment/share column down the right edge. The
+        # caption sat at 0.845 - under the description - and characters at
+        # x 0.7-0.8 ran beneath the buttons. So the ground line is raised to
+        # 0.735 (feet land at ~0.72, still on the plate's grass, which starts
+        # at 0.70), the caption sits at 0.775 just under them, narrow enough
+        # to stay clear of the button column, and nothing is placed in the
+        # right 13%. `ui_zones` is what the preview outlines, approximately;
+        # calibrate it from a screenshot of a posted video.
         "portrait": {
-            "stage": [0.0, 0.14, 1.0, 0.80],
+            "stage": [0.0, 0.10, 1.0, 0.735],
             "subtitle_size": 0.050,
-            "subtitle_y": 0.845,
-            "subtitle_max_width": 0.90,
+            "subtitle_y": 0.775,
+            "subtitle_max_width": 0.72,
             "label_size": 0.052,
             "image_size": "1440x2560",
+            "title_size": 0.14,
+            "ending_size": 0.1,
+            "card_max_width": 0.88,
+            "bubble_max_width": 0.40,
+            "label_max_width": 0.5,
+            "safe_right": 0.13,
+            "title_bar": True,
+            "ui_zones": [[0.0, 0.81, 1.0, 1.0], [0.87, 0.42, 1.0, 0.86]],
         },
+    },
+    # The fixed title across the top of a portrait video. Fractions of the
+    # frame: `top`/`height` of its height, the rest of its width.
+    "title_bar": {
+        "top": 0.035,
+        "height": 0.062,
+        "fill": [255, 214, 0],
+        "ink": [22, 22, 22],
+        "size": 0.056,
+        "radius": 0.018,
+        "margin": 0.04,
     },
     "framing": {"wide": 0.88, "medium": 1.0, "close": 1.30},
     "label_tones": {
@@ -68,7 +105,13 @@ LOOK_DEFAULTS = {
         "stroke_fill": [0, 0, 0],
         "highlight_fill": [255, 210, 60],
     },
-    "timing": {"dissolve": 0.5, "caption_fade": 0.12, "element_fade": 0.28},
+    "timing": {"dissolve": 0.5, "caption_fade": 0.12, "element_fade": 0.28,
+               # The opening title is brushed on over this long, rather than
+               # sitting there complete - the reference's card animates in.
+               "title_wipe": 0.45},
+    # Cut, rather than dissolve, into a shot that shares a character with the
+    # one before it: a dissolve shows that character twice at two sizes.
+    "cut_on_shared_character": True,
     "safe_zones": {
         "edge_tolerance": 0.06,
         "min_gap": 0.012,
@@ -81,6 +124,10 @@ LOOK_DEFAULTS = {
         "enabled": True,
         "gain": 0.34,
         "max_per_shot": 2,
+        # Seconds at 1.0x between two cues; divided by the video's speed. A
+        # swoosh on every cut and a reaction on every shot put nine cues in
+        # seventeen seconds, which is a sound design competing with the voice.
+        "min_gap": 2.5,
         # Several per moment on purpose: the picker takes the least recently
         # used, which is what stops one swoosh carrying every cut in a video.
         "cues": {"transition": ["swoosh_up", "swoosh_down", "swoosh_soft", "tape_stop"], "money": ["cash", "coins_drop"], "good": ["sparkle", "chime"], "bad": ["thud", "error", "wobble"], "surprise": ["boing", "stab", "impact"], "wry": ["tick", "pop_cork"], "label": ["pop_cork", "tick", "riser"], "board": ["scribble"], "punchline": ["rimshot", "sting"]},
