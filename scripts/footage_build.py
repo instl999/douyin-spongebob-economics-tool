@@ -1,6 +1,10 @@
-"""Script in, finished footage-track MP4 out.
+"""Script in, footage-track MP4 and its editable Jianying draft out.
 
     python scripts/footage_build.py --script examples/telephone_history.txt
+
+The draft is written from `timeline.json`, the record of what the MP4 was
+assembled from, by `footage_draft.py`: into Jianying's own drafts folder when
+one is found, beside the MP4 with `--draft-here`, not at all with `--no-draft`.
 
 The drawn track's `build.py` is not reused. It is organised around a cast, a
 sprite library and a static plate, none of which exist here, and threading a
@@ -31,6 +35,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import console  # noqa: F401  UTF-8 stdout; see console.py
 
 import audio as audio_mod
+import captions as captions_mod
 import config
 import footage as footage_mod
 import footage_render as fr
@@ -125,11 +130,27 @@ def stage_voice(beats, out_dir, speaker=None, speed=1.0, force=False):
                 f"{'  (estimated, no audio)' if result['degraded'] else ''}")
         if result["degraded"]:
             degraded += 1
-        index[str(i)] = {"text": text, "path": str(result["path"]),
-                         "duration": result["duration"],
-                         "speaker": speaker or "", "speed": float(speed),
-                         "degraded": bool(result["degraded"])}
-        pieces.append((result["path"], result["duration"] + paced(TAIL_PAD, speed),
+        entry = {"text": text, "path": str(result["path"]),
+                 "duration": result["duration"],
+                 "speaker": speaker or "", "speed": float(speed),
+                 "degraded": bool(result["degraded"])}
+        # Where the voice starts, stops and pauses, for the captions to change
+        # at. Measured once per clip and kept with it; a silent stand-in has
+        # nothing to measure, and its captions are timed by length instead.
+        if current and cached.get("speech"):
+            entry["speech"] = cached["speech"]
+            entry["pauses"] = cached.get("pauses") or []
+        elif not result["degraded"]:
+            measured = audio_mod.speech_pauses(result["path"], speed)
+            if measured:
+                entry["speech"] = [measured[0], measured[1]]
+                entry["pauses"] = [list(pause) for pause in measured[2]]
+        index[str(i)] = entry
+        # Every beat but the last ends on the pause before the next. The last
+        # has no next: its pad was dead air after the final subtitle, at the
+        # very end of the file - the drawn track dropped it for the same reason.
+        tail = paced(TAIL_PAD, speed) if i < len(beats) else 0.0
+        pieces.append((result["path"], result["duration"] + tail,
                        result["degraded"]))
 
     index_path.write_text(json.dumps(index, ensure_ascii=False, indent=2),
@@ -214,7 +235,8 @@ def stage_pictures(plans, durations, out_dir, lay, grade,
     return paths, rows
 
 
-def caption_spans(plans, durations, dissolve=DISSOLVE, gap=CAPTION_GAP):
+def caption_spans(plans, durations, dissolve=DISSOLVE, gap=CAPTION_GAP,
+                  lay=None, speech=None):
     """Bilingual caption spans on the assembled timeline.
 
     Shots overlap by `dissolve`, so a caption's start is the running total
@@ -226,14 +248,45 @@ def caption_spans(plans, durations, dissolve=DISSOLVE, gap=CAPTION_GAP):
     leaving 0.2 s where both were drawn, and the video came out with the
     subtitle visibly doubled on every transition. The end is now pinned to the
     next start rather than computed independently of it.
+
+    Given the layout, a beat's Chinese is shown a line at a time. Every
+    sampled reference frame carries two lines - one of Chinese, the English
+    under it - and a whole beat set as one caption ran to two or three lines,
+    whose block climbed out of the subtitle band into the picture: a flow
+    chart's own caption was printed underneath it. The lines change where the
+    voice pauses when the clip was measured (`speech`, one voice-index entry
+    per beat) and by length when it was not, as the drawn track times its
+    captions. The English is the beat's one translation and stays up across
+    all of its lines. Without a layout, one caption per beat, as before.
     """
     spans, t = [], 0.0
-    for entry, seconds in zip(plans, durations):
+    heard = list(speech or [])
+    for i, (entry, seconds) in enumerate(zip(plans, durations)):
         next_start = t + seconds - dissolve
-        spans.append((t, max(t, next_start - gap),
-                      entry["beat"], None, entry.get("en", "")))
+        end = max(t, next_start - gap)
+        english = entry.get("en", "")
+        if lay is None:
+            spans.append((t, end, entry["beat"], None, english))
+        else:
+            clip = (heard[i] if i < len(heard) else None) or {}
+            for a, b, text, _first, _last in captions_mod.spans(
+                    entry["beat"], end - t, lay.subtitle_font_px(),
+                    lay.subtitle_max_px, speech=clip.get("speech"),
+                    pauses=clip.get("pauses") or ()):
+                spans.append((t + a, t + b, text, None, english))
         t = next_start
     return spans
+
+
+def voice_index(out_dir):
+    """The voice stage's record: per beat, its clip, length and pauses."""
+    path = Path(out_dir) / "voice" / "index.json"
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8-sig"))
+    except json.JSONDecodeError:
+        return {}
 
 
 def verify_output(path, expected_seconds, lay, narration=None):
@@ -282,9 +335,72 @@ def verify_output(path, expected_seconds, lay, narration=None):
     ]
 
 
+def write_timeline(out_dir, name, lay, orientation, grade, speed, dissolve,
+                   total, shot_paths, durations, rows, spans, pieces, chrome,
+                   hook_span=None, beds=()):
+    """Record the assembled timeline as `timeline.json`, for the draft.
+
+    Everything the MP4 was put together from, at the times it was put there:
+    where each shot starts and ends, each caption and the hook, the frame
+    furniture, each beat's narration and the music bed. The draft is laid
+    from this and nothing else, so the two cannot drift apart by one of them
+    re-deriving a number the other already decided.
+
+    Paths under the output directory are stored relative to it, so the folder
+    can be moved; the bed usually lives elsewhere and is stored absolute.
+    """
+    import os
+
+    root = Path(out_dir).resolve()
+    spoken = voice_index(root)
+
+    def rel(path):
+        return os.path.relpath(Path(path).resolve(), root)
+
+    offsets = [0.0] + fr.xfade_offsets(durations, dissolve)
+    ends = offsets[1:] + [total]
+    starts, clock = [], 0.0
+    for seconds in durations:
+        starts.append(clock)
+        clock += seconds
+    timeline = {
+        "name": name,
+        "video": {"width": lay.width, "height": lay.height, "fps": 30,
+                  "orientation": orientation, "grade": grade,
+                  "speed": speed, "dissolve": dissolve},
+        "total": total,
+        "shots": [{"path": rel(path), "start": round(a, 4), "end": round(b, 4),
+                   "kind": row.get("kind")}
+                  for path, a, b, row in zip(shot_paths, offsets, ends, rows)],
+        "captions": [{"start": round(a, 4), "end": round(b, 4), "text": text,
+                      "en": english or ""}
+                     for a, b, text, _highlight, english in spans],
+        "hook": ({"text": hook_span[0], "en": hook_span[1],
+                  "start": round(hook_span[2], 4),
+                  "end": round(hook_span[3], 4)} if hook_span else None),
+        "chrome": {key: rel(path) for key, path in (chrome or {}).items()},
+        # Narration is laid back to back at the shots' own lengths, as
+        # audio.build_narration lays it for the MP4. Each clip's length is
+        # what the voice stage measured - the slot also holds the pause
+        # after it, and the draft ducks the music under speech, not pauses.
+        "voice": [{"path": rel(path), "start": round(start, 4),
+                   "duration": round(float((spoken.get(str(i)) or {}).get(
+                       "duration", seconds)), 4),
+                   "degraded": bool(degraded)}
+                  for i, ((path, seconds, degraded), start)
+                  in enumerate(zip(pieces, starts), 1)],
+        "music": ({"beds": list(beds), "volume": BGM_VOLUME, "duck": True}
+                  if beds else None),
+    }
+    (root / "timeline.json").write_text(
+        json.dumps(timeline, ensure_ascii=False, indent=2), encoding="utf-8")
+    return timeline
+
+
 def build(script_path, out_dir, orientation="landscape", grade="vintage",
           provider=None, speaker=None, speed=None, bgm=None, limit=0,
-          hook=None, revoice=False, topic=""):
+          hook=None, revoice=False, topic="", draft=True, draft_here=False):
+    import music as music_mod
     import timing
     speed = timing.clamp(timing.DEFAULT_SPEED if speed is None else speed)
     out_dir = Path(out_dir)
@@ -328,8 +444,11 @@ def build(script_path, out_dir, orientation="landscape", grade="vintage",
                                       speed=speed)
 
     log("\nassemble")
+    heard = voice_index(out_dir)
     spans = caption_spans(results, durations, dissolve=paced(DISSOLVE, speed),
-                          gap=paced(CAPTION_GAP, speed))
+                          gap=paced(CAPTION_GAP, speed), lay=lay,
+                          speech=[heard.get(str(i))
+                                  for i in range(1, len(results) + 1)])
     caps = fr.caption_pngs(spans, lay, look, out_dir / "captions")
     if hook is None:
         hook = beats[0]
@@ -363,21 +482,25 @@ def build(script_path, out_dir, orientation="landscape", grade="vintage",
     if bgm:
         bed, why = Path(bgm), Path(bgm).name
     else:
-        import music as music_mod
         bed, why = music_mod.choose(ROOT / "assets" / "bgm", script,
                                     fallback=ROOT / "assets" / "bgm_default.wav")
     log(f"  music: {why}")
     # `bed and bed.exists()`, not `bed.exists()` alone: no music leaves this
     # None, and Path("") is Path(".") - a directory that exists, which ffmpeg
     # is then handed as a music file.
+    # Written out as the bed itself rather than left to mix()'s single-file
+    # default, so the record the draft lays from is the one the mix used.
+    beds = ([{"path": str(Path(bed).resolve()), "start": 0.0,
+              "end": float(total), "fade_in": music_mod.FADE_IN,
+              "fade_out": music_mod.FADE_OUT}]
+            if bed and bed.exists() else [])
     # A quieter bed than the drawn track uses; see audio.BGM_VOLUME.
     # duck is passed explicitly, not left to the default: the drawn track's mix
     # was measured without it and owns that default, and ducking is worth
     # +0.3 LU of range here - the difference between just inside the reference
     # band and just outside it.
     track = audio_mod.mix(narration, out_dir / "audio.wav", total,
-                          bgm=bed if bed and bed.exists() else None,
-                          bgm_volume=BGM_VOLUME,
+                          beds=beds, bgm_volume=BGM_VOLUME,
                           loudness=audio_mod.TARGET_LUFS, duck=True)
     log(f"  mixed and normalised to {audio_mod.TARGET_LUFS} LUFS")
 
@@ -392,11 +515,29 @@ def build(script_path, out_dir, orientation="landscape", grade="vintage",
     if credit_lines:
         (out_dir / "CREDITS.txt").write_text(
             "\n".join(credit_lines), encoding="utf-8")
+    write_timeline(out_dir, Path(script_path).stem, lay, orientation, grade,
+                   speed, paced(DISSOLVE, speed), total, shot_paths,
+                   durations, rows, spans, pieces, chrome,
+                   hook_span=((f"「{hook}」", results[0].get("en", ""),
+                               caps[0][0], caps[0][1]) if hook_path else None),
+                   beds=beds)
+
+    checks = verify_output(final, total, lay, narration=narration)
+    if draft:
+        import draft as draft_mod
+        import footage_draft
+
+        root = None if draft_here else draft_mod.jianying_drafts_dir()
+        draft_dir = footage_draft.export(out_dir, root=root)
+        log(f"\ndraft  {draft_dir}")
+        if root is None and not draft_here:
+            log("  Jianying's drafts folder was not found - move this into "
+                "it, or set JIANYING_DRAFT_DIR")
+        checks += footage_draft.check(out_dir, draft_dir)
 
     log(f"\nverify  {final}")
     failures = 0
-    for name, ok, detail in verify_output(final, total, lay,
-                                         narration=narration):
+    for name, ok, detail in checks:
         failures += 0 if ok else 1
         log(f"  {'[ok]  ' if ok else '[FAIL]'} {name}  {detail}")
 
@@ -444,6 +585,11 @@ def main():
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--revoice", action="store_true",
                     help="re-synthesise narration even if cached")
+    ap.add_argument("--no-draft", action="store_true",
+                    help="write the MP4 only, no Jianying draft")
+    ap.add_argument("--draft-here", action="store_true",
+                    help="write the draft beside the mp4 instead of into "
+                         "Jianying's own drafts folder")
     args = ap.parse_args()
 
     out = Path(args.out) if args.out else ROOT / "out" / Path(args.script).stem
@@ -451,7 +597,8 @@ def main():
         args.script, out, orientation=args.orientation, grade=args.grade,
         provider=args.provider or None, speaker=args.speaker or None,
         speed=args.speed, bgm=args.bgm or None, limit=args.limit,
-        hook=args.hook or None, revoice=args.revoice, topic=args.topic)
+        hook=args.hook or None, revoice=args.revoice, topic=args.topic,
+        draft=not args.no_draft, draft_here=args.draft_here)
     return 1 if failures else 0
 
 

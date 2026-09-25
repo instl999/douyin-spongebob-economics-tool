@@ -625,81 +625,98 @@ class DraftBuilder:
     def _add_music(self, script, segments):
         """The beds the mix used, on their own track, ducked where it ducked.
 
-        The storyboard records which beds run where, and this lays exactly
-        those: each looped to its span, faded as the mix fades it, and the
-        overlap between two sections kept as a crossfade on parallel lanes.
-        Jianying has no sidechain, so the dip under the voice is drawn as
-        volume keyframes along the narration the draft carries.
+        The storyboard records which beds run where, and `lay_beds` lays
+        exactly those.
         """
         music = self.sb.get("music") or {}
         beds = [bed for bed in music.get("beds") or []
                 if Path(bed["path"]).exists()]
         if not beds:
             return
-        level = float(music.get("volume", audio_mod.BGM_VOLUME))
-        attack, release = audio_mod.DUCK_ATTACK, audio_mod.DUCK_RELEASE
-        under = level * 10 ** (-audio_mod.DUCK_DB / 20)
-        # Lines closer together than the compressor can recover between are
-        # one dip, as they are in the mix: the bed does not bob up for the
-        # tail between two shots and straight back down.
-        dips = []
-        for a, b in sorted(self._speech(segments) if music.get("duck") else []):
-            if dips and a - attack <= dips[-1][1] + release:
-                dips[-1][1] = max(dips[-1][1], b)
-            else:
-                dips.append([a, b])
-
-        def volume_at(t):
-            for a, b in dips:
-                if a <= t <= b:
-                    return under
-                if a - attack < t < a:
-                    return level + (under - level) * (t - (a - attack)) / attack
-                if b < t < b + release:
-                    return under + (level - under) * (t - b) / release
-            return level
-
-        def envelope(start, end):
-            """[(offset_us, volume)] across one piece of a bed."""
-            times = {start, end}
-            for a, b in dips:
-                times |= {t for t in (a - attack, a, b, b + release)
-                          if start < t < end}
-            return [(_us(t - start), volume_at(t)) for t in sorted(times)]
-        speech = bool(dips)
-
-        for bed in beds:
-            material = jy.AudioMaterial(bed["path"])
-            loop = material.duration / SEC
-            start, end = float(bed["start"]), float(bed["end"])
-            pieces, cursor = [], start
-            while end - cursor > 0.05 and loop > 0:
-                pieces.append((cursor, min(end, cursor + loop)))
-                cursor += loop
-            for n, (a, b) in enumerate(pieces):
-                piece = AudioSegment(material, _span(a, b),
-                                     volume=1.0 if speech else level)
-                fade_in = float(bed.get("fade_in", 0)) if n == 0 else 0.0
-                fade_out = (float(bed.get("fade_out", 0))
-                            if n == len(pieces) - 1 else 0.0)
-                if fade_in or fade_out:
-                    piece.add_fade(_us(min(fade_in, (b - a) / 2)),
-                                   _us(min(fade_out, (b - a) / 2)))
-                if speech:
-                    for offset, volume in envelope(a, b):
-                        piece.add_keyframe(offset, volume)
-                script.add_segment(piece, self._lane(
-                    script, TrackType.audio, "配乐", _us(a), _us(b)))
+        lay_beds(script, beds, float(music.get("volume", audio_mod.BGM_VOLUME)),
+                 self._speech(segments) if music.get("duck") else [],
+                 lambda a, b: self._lane(script, TrackType.audio, "配乐", a, b))
 
     def _write_meta(self):
-        """Jianying needs a meta file beside the content to list the draft."""
-        template = Path(jy.__file__).parent / "assets" / "draft_meta_info.json"
-        meta = json.loads(template.read_text(encoding="utf-8-sig"))
-        meta["draft_name"] = self.name
-        meta["draft_fold_path"] = str(self.dir)
-        meta["draft_root_path"] = str(self.dir.parent)
-        (self.dir / "draft_meta_info.json").write_text(
-            json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+        write_meta(self.dir, self.name)
+
+
+def write_meta(folder, name):
+    """Jianying needs a meta file beside the content to list the draft."""
+    template = Path(jy.__file__).parent / "assets" / "draft_meta_info.json"
+    meta = json.loads(template.read_text(encoding="utf-8-sig"))
+    meta["draft_name"] = name
+    meta["draft_fold_path"] = str(folder)
+    meta["draft_root_path"] = str(Path(folder).parent)
+    (Path(folder) / "draft_meta_info.json").write_text(
+        json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def lay_beds(script, beds, level, speech, lane):
+    """Music beds as audio segments: looped to their spans, faded, ducked.
+
+    `beds` is [{path, start, end, fade_in, fade_out}] - what the mix was
+    given - at `level`. `speech` is [(start, end)] seconds where narration is
+    heard, empty for a mix that did not duck. `lane(start_us, end_us)` names
+    the track a piece goes on, so two sections overlapping to crossfade can
+    sit on parallel lanes.
+
+    Jianying has no sidechain, so the dip under the voice is drawn as volume
+    keyframes along the narration the draft carries. Shared by both tracks'
+    drafts: the drawn track's sections and the footage track's single bed are
+    the same thing laid the same way.
+    """
+    attack, release = audio_mod.DUCK_ATTACK, audio_mod.DUCK_RELEASE
+    under = level * 10 ** (-audio_mod.DUCK_DB / 20)
+    # Lines closer together than the compressor can recover between are one
+    # dip, as they are in the mix: the bed does not bob up for the tail
+    # between two shots and straight back down.
+    dips = []
+    for a, b in sorted(speech or []):
+        if dips and a - attack <= dips[-1][1] + release:
+            dips[-1][1] = max(dips[-1][1], b)
+        else:
+            dips.append([a, b])
+
+    def volume_at(t):
+        for a, b in dips:
+            if a <= t <= b:
+                return under
+            if a - attack < t < a:
+                return level + (under - level) * (t - (a - attack)) / attack
+            if b < t < b + release:
+                return under + (level - under) * (t - b) / release
+        return level
+
+    def envelope(start, end):
+        """[(offset_us, volume)] across one piece of a bed."""
+        times = {start, end}
+        for a, b in dips:
+            times |= {t for t in (a - attack, a, b, b + release)
+                      if start < t < end}
+        return [(_us(t - start), volume_at(t)) for t in sorted(times)]
+
+    for bed in beds:
+        material = jy.AudioMaterial(str(bed["path"]))
+        loop = material.duration / SEC
+        start, end = float(bed["start"]), float(bed["end"])
+        pieces, cursor = [], start
+        while end - cursor > 0.05 and loop > 0:
+            pieces.append((cursor, min(end, cursor + loop)))
+            cursor += loop
+        for n, (a, b) in enumerate(pieces):
+            piece = AudioSegment(material, _span(a, b),
+                                 volume=1.0 if dips else level)
+            fade_in = float(bed.get("fade_in", 0)) if n == 0 else 0.0
+            fade_out = (float(bed.get("fade_out", 0))
+                        if n == len(pieces) - 1 else 0.0)
+            if fade_in or fade_out:
+                piece.add_fade(_us(min(fade_in, (b - a) / 2)),
+                               _us(min(fade_out, (b - a) / 2)))
+            if dips:
+                for offset, volume in envelope(a, b):
+                    piece.add_keyframe(offset, volume)
+            script.add_segment(piece, lane(_us(a), _us(b)))
 
 
 # Where an installed editor keeps its user data, and the folder holding drafts

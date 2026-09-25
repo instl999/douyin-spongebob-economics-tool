@@ -311,7 +311,8 @@ EN_SCALE = 0.50
 EN_GAP = 0.85
 # The lowest the English line may reach, as a fraction of frame height. A
 # two-line Chinese caption pushes the whole block down; past this it is
-# shifted up rather than allowed to run off the bottom.
+# shifted up rather than allowed to run off the bottom. A layout with the phone
+# app's controls along its bottom stops above them instead (`caption_floor`).
 CAPTION_FLOOR = 0.975
 # The opening hook: bigger than a subtitle, centred high in frame, and
 # never allowed to grow down into the subtitle band beneath it.
@@ -320,26 +321,80 @@ HOOK_CENTRE = 0.44
 HOOK_FLOOR = 0.72
 
 
-def _stacked_caption(lay, look, text, english, highlight=None,
-                     center_y=None, scale=1.0, floor=CAPTION_FLOOR):
-    """Chinese over English, positioned off the *rendered* block, not a guess.
+def caption_floor(lay):
+    """The lowest a caption block may reach in this layout, as a fraction.
 
-    Offsetting the English by a fixed multiple of the Chinese size works only
-    while the Chinese is one line. On a two-line caption the second line landed
-    straight on top of the English, because the offset was measured from the
-    Chinese block's centre and the block had grown downward around it. Only the
-    real block height knows how tall it actually got.
+    CAPTION_FLOOR, or the top of the phone app's controls where the layout
+    lists them (`ui_zones`, the ones spanning the whole width). A portrait
+    video is watched inside the app, and a caption set under its description
+    and buttons is a caption nobody can read.
+    """
+    tops = [float(zone[1]) for zone in lay.cfg.get("ui_zones") or []
+            if float(zone[0]) <= 0.0 and float(zone[2]) >= 1.0]
+    return min([CAPTION_FLOOR] + tops)
+
+
+def caption_layout(lay, text, english, center_y=None, scale=1.0, floor=None):
+    """Where a caption's two lines go: {"zh": (lines, px, centre_y), "en": ...}.
+
+    Positioned off the *rendered* block, not a guess. Offsetting the English by
+    a fixed multiple of the Chinese size works only while the Chinese is one
+    line. On a two-line caption the second line landed straight on top of the
+    English, because the offset was measured from the Chinese block's centre
+    and the block had grown downward around it. Only the real block height
+    knows how tall it actually got.
 
     `center_y` and `scale` exist so the opening hook goes through this same
     code. It did not, and it had the identical bug independently: a two-line
     hook printed its translation across its own second line.
-    """
-    from PIL import Image
 
-    caption = look["caption"]
+    One calculation for the burnt-in caption and for the draft's text, so the
+    two land on the same scanline. "en" is None when there is no English.
+    `floor` defaults to the layout's own (`caption_floor`).
+    """
+    floor = caption_floor(lay) if floor is None else floor
     main_px = max(12, int(round(lay.subtitle_font_px() * scale)))
     anchor_y = lay.subtitle_center_y if center_y is None else int(center_y)
     en_px = max(12, int(round(main_px * EN_SCALE)))
+
+    def block(body, size):
+        """Lines, exact height and stroke padding of a rendered caption block.
+
+        Mirrors render_caption's own layout. Measuring the returned bbox
+        instead does not work: it is clamped to the frame, so a block that
+        already overflows reports a bottom of exactly the frame height and the
+        overflow reads as far smaller than it is.
+        """
+        lines = textkit.wrap(body, size, lay.subtitle_max_px)
+        if not lines:
+            return [], 0, 0
+        lh = textkit.line_height(size, True)
+        total = lh * len(lines) + int(size * 0.20) * (len(lines) - 1)
+        return lines, total, max(2, round(size * 0.085)) + 6
+
+    zh_lines, zh_total, zh_pad = block(text, main_px)
+    en_lines, en_total, en_pad = (block(english, en_px) if english
+                                  else ([], 0, 0))
+    inner_gap = int(round(en_px * EN_GAP))
+
+    zh_top = anchor_y - zh_total // 2
+    en_top = zh_top + zh_total + inner_gap
+    bottom = (en_top + en_total + en_pad) if en_total else (zh_top + zh_total + zh_pad)
+    # Only ever move the caption up, and only as far as it must go: the
+    # references keep it on the same scanline shot after shot, so a one-line
+    # beat must not drift just because a neighbouring beat needed two.
+    shift = max(0, bottom - int(lay.height * floor))
+    return {"zh": (zh_lines, main_px, anchor_y - shift),
+            "en": ((en_lines, en_px, en_top + en_total // 2 - shift)
+                   if en_total else None)}
+
+
+def _stacked_caption(lay, look, text, english, highlight=None,
+                     center_y=None, scale=1.0, floor=None):
+    """Chinese over English, as one transparent layer. See `caption_layout`."""
+    from PIL import Image
+
+    caption = look["caption"]
 
     def draw(center_y, size, body, hl=None):
         return textkit.render_caption(
@@ -350,37 +405,13 @@ def _stacked_caption(lay, look, text, english, highlight=None,
             highlight_fill=tuple(caption["highlight_fill"]) + (255,),
             highlight=hl)
 
-    def block(body, size):
-        """Exact height and stroke padding of a rendered caption block.
-
-        Mirrors render_caption's own layout. Measuring the returned bbox
-        instead does not work: it is clamped to the frame, so a block that
-        already overflows reports a bottom of exactly the frame height and the
-        overflow reads as far smaller than it is.
-        """
-        lines = textkit.wrap(body, size, lay.subtitle_max_px)
-        if not lines:
-            return 0, 0
-        lh = textkit.line_height(size, True)
-        total = lh * len(lines) + int(size * 0.20) * (len(lines) - 1)
-        return total, max(2, round(size * 0.085)) + 6
-
-    zh_total, zh_pad = block(text, main_px)
-    en_total, en_pad = block(english, en_px) if english else (0, 0)
-    inner_gap = int(round(en_px * EN_GAP))
-
-    zh_top = anchor_y - zh_total // 2
-    en_top = zh_top + zh_total + inner_gap
-    bottom = (en_top + en_total + en_pad) if en_total else (zh_top + zh_total + zh_pad)
-    # Only ever move the caption up, and only as far as it must go: the
-    # references keep it on the same scanline shot after shot, so a one-line
-    # beat must not drift just because a neighbouring beat needed two.
-    shift = max(0, bottom - int(lay.height * floor))
-
-    zh_layer, _ = draw(anchor_y - shift, main_px, text, highlight)
-    if not en_total:
+    where = caption_layout(lay, text, english, center_y, scale, floor)
+    _, main_px, zh_y = where["zh"]
+    zh_layer, _ = draw(zh_y, main_px, text, highlight)
+    if where["en"] is None:
         return zh_layer
-    en_layer, _ = draw(en_top + en_total // 2 - shift, en_px, english)
+    _, en_px, en_y = where["en"]
+    en_layer, _ = draw(en_y, en_px, english)
     if en_layer is None:
         return zh_layer
     return (en_layer if zh_layer is None
