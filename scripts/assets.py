@@ -1,16 +1,22 @@
-"""The sprite library: generate once, matte, cache, reuse.
+"""What a video is drawn with: its own drawings, and what a cast keeps.
 
-Character consistency across fifty-odd shots is the hard problem in this
-format, and the way out is not to fight a prompt into behaving. Each pose is
-generated exactly once, cut out, and stored under the cast; every video that
-uses that cast composites the same PNG. A character therefore cannot drift,
-because nothing regenerates it.
+There is no sprite library. Every picture in a video is generated for that
+video from the director's description of the line it illustrates, cut out,
+and written into the video's own folder - shared inside the video when two
+elements are described in the same words, and by nothing after it. A shared
+library is what made every output look alike: one pile of gold coins
+appeared in five videos out of eight.
+
+Identity comes from one committed reference per character, the anchor in
+casts/<style>/anchors/, which every drawing of that character is conditioned
+on and the only drawing that outlives a video. The cast also keeps its plate,
+so a series sits in one place.
 
 Sprites are generated on a saturated chroma background rather than white. See
 matting.py for why that choice does most of the cutout work.
 
-The cache key is the full prompt, so editing a pose description regenerates
-only that pose and leaves the rest of the library alone.
+A drawing's filename carries a hash of its description, so an edited
+description is a new file and every other drawing is left alone.
 """
 import hashlib
 import json
@@ -37,8 +43,8 @@ PROP_RULES = ("a single inanimate object on its own, no characters, no people, "
               "no text, no watermark")
 
 # Two figures in one image, for a beat where one acts on the other. Everything
-# else here is one character per sprite, which is what makes the library
-# reusable - but it also means a handover can never actually connect, because
+# else here is one character per sprite, which keeps each figure simple to
+# draw and place - but it also means a handover can never actually connect, because
 # the envelope lives in one PNG and the hands that take it live in another. No
 # arrangement of two rectangles fixes that. For the beats where the interaction
 # *is* the sentence, the two figures have to be drawn together.
@@ -90,9 +96,8 @@ COMPARE_PROMPT = """这 {count} 张图画的是同一个内容：
 只回一个数字（1 到 {count}），不要任何其他内容。"""
 
 # Sprites are generated square and cropped to their own bounds, so the video's
-# orientation is irrelevant to them. Keeping the size fixed means one library
-# serves landscape and portrait projects instead of two. 1920x1920 is exactly
-# the plan's 3,686,400 pixel minimum.
+# orientation is irrelevant to them: one size serves landscape and portrait
+# alike. 1920x1920 is exactly the plan's 3,686,400 pixel minimum.
 SPRITE_SIZE = "1920x1920"
 
 # Matches the reference title cards: red brush lettering, grey offset copy,

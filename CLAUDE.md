@@ -10,13 +10,21 @@ Do not confuse with `../AutoReel`, which targets DaVinci Resolve instead.
 
 ```bash
 python scripts/build.py projects/efficiency_wage.json   # full run
+python scripts/build.py <proj> --preview                # the planned shots, free
 python scripts/build.py --check                         # readiness, then exit
 python scripts/build.py <proj> --from render            # redo one stage onward
 python scripts/build_library.py clay --plates           # a style's references
 ```
 
 Useful flags: `--stop-after <stage>`, `--out <dir>`, `--regenerate-assets`,
-`--preview`, `--no-draft`, `--draft-here`, `--no-verify`.
+`--no-draft`, `--draft-here`, `--no-verify`, `--speed X`, `--workers N`.
+
+**`--preview` costs nothing but the plan.** It runs straight after the plan
+stage and writes `preview.jpg`: drawings already made are used, the rest are
+labelled stand-ins the shape the real ones will be, and lines not yet spoken
+are timed by estimate. It works in `out/<name>/preview/` and leaves the
+build's own files alone. It used to run after assets and voice - the whole
+bill - to catch a bad composition before paying for one.
 
 ## Stages
 
@@ -44,7 +52,14 @@ committed reference image per character in `casts/<style>/anchors/`, which is
 the only drawing that outlives a video.
 
 Cost is therefore per video, not per style: about one image per element, ~20s
-each, capped by `plan.MAX_DRAWINGS`.
+each, capped by `plan.MAX_DRAWINGS`, made `workers` at a time (project setting
+or `--workers`, default 4). Narration clips are spoken the same way.
+`new_project.py` states the expected range before anything is built.
+
+A video's own bookkeeping - the title lettering and its setting's fingerprints
+- lives beside it in `out/<name>/assets.json`, not in the cast's committed
+`manifest.json`, which only records the per-style plate. Old entries in the
+manifest are still read and move across when used, so nothing is redrawn.
 
 ## Styles
 
@@ -61,6 +76,19 @@ character, not a whole library.
   `"fallback_setting": false` in the project JSON.
 - New style: copy `casts/_template.json`, fill the `_hint_*` fields, then
   `python scripts/build.py --check`.
+
+## Portrait
+
+A portrait video is watched inside the phone app, which draws its own text
+and buttons over the bottom fifth of the screen and a column down the right.
+The portrait frame (`look.frame` in `casts/styles.json`) lists those as
+`ui_zones` and keeps everything that matters out of them: the stage ends at
+0.735 of the height, the caption is centred at 0.775, the layout check keeps
+labels left of the right-hand column (`safe_right`), and a yellow title bar
+holds the video's question across the top of every shot (a project's
+`title_bar` gives it other words, or `false` removes it). `--preview` outlines
+the zones in red. Cards, bubbles and labels are sized per orientation in the
+same file, since a size that suits 1920 pixels across is small across 1080.
 
 ## Speed
 
@@ -117,6 +145,14 @@ It does NOT go through `render.py`, whose whole design is static cached plates.
 It composites in ffmpeg and borrows only `textkit` for captions, so subtitles
 land on the same scanline in both tracks.
 
+It ends in a Jianying draft too. `footage_build` records what the MP4 was
+assembled from in `timeline.json`, and `footage_draft.py` lays the draft from
+that alone: the shot clips as cut and graded, the frame furniture with the
+progress rule keyframed, the hook and captions as text on the MP4's own lines
+(`footage_render.caption_layout` places both), each beat's narration, and the
+bed ducked as the mix ducks it. `--no-draft` and `--draft-here` work as on the
+drawn track, and the draft is checked for placement as part of verify.
+
 `footage.py` retrieves: the model turns each beat into English search queries,
 Pexels (needs a free `PEXELS_API_KEY`) and Wikimedia Commons (keyless,
 archival) return candidates, and a vision model scores each candidate's
@@ -138,7 +174,10 @@ chose it across a whole build:
 **A composite is the references' default shot**, and the layer this track was
 missing. Backdrop, a cut-out subject (generated on a plain ground, then run
 through the drawn track's `matting.auto_cutout`), a large headline beside it,
-and an optional annotation on a leader line. Four layouts: `subject_left`,
+and an optional annotation on a leader line. The annotation is placed from the
+cut-out's own alpha - beside the subject, clear of it, with the leader landing
+on it; a fixed fraction of the subject's box printed it across a standing
+figure's face. Four layouts: `subject_left`,
 `subject_right`, `subject_center`, `card`. Measured, a reference graphic frame
 is ~60% content; a full-frame photo under a caption is 2-10%, which is what
 "technically correct but flat" looked like.
@@ -161,7 +200,9 @@ own language, and a wrong label on every frame is worse than none.
 chart showing 45%" produces something that looks like a chart and says
 something else. Six kinds: `counter`, `bar_chart`, `line_chart`, `comparison`,
 `flow`, `breakdown`. Each builds over the first 55% of the shot then holds, and all of them
-stay above `motion.SAFE_BOTTOM` so nothing is drawn under the subtitles.
+stay above `motion.safe_bottom` so nothing is drawn under the subtitles: 0.78
+of the height in landscape, 0.69 in portrait, where the captions sit higher to
+clear the phone app's own controls (`footage_render.caption_floor`).
 
 **A number reaches the screen only if the narration says it.**
 `footage.validate_graphic` checks every value against the numbers actually
@@ -176,15 +217,21 @@ Where the two tracks deliberately disagree, and why:
 
 | | drawn | footage |
 |---|---|---|
-| transitions | 0.5s dissolve | **hard cut** (references: 59 cuts / 309s) |
+| transitions | 0.5s dissolve; a cut when two shots share a character | **hard cut** (references: 59 cuts / 309s) |
 | opening | calligraphy title card, **spoken over a stinger** | hook overlaid on shot 1, no card |
 | ending | 金句 card | none; ends on footage |
 | last shot | **no tail pad** - the card cuts in on the last word | **no tail pad** - the file ends on it |
-| subtitles | Chinese | Chinese + English beneath |
-| loudness | limited only | normalised to -17 LUFS, LRA preserved |
+| subtitles | Chinese, a phrase at a time | a line of Chinese at a time, the beat's English beneath |
 
 Do not "fix" the footage track to match the drawn one. Each set of rules was
 measured off its own references.
+
+What they share: captions change at the pauses the voice actually took
+(`audio.speech_pauses`, measured once per clip and kept in the voice index),
+broken where a phrase breaks rather than wherever a line fills
+(`captions.chunks`, `textkit.wrap`); and both mixes are normalised to -17 LUFS
+with the loudness range preserved (`"loudness": null` in a drawn project only
+limits it).
 
 ## The opening (drawn track)
 
@@ -195,8 +242,7 @@ The stinger is **an ordinary sound cue at t=0** — `opening_dong`, recorded int
 `storyboard["sound_cues"]` like every other. It is not a separate mechanism in
 `mix()`, because `carried()` is read by both the mix and the draft writer, and
 a cue living anywhere else is a cue the two can disagree about. It carries its
-own gain (the optional fourth element of a cue), since an opening accent sits
-about 6 dB above the level the library cues want.
+own gain (the optional fourth element of a cue) - unity, below.
 
 The title's narration starts `audio.TITLE_SFX_LEAD` (0.45s) later, so it speaks
 into the cue's decay rather than over the impact — measured off the cue, which
@@ -219,17 +265,17 @@ the two can disagree about.
 Per-project overrides: `opening_sfx` (a library name; `""` turns it off) and
 `title_seconds`.
 
-The cue itself is **generated**, like the rest of `assets/sfx`. `gen_sfx.py`
-says so in its own docstring - everything there is synthesised so the library
-owes nobody anything - and a downloaded 综艺音效 was committed here by mistake
-before that rule was noticed. `python scripts/gen_sfx.py assets/sfx --only
-opening_dong` rebuilds it, and a selftest check now fails if any cue in the
-library has no generator.
+The cue itself is **supplied, not synthesised**: `assets/sfx/opening_dong.mp3`
+is a specific sound the videos are known by. `gen_sfx.py` builds every other
+cue in that folder and says so in its docstring, and the selftest holds both
+halves - every other cue has a generator, and this one must not, since a
+synthesised stand-in for it is worse than none. If it is missing the build
+says so and opens without a cue rather than substituting one.
 
-Its gain is 0.42, not the library's 0.34 or the 0.7 the downloaded file used:
-`gen_sfx` normalises to -12 dB, and measured on a finished video 0.7 put the
-stinger 6 dB above the title's own voice. At 0.42 the cue, the title and the
-first line all sit within a decibel of each other.
+It plays at **unity gain** (`build.OPENING_GAIN = 1.0`), exactly as supplied:
+not normalised, not levelled against the narration. Earlier versions tuned it
+(0.7, then 0.42) and were wrong for the same reason both times - it is meant to
+sound the way it sounds. A project's `opening_volume` overrides it.
 
 The title is **not** an SRT cue. The draft imports the SRT as a native subtitle
 track, so a cue there printed the title a second time in small white text under
@@ -259,24 +305,30 @@ screen, which is content rather than trailing time.
 
 ## Music
 
-`music.py` chooses one bed from a folder, matched to how the script reads.
+`music.py` chooses the beds from a folder, matched to how the script reads.
 
-Nothing is shipped but `assets/bgm_default.wav`, and nothing should be: the
-tracks are licensed to whoever collected them. Point `bgm_library` (project
-JSON) or `assets/bgm/` at a folder whose filenames carry a Chinese mood label
-before the track title - `紧张Kill Drill - Robert Ruth.mp3` - and the label is
-read off the front, up to the first non-Chinese character, so an artist credit
-at the end is not mistaken for one.
+The library is `assets/bgm/`, committed with the repository; its README says
+the repository's licence covers the code and not the music. `bgm_library` in a
+project points at another folder. Filenames carry a Chinese mood label before
+the track title - `紧张Kill Drill - Robert Ruth.mp3` - and the label is read off
+the front, up to the first non-Chinese character, so an artist credit at the
+end is not mistaken for one.
 
 The director supplies the script's own labels as a `mood` field on the call it
 already makes; a second request for one word would double what choosing a bed
 costs. `music.moods_in` reads the script directly when the model returns none.
 
+It may also mark where the script turns, as `sections` (at most 4, each at
+least 3 shots). Each section then gets the bed that fits its own mood and
+place, and neighbours crossfade over 2s; with no sections one bed runs start to
+finish. The storyboard records the beds (`music.beds`) and the mix and the
+draft both lay them from that record - the draft used to have no music at all.
+
 Four rules worth not undoing:
 
 - A label naming a **position** (`开头`, `结尾`, `后期`, `提出`) ranks below a
-  plain track of the same mood, because one bed runs under the whole video.
-  Ranked down, not excluded - a folder may hold nothing else.
+  plain track of the same mood under a whole video, and above it under the
+  section it names. Ranked down, not excluded - a folder may hold nothing else.
 - **A mood that matches nothing means no music.** The wrong bed is more
   distracting than none, and it is the one choice in a video that nobody plays
   back to check. That is not the same as **no mood at all** - no label and no
@@ -285,17 +337,24 @@ Four rules worth not undoing:
 - **Ties break by filename**, so `--from audio` cannot rescore a finished video.
 - `bgm` in the project JSON names one track and is not second-guessed.
 
-Both tracks quote a level in the same band, `audio.BGM_VOLUME` = 0.056 (-25 dB).
-The footage track used 0.05 from a measurement about range, not about that
-digit; one stated band across both tracks is worth more than the decibel.
+Under the voice both tracks sit in the same band, 20-25 dB down.
+`audio.BGM_VOLUME` = 0.056 (-25 dB) is the footage track's level. The drawn
+track ducks: its bed sits at `BGM_DUCKED_VOLUME` = 0.16 when nobody is talking,
+so the cards and the breaths between shots are not silent, and the sidechain
+pulls it about 10 dB further down under speech (`DUCK_DB`, which the draft
+draws as volume keyframes, having no sidechain). `duck_music: false` in a
+project turns that off and goes back to a constant 0.056.
 
 ## Tests
 
-`python scripts/selftest.py` runs everything offline, 194 checks. The
-footage-track half lives in `scripts/selftest_footage.py` and is called from
-the end of it — two Claude Code sessions work on this repo at once, and one
-thousand-line test file is the single place their work is guaranteed to
-collide.
+`python scripts/selftest.py` runs everything offline, about 300 checks, in a
+few minutes. It calls `selftest_workflow.py` (stages, caching, the draft,
+verification, the free preview), `selftest_look.py` (layout, captions, music,
+cues) and `selftest_footage.py` (the footage track, including an offline build
+that writes and checks its draft) from the end of it — two Claude Code sessions
+work on this repo at once, and one thousand-line test file is the single place
+their work is guaranteed to collide. Builds it spawns run with both keys set
+empty, so a machine holding real ones never spends them.
 
 ## Environment
 

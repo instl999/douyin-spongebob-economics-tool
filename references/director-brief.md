@@ -39,11 +39,11 @@ thing the sentence mentions does not pass: "拿到工资" is not a person and a 
 of money in the same frame, it is a person **being handed** money and pleased
 about it. Cast the *action*, then let the object and the feeling follow from it.
 
-- **action** decides the pose. Pick the pose whose description contains that
-  verb, not merely the character the sentence is about
-- **emotion** decides which of the near-matching poses to use. The same beat
-  ends differently if the subject is pleased or dismayed, and that difference
-  is most of what the shot is for
+- **action** decides what the drawing shows. Write its `shows` around that
+  verb - the character doing it, not merely the character the sentence is about
+- **emotion** decides how they look doing it. The same beat ends differently if
+  the subject is pleased or dismayed, and that difference is most of what the
+  shot is for
 - **object** goes in the frame, positioned so it is being acted on: held,
   handed over, pointed at, worked at - not parked beside someone
 - **relation** also decides *facing*. A sprite points whichever way it was

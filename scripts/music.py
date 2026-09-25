@@ -1,11 +1,9 @@
-"""Choosing the bed: one track from a folder, matched to how the script reads.
+"""Choosing the beds: tracks from a folder, matched to how the script reads.
 
-There is no music library in the repository beyond a single default file, and
-there deliberately still is not one. What this module adds is the ability to
-point at a folder of your own music and have the right track come out, which
-is a different thing from shipping music: the tracks are licensed to whoever
-collected them, and a pipeline that guesses is a pipeline that puts a crisis
-cue under a joke.
+The library is `assets/bgm`, committed with the repository (its README says
+what that does and does not license), or any folder a project names in
+`bgm_library`. A pipeline that guesses is a pipeline that puts a crisis cue
+under a joke, so a track is chosen by the mood it is labelled with.
 
 The convention is the one a collected folder already arrives with - the mood
 written in Chinese at the front of the filename, ahead of the track's own
@@ -20,6 +18,10 @@ the call it already makes, so a label never has to be translated into another
 label on the way. When the model says nothing - an older plan, a stricter JSON
 mode - the words in the script answer instead, so a build is never held up for
 want of a mood.
+
+Where the director marks the script's turns as `sections`, each gets the bed
+that fits its own mood and place, crossfading at the boundary (`plan_beds`);
+otherwise one bed runs start to finish.
 """
 from pathlib import Path
 
@@ -32,9 +34,10 @@ MOODS = ("紧张", "危机", "焦虑", "疑问", "疑惑", "失落", "转机",
          "升华", "欢乐", "舒缓", "平淡", "解释", "讲解", "措施", "解决")
 
 # Labels that say WHERE in a video a track belongs rather than how it feels.
-# One bed runs under the whole video here, so a cue written for an opening or
-# an ending is a worse choice than an unlabelled track of the same mood -
-# ranked below it, not excluded, because a folder may hold nothing else.
+# Under a whole video, a cue written for an opening or an ending is a worse
+# choice than an unlabelled track of the same mood - ranked below it, not
+# excluded, because a folder may hold nothing else. Under a section, the label
+# that fits its place ranks up instead (`SECTION_POSITIONS`).
 POSITIONS = ("开头", "结尾", "后期", "提出")
 
 # What the script itself says, for when the director labels nothing. Coarse on

@@ -93,9 +93,12 @@ predicted result
   total       86.5s at 1.00x speed
 
 what this will generate
-  sprites     up to 5 new image(s); 32 already in the library
+  drawings    about 15-30, one per element, made for this script and not reused
   background  reuse the cached plate
+  title card  one, its lettering read back by the vision model
+  setting     one more if the script names no place of its own
   narration   15 clips
+  images      16-32 in all, about 2-3 min at 4 at a time
 ```
 
 **把这段贴给用户，等确认再往下。** 退出码 2 表示目标时长做不到，原因和差多少字都写在输出里。
@@ -108,7 +111,7 @@ what this will generate
 python scripts/build.py projects/my_video.json --preview
 ```
 
-**必须把 `out/my_video/preview.jpg` 发给用户看过再往下。** 这一步花几分钟，能省掉一次全量返工——三个真实缺陷都是在这张图上第一次被发现的。
+**必须把 `out/my_video/preview.jpg` 发给用户看过再往下。** 这一步**不花钱**：只做规划（一次导演调用），不生图、不配音 —— 还没画的画面是标着「谁、画什么」的占位框，形状和真画一样；时长按估算。竖屏会用红框标出抖音界面会挡住的区域。能省掉一次全量返工——三个真实缺陷都是在这张图上第一次被发现的。
 
 ### Step 4 — 出片（会自动质检）
 
@@ -116,7 +119,8 @@ python scripts/build.py projects/my_video.json --preview
 python scripts/build.py projects/my_video.json
 ```
 
-八个阶段跑完后**自动跑一遍 verify**，打印 12 项检查。全 PASS 才算完。
+八个阶段跑完后**自动跑一遍 verify**，打印 13 项检查。全 PASS 才算完。素材和配音默认
+4 路并行（project 的 `workers`，或 `--workers N`；写 1 就一张一张来）。
 
 最后一个阶段（draft）会导出**剪映可编辑工程**，并当场跟渲染结果逐镜比对；
 对不上会直接报错，不会把一个错位的工程丢给用户。
@@ -184,7 +188,7 @@ python scripts/draft.py out/my_video
 ## 四、绝不要做
 
 1. **不要改用户的文案。** 一个字都不要。导演模型只负责选素材，分句是代码做的（`plan.split_script`）。曾经出过事：39 字的文案被模型扩写成 112 字，凭空加了「珊迪做了个实验」这种原文没有的情节。现在代码不给模型碰文字的机会，**不要把这个权限还回去**。
-2. **不要加动效。** 不要呼吸微动、不要气泡层、不要背景视差、不要运镜、不要元素逐个滑入弹出、不要角色投影。参考片里一个都没有，加了只会更不像，还慢。
+2. **不要在 MP4 里加动效。** 渲染器必须是静止的：不要呼吸微动、不要气泡层、不要背景视差、不要运镜、不要元素逐个滑入弹出、不要角色投影。参考片里一个都没有，加了只会更不像，还会让逐帧缓存失效。**唯一的例外只在剪映工程里**：特写镜头的慢推（`look.motion`，默认 5%、上限 8%）和标签的入场动画只写进草稿，MP4 仍然是静止的；不想要就 `look.motion.enabled: false`。
 3. **不要让图像模型写中文。** 标签、气泡、卡片正文全部用 PIL 画。唯一例外是标题书法字，而那条路径**带视觉模型校验**：读回来对不上就自动退回 PIL 画的版本。
 4. **不要为了省事跳过 `--preview`。** 用户没看过构图就出片，返工代价大得多。
 5. **不要手改 `storyboard.json`。** 它是从 `plan.json` + 配音时长生成的，改了下次就被覆盖。要改就改 `plan.json`。
@@ -219,10 +223,10 @@ python scripts/draft.py out/my_video
 | 标签用哪个色 | 标签的 `tone`：`good` / `bad` / `money` / 不写就是深灰；**具体颜色**在 `styles.json` 的 `look.label_tones` |
 | 精确的前后遮挡 | 元素上写 `z`（数字，小的在后），只在三层默认排序不够用时才写 |
 | 某一镜的构图 | `out/<name>/plan.json` 的 `x` / `y` / `h` / `framing` |
-| **某一镜「没演出文案的意思」** | 看 `plan.json` 里那一镜的 `beat`：`action` 错了是理解错了；`action` 对但画面不对，就是那一镜的 `shows` 写得不够具体。直接改 `plan.json` 里那个元素的 `shows`（画面描述就存在元素上），再 `--from assets` 重画那一张 |
-| **想换某张画** | 改 `plan.json` 里那个元素的 `shows`，文件名跟着描述的哈希走，所以改了描述就会重画一张，没改的一张都不会重画 |
+| **某一镜「没演出文案的意思」** | 看 `plan.json` 里那一镜的 `beat`：`action` 错了是理解错了；`action` 对但画面不对，就是那一镜的 `shows` 写得不够具体。直接改 `plan.json` 里那个元素的 `shows`（画面描述就存在元素上），然后照常重跑：plan 阶段会发现描述变了，只重画那一张，不用加 `--from` |
+| **想换某张画** | 改 `plan.json` 里那个元素的 `shows`，文件名跟着描述的哈希走，所以改了描述就会重画一张，没改的一张都不会重画。在 `drawings` 列表里改也行，用到这张的每一镜都会跟着换 |
 | **镜头运动（推镜）** | `casts/styles.json` → `look.motion`；**只在剪映工程里有，MP4 预览是静止的**。默认只推特写、5%、上限 8%。这是唯一没法在本地验证的功能，第一次打开工程要专门看一眼，不对就 `enabled: false` |
-| **音效** | `look.sound.cues`：每个「时刻」给一组音效，每次挑**最久没用过**的那个，所以不会一个声音响七遍。音效由 `python scripts/gen_sfx.py` 合成，共 25 个 |
+| **音效** | `look.sound.cues`：每个「时刻」给一组音效，每次挑**最久没用过**的那个，所以不会一个声音响七遍。25 个由 `python scripts/gen_sfx.py` 合成，外加一个提供好的开场音效 `opening_dong`（原样播放，不合成、不调音量）。两个音效至少隔 `look.sound.min_gap`（1.0 倍速下 2.5 秒），抢位时金句 > 情绪 > 转场 |
 | **某个情绪配错了音** | 音效是按导演写的 `beat.emotion` 选的（`sfx.py` 的 `EMOTION_WORDS` 是中英文关键词表）。配错了先看 `plan.json` 里那一镜的 emotion 写了什么 |
 | **字幕动画** | `look.text.animation`，只在剪映工程里生效 |
 | **「递东西 / 互动」演不出来** | 两张分开的素材永远碰不到一起。导演会要一张**双人素材** `duo_<甲>_<乙>_<动作>.png`，两个人画在同一张图里，每条视频最多 4 张。出来解剖有问题（多手、断肢）就删掉那张 PNG 重跑一次，自己看哪张好 —— 模型自己挑不准，实测它会挑中有断肢的那张 |
@@ -235,7 +239,11 @@ python scripts/draft.py out/my_video
 | 标题卡停多久 | project 的 `title_seconds`（默认 2.6，1.0 倍速下）。这是**下限**：标题念得比它长就自动加长，上限 4.5 秒；再长就只留字、去掉配音，并在日志里说明 |
 | 溶解快慢 | project 的 `dissolve`；不写就用 `styles.json` 的 `look.timing.dissolve` |
 | 音色 | project 的 `voice`（音色必须 `_uranus_` 系列）。语速不在这里，见上面的 `speed` |
-| 重新生成某个素材 | 删 `casts/<cast>/sprites/<name>.png` 再跑 |
+| **配音带情绪** | project 的 `voice.emotion: true`：按每镜 `beat.emotion` 选语气（开心 / 难过 / 惊讶 / 生气…）。默认关；音色不支持就自动退回平读，并记下来不再重试 |
+| 同时画几张、配几句 | project 的 `workers`（默认 4）或 `--workers N` |
+| 竖屏顶部标题栏 | project 的 `title_bar`：竖屏默认显示片名，写别的字就显示别的，`false` 关掉 |
+| 配乐 | 从 `assets/bgm/` 按情绪标签选（或 project 的 `bgm_library` 指定别的文件夹）；导演标了 `sections` 就每段一首、交界处交叉淡化；`bgm` 指定一首就用那一首 |
+| 重新生成某个素材 | 删 `out/<名字>/<素材>.png` 再跑，只重画那一张（或者直接改它的 `shows`） |
 
 ---
 
@@ -244,13 +252,13 @@ python scripts/draft.py out/my_video
 改代码前先理解这些，它们都是踩过坑加上去的：
 
 - **文案不经过模型。** `plan.split_script` 按标点切、按字数打包，模型只回「每一镜用哪些素材」。
-- **素材名会校验。** 模型编的 `patrick_happy.png` 会自动落到同一角色的另一个姿势；完全对不上的丢掉并报出来。
+- **画面描述会校验。** 导演写的角色必须是这个画风里有的；描述一样的元素只画一张；每条片子最多画 `plan.MAX_DRAWINGS` 张，超了就复用本片已有的画并报出来。
 - **坐标会夹紧。** 越界的拉回来；实心道具无论模型写了什么锚点都放回地面。
 - **一镜之内同一个角色只能出现一次。**
 - **构图碰撞会自动排开。** 素材尺寸只有 PNG 落地后才知道，所以这一步在 storyboard 阶段做（`checks.py`）。
 - **镜头景别不会连着三个一样**，避免看起来像 PPT。
 - **标题书法字会被视觉模型读回来核对**，对不上就退回 PIL 画。
-- **素材只生成一次**，存在 cast 下，所有视频复用同一批 PNG——角色因此不可能漂移。背景板同理，全系列共用一张。
+- **每张画只属于这条片子**，存在 `out/<名字>/` 下。角色靠 `casts/<画风>/anchors/` 里的定妆图保持一致（每张画都以它为参考）；背景板按画风缓存，全系列共用一张。标题书法字和场景背景的记录写在 `out/<名字>/assets.json`，不再写进画风目录里提交的 `manifest.json`。
 - **文案没标点也不会炸**。没有句号的长句会在逗号处切开，再不行就硬切——不然 200 字会变成一个 33 秒的镜头，字幕铺满 8 行把角色全盖住。
 - **空镜会自动补**。这一镜没选到任何素材，就沿用上一镜的；只有布景没有角色（比如一个吧台加一排顾客），会自动补一个角色进去。只有图表的镜头不算空镜，参考片里就有。
 - **素材文件丢了不会中断渲染**，跳过那一个元素并报出来——这一步在花完钱之后，不该因为一个 PNG 全盘重来。
@@ -294,7 +302,7 @@ python scripts/draft.py out/my_video
 | 离线自检（装完/改完必跑） | `python scripts/selftest.py` |
 | 列出全部画风 | `python scripts/new_project.py --list-styles` |
 | 建 project + 看预估（**先做**） | `python scripts/new_project.py --name … --title … --script … --cast <画风key> --orientation …` |
-| 分镜预览（**必做**） | `python scripts/build.py <proj> --preview` |
+| 分镜预览（**必做**，不花钱） | `python scripts/build.py <proj> --preview` |
 | 出片（含自动质检） | `python scripts/build.py <proj>` |
 | 单独质检 | `python scripts/verify.py <proj> --verbose` |
 | 改了 plan 后重出片 | `python scripts/build.py <proj> --from storyboard` |
@@ -305,7 +313,8 @@ python scripts/draft.py out/my_video
 | 导出剪映工程（**交付物**） | `python scripts/draft.py out/<name>` |
 | 单独校验剪映工程 | `python scripts/check_draft.py out/<name>` |
 | 老 plan 套用新规则（不调模型） | `python scripts/migrate_plan.py out/<name>/plan.json <画风key或cast路径>` |
-| 新画风：一次性生成整套素材 | `python scripts/build_library.py <画风key> --plates` |
+| 新画风：一次性画好角色定妆图和背景板 | `python scripts/build_library.py <画风key> --plates` |
+| 实拍素材轨出片（含剪映工程） | `python scripts/footage_build.py --script examples/<名字>.txt` |
 
 ## 文件
 
@@ -316,7 +325,7 @@ README.md                    环境搭建与设计说明
 casts/
   styles.json                画风总配置：默认画风、每个画风的中文名与说明
   _template.json             新画风模板（_hint_* 里写了每个字段怎么填）
-  bikini_bottom.json         比奇堡：海绵宝宝风，5 角色 60 素材（默认画风）
+  bikini_bottom.json         比奇堡：海绵宝宝风，5 角色（默认画风）
   watercolor_anime.json      水彩动漫：手绘水彩动画电影质感，3 角色
   clay.json                  黏土定格：橡皮泥定格动画质感，3 角色
   neon_cyberpunk.json        赛博霓虹：霓虹雨夜都市，3 角色
@@ -329,9 +338,9 @@ scripts/
   styles.py                  画风注册表：解析画风 key / 路径、默认画风、校验
   new_project.py             建 project 文件 + 校验画风 + 预估时长与用量（不联网）
   timing.py                  时长预估与目标时长拟合（拟合自 45 条真实配音）
-  build.py                   主入口，七阶段编排，收尾自动质检
-  verify.py                   12 项自动质检，退出码可用来卡流程
-  plan.py                    分句（代码做）+ 导演选素材（模型做）+ 校验
+  build.py                   主入口，八阶段编排，收尾自动质检
+  verify.py                   13 项自动质检，退出码可用来卡流程
+  plan.py                    分句（代码做）+ 导演写每镜画面（模型做）+ 校验
   assets.py                  按描述现画 → 抠图；角色定妆参考图；标题书法字 + 视觉校验
   matting.py                 品红抠图 + 边缘去色 + 自动裁切
   render.py                  渲染：固定底板、整镜溶解、景别缩放、字幕
@@ -339,11 +348,16 @@ scripts/
   layout.py                  横竖屏几何（stage 相对坐标）
   ark.py                     Ark：导演文本 + 生图 + 视觉读图
   tts.py                     火山语音合成
-  audio.py                   旁白拼接、配乐混音、SRT
-  preview.py                 分镜联系表
+  audio.py                   旁白拼接、配乐混音与闪避、响度、停顿测量、SRT
+  captions.py                字幕按短语切、按配音里的停顿换
+  music.py                   按情绪选配乐，分段各选一首
+  sfx.py                     按每镜的意思选音效
+  preview.py                 分镜联系表（--preview 的占位图也在这里画）
+  draft.py / check_draft.py  剪映工程导出与逐镜比对
+  footage_build.py           实拍素材轨（另见 CLAUDE.md），footage_draft.py 出它的剪映工程
   migrate_plan.py            把旧 plan 重新过一遍校验（新规则生效，不花钱）
-  build_library.py           一次性生成某个 cast 的全部素材
-  selftest.py                 离线自检（含画风注册表校验），不联网不花钱
+  build_library.py           一次性画好某个画风的角色定妆图和背景板
+  selftest.py                 离线自检（另有 selftest_workflow / _look / _footage），不联网不花钱
   checks.py                  构图碰撞/越界检测与自动修复
 references/
   reference-findings.md      参考片逐帧测量结果（铁律的出处）
