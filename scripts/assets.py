@@ -303,6 +303,11 @@ class Cast:
 
 
 
+# One video's own records, beside its files: the title card and setting
+# fingerprints that used to be written into the cast's committed manifest.
+VIDEO_RECORD = "assets.json"
+
+
 class Library:
     """Draws what one video needs, and the references a cast keeps."""
 
@@ -319,6 +324,39 @@ class Library:
     def _save_manifest(self):
         self.manifest_path.write_text(
             json.dumps(self.manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    # --- one video's own records ------------------------------------------
+    # The title lettering and the script's setting belong to one video, and
+    # their bookkeeping used to go in the cast's manifest anyway - a committed
+    # file that gained two entries with every video anybody built, in every
+    # checkout. It lives beside the video's own files now, in VIDEO_RECORD.
+    # The manifest is still read, so a video built before this keeps the card
+    # it already paid for, and the entry moves across the first time it is.
+
+    @staticmethod
+    def _video_record(out_path):
+        path = Path(out_path).parent / VIDEO_RECORD
+        try:
+            return path, json.loads(path.read_text(encoding="utf-8-sig"))
+        except (OSError, ValueError):
+            return path, {}
+
+    def _recorded(self, out_path, key):
+        """This video's record under `key`: its own, else the legacy one."""
+        _, record = self._video_record(out_path)
+        if key in record:
+            return record[key]
+        legacy = self.manifest.get(key)
+        if legacy:
+            self._record(out_path, key, legacy)
+        return legacy or {}
+
+    def _record(self, out_path, key, entry):
+        path, record = self._video_record(out_path)
+        record[key] = entry
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(record, ensure_ascii=False, indent=2),
+                        encoding="utf-8")
 
     @staticmethod
     def _fingerprint(prompt, size):
@@ -364,26 +402,23 @@ class Library:
     def build_setting(self, description, out_path, size, force=False):
         """Generate the video's fallback backdrop. Returns (path, made).
 
-        The *file* belongs to one video - it is derived from that script's
+        The file belongs to one video - it is derived from that script's
         subject, unlike the plate, which is what makes a series look like a
-        series and must never drift. The bookkeeping still lives in the cast's
-        manifest, so the key carries the description: on a single "setting"
-        key, two scripts sharing a style would each find the other's
-        fingerprint and regenerate a backdrop the other had already paid for,
-        every time the two were built in turn.
+        series and must never drift - and so does its record, which is kept
+        beside it (see `_video_record`). The key still carries the description,
+        as it did when two scripts sharing a style shared one manifest.
         """
         prompt = self.cast.setting_prompt(description)
         fingerprint = self._fingerprint(prompt, size)
         key = f"setting::{fingerprint}"
         out_path = Path(out_path)
         if (not force and out_path.exists()
-                and self.manifest.get(key, {}).get("fingerprint") == fingerprint):
+                and self._recorded(out_path, key).get("fingerprint") == fingerprint):
             return out_path, False
         ark.generate_image(prompt, out_path, size=size)
-        self.manifest[key] = {"fingerprint": fingerprint, "prompt": prompt,
-                              "size": size,
-                              "built": time.strftime("%Y-%m-%d %H:%M:%S")}
-        self._save_manifest()
+        self._record(out_path, key, {"fingerprint": fingerprint, "prompt": prompt,
+                                     "size": size,
+                                     "built": time.strftime("%Y-%m-%d %H:%M:%S")})
         return out_path, True
 
     def build_anchor(self, character, size, force=False):
@@ -459,7 +494,7 @@ class Library:
         fingerprint = self._fingerprint(prompt, size)
         out_path = Path(out_path)
         if (not force and out_path.exists()
-                and self.manifest.get(key, {}).get("fingerprint") == fingerprint):
+                and self._recorded(out_path, key).get("fingerprint") == fingerprint):
             return out_path, "cached"
 
         wanted = "".join(ch for ch in text if not ch.isspace())
@@ -476,10 +511,10 @@ class Library:
                 return None, f"could not verify the lettering: {exc}"
             got = "".join(ch for ch in seen if not ch.isspace())
             if got == wanted:
-                self.manifest[key] = {"fingerprint": fingerprint, "prompt": prompt,
-                                      "size": size, "verified": got,
-                                      "built": time.strftime("%Y-%m-%d %H:%M:%S")}
-                self._save_manifest()
+                self._record(out_path, key, {
+                    "fingerprint": fingerprint, "prompt": prompt, "size": size,
+                    "verified": got,
+                    "built": time.strftime("%Y-%m-%d %H:%M:%S")})
                 return out_path, f"verified on attempt {attempt}"
             self.log(f"  title lettering read back as {got!r}, wanted {wanted!r}"
                      f" - attempt {attempt}/{attempts}")

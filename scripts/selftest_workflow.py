@@ -66,6 +66,7 @@ def run(suite, lay):
     freshness_checks(suite)
     draft_parity_checks(suite)
     verification_checks(suite)
+    feature_checks(suite)
 
 
 def verification_checks(suite):
@@ -423,3 +424,157 @@ def freshness_checks(suite):
             build_mod.log = quiet
         suite.check("a redrawn sprite is rendered again",
                     any("rendering it again" in line for line in lines))
+
+
+def feature_checks(suite):
+    """The free preview, work in parallel, voice emotion, estimates, records."""
+    import time
+
+    import assets as assets_mod
+    import build as build_mod
+    import config as config_mod
+    import new_project as new_project_mod
+    import styles as styles_mod
+    import tts as tts_mod
+
+    # --- the preview is free ------------------------------------------------
+    with tempfile.TemporaryDirectory() as tmp:
+        work = Path(tmp)
+        project = work / "look.json"
+        project.write_text(json.dumps(
+            {"name": "look", "out": str(work / "out"), "title": "看一看",
+             "script_text": "蟹老板很烦恼。海绵宝宝在煎汉堡。派大星在睡觉。"},
+            ensure_ascii=False), encoding="utf-8")
+        done = subprocess.run(
+            [sys.executable, str(SCRIPTS / "build.py"), str(project),
+             "--preview"], capture_output=True, text=True, encoding="utf-8",
+            errors="replace", env=offline_env(), timeout=300)
+        out = work / "out"
+        drawn = sorted(path.name for path in out.glob("*.png"))
+        stood = sorted((out / "preview").glob("*.png"))
+        suite.check("--preview runs before anything is drawn or spoken",
+                    done.returncode == 0 and "[2/8]" not in done.stdout
+                    and (out / "preview.jpg").exists() and not drawn
+                    and not (out / "voice" / "index.json").exists(),
+                    f"exit {done.returncode}, drew {drawn}"
+                    + (f"; {done.stdout[-160:]}" if done.returncode else ""))
+        shapes = []
+        for path in stood:
+            if path.name.startswith(("background", "setting")):
+                continue
+            with Image.open(path) as image:
+                shapes.append(image.width < image.height)
+        suite.check("--preview stands in for each drawing, the shape it will be",
+                    shapes and all(shapes), f"{len(shapes)} stand-ins")
+
+    # --- several at once ----------------------------------------------------
+    def nap(seconds):
+        time.sleep(seconds)
+        if seconds < 0:
+            raise ValueError("negative")
+        return seconds
+
+    started = time.time()
+    got = list(build_mod._concurrently([0.4, 0.4, 0.4, 0.4], nap, 4))
+    took = time.time() - started
+    suite.check("drawings and lines are made several at once",
+                took < 1.0 and len(got) == 4 and all(r == 0.4 for _, r, _ in got),
+                f"4 x 0.4s took {took:.2f}s")
+    failed = list(build_mod._concurrently([0.0, -1], nap, 2))
+    suite.check("a failure in one does not lose the others",
+                sorted(str(type(e).__name__) for _, _, e in failed if e)
+                == ["ValueError"] and any(r == 0.0 for _, r, _ in failed))
+
+    # --- the voice hears the beat, if asked --------------------------------
+    suite.check("a beat's feeling is read in the service's words",
+                [tts_mod.emotion_for(f) for f in
+                 ("delighted", "dismayed", "shocked", "很满意", "calm", None)]
+                == ["happy", "sad", "surprised", "happy", None, None])
+    calls = []
+
+    def fake_synth(text, out_path, speaker=None, speed=1.0, emotion=None,
+                   timeout=180):
+        calls.append((text, emotion))
+        if emotion == "sad":
+            raise tts_mod.TTSError("code 40402003: emotion not supported")
+        out = Path(out_path).with_suffix(".wav")
+        out.parent.mkdir(parents=True, exist_ok=True)
+        subprocess.run([config_mod.FFMPEG, "-y", "-v", "error", "-f", "lavfi",
+                        "-i", "sine=frequency=200:sample_rate=24000:duration=0.6",
+                        str(out)], check=True)
+        return {"path": out, "duration": 0.6, "words": [], "degraded": False}
+
+    real_synth = tts_mod.synth
+    tts_mod.synth = fake_synth
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            path = work / "feel.json"
+            data = {"name": "feel", "out": str(work / "out"),
+                    "script_text": "他很高兴。他很难过。",
+                    "voice": {"emotion": True}, "workers": 2}
+            path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+            plan = {"scenes": [
+                {"narration": "他很高兴。", "beat": {"emotion": "delighted"}},
+                {"narration": "他很难过。", "beat": {"emotion": "dismayed"}}]}
+            index = build_mod.stage_voice(build_mod.Project(path), plan)
+            first = sorted(calls, key=lambda c: (c[0], str(c[1])))
+            suite.check("voice.emotion reads each line with its beat's feeling",
+                        ("他很高兴。", "happy") in first
+                        and ("他很难过。", "sad") in first
+                        and ("他很难过。", None) in first
+                        and index["2"].get("emotion_refused") is True
+                        and not index["2"]["degraded"], str(first))
+            calls.clear()
+            build_mod.stage_voice(build_mod.Project(path), plan)
+            suite.check("a refused feeling is not asked for again",
+                        not calls, str(calls))
+            data["voice"] = {}
+            path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+            build_mod.stage_voice(build_mod.Project(path), plan)
+            suite.check("turning it off reads the lines again, plainly",
+                        sorted(calls) == [("他很难过。", None), ("他很高兴。", None)],
+                        str(calls))
+    finally:
+        tts_mod.synth = real_synth
+
+    # --- the estimate -------------------------------------------------------
+    cost = new_project_mod.generation_estimate(30, references=1,
+                                               plate_cached=False, title=True)
+    suite.check("the estimate counts drawings per shot, capped by the plan",
+                cost["drawings"] == (30, 40) and cost["images"] == (33, 44)
+                and cost["minutes"][0] < cost["minutes"][1], str(cost))
+
+    # --- one video's records stay with it ------------------------------------
+    _, cast_path = styles_mod.resolve("bikini_bottom")
+    cast = assets_mod.Cast.load(cast_path, root=ROOT / "casts")
+    manifest = cast.dir / "manifest.json"
+    before = manifest.read_bytes() if manifest.exists() else b""
+    library = assets_mod.Library(cast, log=lambda *_: None)
+    legacy = next((k for k in library.manifest if k.startswith("title::")), None)
+    with tempfile.TemporaryDirectory() as tmp:
+        card = Path(tmp) / "title_card.png"
+        moved = library._recorded(card, legacy) if legacy else {}
+        library._record(card, "setting::probe", {"fingerprint": "probe"})
+        record = json.loads((Path(tmp) / assets_mod.VIDEO_RECORD).read_text(
+            encoding="utf-8"))
+        suite.check("a video's own records are kept beside it",
+                    "setting::probe" in record
+                    and (manifest.read_bytes() if manifest.exists() else b"")
+                    == before)
+        suite.check("a record from before is still read, and moves across",
+                    legacy is None or (moved and legacy in record), str(legacy))
+        # A card already made and recorded is not paid for again.
+        size = "2560x1440"
+        prompt = assets_mod.TITLE_PROMPT.format(text="样例标题")
+        Image.new("RGB", (64, 32)).save(card)
+        library._record(card, f"title::样例标题::{size}",
+                        {"fingerprint": library._fingerprint(prompt, size)})
+        saved_key = config_mod.ARK_API_KEY
+        config_mod.ARK_API_KEY = ""
+        try:
+            _, note = library.build_title_card("样例标题", card, size)
+        finally:
+            config_mod.ARK_API_KEY = saved_key
+        suite.check("a recorded title card is reused from the video's record",
+                    note == "cached", note)

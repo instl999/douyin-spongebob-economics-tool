@@ -8,6 +8,7 @@ on `size`, and so on).
 """
 import json
 import random
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -21,11 +22,26 @@ RETRYABLE = {408, 429, 500, 502, 503, 504}
 # build that quietly regenerates a library because a prompt changed by one word
 # is worth noticing before the invoice does it for you.
 USAGE = {"images": 0, "text_calls": 0, "vision_calls": 0, "seconds": 0.0}
+_USAGE_LOCK = threading.Lock()
 
 
 def reset_usage():
-    for key in USAGE:
-        USAGE[key] = 0 if key != "seconds" else 0.0
+    with _USAGE_LOCK:
+        for key in USAGE:
+            USAGE[key] = 0 if key != "seconds" else 0.0
+
+
+def count(key, amount=1):
+    """Add to a USAGE counter, safely from any thread.
+
+    Drawings are made several at a time, and the counts used to be added in
+    place: `USAGE["seconds"] += time.time() - started` reads the total, then
+    calls time.time() - where another thread can run and add its own - and
+    writes back over it. The amount is worked out before it gets here, and the
+    add itself holds a lock.
+    """
+    with _USAGE_LOCK:
+        USAGE[key] += amount
 
 
 class ArkError(RuntimeError):
@@ -58,8 +74,8 @@ def _request(path, body, timeout=300, retries=4, kind=None):
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 payload = json.loads(resp.read().decode("utf-8"))
             if kind:
-                USAGE[kind] += 1
-            USAGE["seconds"] += time.time() - started
+                count(kind)
+            count("seconds", time.time() - started)
             return payload
         except urllib.error.HTTPError as exc:
             raw = exc.read().decode("utf-8", "replace")

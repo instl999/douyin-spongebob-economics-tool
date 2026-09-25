@@ -22,6 +22,7 @@ can be exercised.
 import base64
 import json
 import subprocess
+import threading
 import urllib.error
 import urllib.request
 import uuid
@@ -37,15 +38,54 @@ MIN_ESTIMATE = 1.2
 DONE_CODE = 20000000
 
 USAGE = {"clips": 0, "characters": 0, "retries": 0, "seconds": 0.0}
+_USAGE_LOCK = threading.Lock()
 
 
 def reset_usage():
-    for key in USAGE:
-        USAGE[key] = 0 if key != "seconds" else 0.0
+    with _USAGE_LOCK:
+        for key in USAGE:
+            USAGE[key] = 0 if key != "seconds" else 0.0
+
+
+def count(key, amount=1):
+    """Add to a USAGE counter, safely from any thread - lines are spoken
+    several at a time. See ark.count."""
+    with _USAGE_LOCK:
+        USAGE[key] += amount
 
 
 class TTSError(RuntimeError):
     pass
+
+
+# What the director's free-text `beat.emotion` is in the speech service's own
+# words. Matched as substrings, first match wins, English and Chinese alike -
+# the brief asks for English and the director answers in either. Anything
+# unmatched is read neutrally, which is how every line was read before this.
+# Opt-in per project (`voice.emotion`): only some speakers carry emotions, and
+# the subject's feeling is not always the narrator's.
+EMOTIONS = (
+    ("angry", ("angry", "furious", "annoyed", "irritat", "frustrat", "rage",
+               "生气", "愤怒", "恼火")),
+    ("sad", ("sad", "dismay", "disappoint", "upset", "regret", "gloom",
+             "sorrow", "难过", "失望", "沮丧", "伤心", "遗憾")),
+    ("fear", ("afraid", "scared", "fear", "worried", "anxious", "nervous",
+              "panic", "害怕", "担心", "焦虑", "紧张")),
+    ("surprised", ("surpris", "shock", "astonish", "amazed", "stunned",
+                   "惊讶", "震惊", "吃惊")),
+    ("excited", ("excited", "thrill", "eager", "兴奋", "激动")),
+    ("happy", ("happy", "delight", "glad", "pleased", "joy", "cheer", "proud",
+               "relieved", "satisf", "开心", "高兴", "满意", "得意", "欣慰")),
+)
+
+
+def emotion_for(feeling):
+    """The service's emotion for a beat's free-text feeling, or None."""
+    text = str(feeling or "").lower()
+    for label, words in EMOTIONS:
+        if any(word in text for word in words):
+            return label
+    return None
 
 
 def estimate_duration(text, speed=1.0):
@@ -97,9 +137,9 @@ def synth(text, out_path, speaker=None, speed=1.0, emotion=None, timeout=180):
     import time as _time
     started = _time.time()
     audio, words = _post_with_retries(body, headers, timeout)
-    USAGE["clips"] += 1
-    USAGE["characters"] += len(text)
-    USAGE["seconds"] += _time.time() - started
+    count("clips")
+    count("characters", len(text))
+    count("seconds", _time.time() - started)
     if not audio:
         raise TTSError("service returned no audio")
     out_path.write_bytes(audio)
@@ -140,7 +180,7 @@ def _post_with_retries(body, headers, timeout):
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             last = TTSError(f"{type(exc).__name__}: {exc}")
         if attempt < MAX_ATTEMPTS - 1:
-            USAGE["retries"] += 1
+            count("retries")
             time.sleep(min(2 ** attempt + random.random(), 12))
     raise last
 

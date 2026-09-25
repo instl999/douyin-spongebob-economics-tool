@@ -5,9 +5,10 @@
 
 This exists so the settings conversation happens once, up front, and produces
 something checkable. It writes nothing to the network: the duration it reports
-is predicted from the script, and the image count is the worst case from the
-cast's own library, so an operator can put real numbers in front of whoever
-asked for the video before a single call is made.
+is predicted from the script, and the image count and time are a range from
+its shot count, so an operator can put real numbers in front of whoever asked
+for the video before a single call is made. `build.py --preview` then shows
+the planned shots for the price of the plan alone.
 
 It refuses to write a project whose cast is broken, because the alternative is
 discovering that ten minutes into generation.
@@ -22,10 +23,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import console  # noqa: F401  UTF-8 stdout; see console.py
 
 import assets as assets_mod
+import plan as plan_mod
 import styles as styles_mod
 import timing
 
 ROOT = Path(__file__).resolve().parent.parent
+
+# What one image costs in wall-clock time (README: budget about 20 seconds),
+# and how many the build makes at once - build.DEFAULT_WORKERS.
+IMAGE_SECONDS = 20
+WORKERS = 4
 
 VOICES = {
     "male": "zh_male_yuanboxiaoshu_uranus_bigtts",
@@ -55,6 +62,30 @@ def list_styles():
         print(f"  {key:<{width}}  {entry['label']}{note}{marker}")
     print("\nuse one with --cast <key>, or edit casts/styles.json to add, "
           "rename or hide styles")
+
+
+def generation_estimate(shots, references=0, plate_cached=True, title=True,
+                        workers=WORKERS, per_image=IMAGE_SECONDS):
+    """How many images a build will make, and how long they will take.
+
+    Returned as (low, high) ranges, because the director decides the drawings:
+    about one per element, a shot holds one or two, and an element described
+    in the same words as another is drawn once - so a shot count bounds it,
+    and `plan.MAX_DRAWINGS` caps it. Drawings are made `workers` at a time;
+    references, the plate, the title and the setting one after another.
+    """
+    drawings = (min(plan_mod.MAX_DRAWINGS, shots),
+                min(plan_mod.MAX_DRAWINGS, 2 * shots))
+    fixed = references + (0 if plate_cached else 1) + (1 if title else 0)
+    images = (drawings[0] + fixed, drawings[1] + fixed + 1)
+
+    def minutes(count, extra):
+        batches = -(-count // max(1, workers))
+        return (batches + extra) * per_image / 60.0
+
+    return {"drawings": drawings, "images": images,
+            "minutes": (minutes(drawings[0], fixed),
+                        minutes(drawings[1], fixed + 1))}
 
 
 def build(args):
@@ -134,13 +165,23 @@ def build(args):
     print("predicted result")
     print(timing.describe(fit))
     print()
+    cost = generation_estimate(fit["estimate"]["shots"], to_build,
+                               plate_cached=plate.exists(),
+                               title=bool(args.title))
     print("what this will generate")
-    print(f"  drawings    one per element, made for this script and not reused")
+    print(f"  drawings    about {cost['drawings'][0]}-{cost['drawings'][1]}, "
+          f"one per element, made for this script and not reused")
     if to_build:
         print(f"  references  {to_build} of {len(characters)} character(s) "
               f"still to draw, once for the whole style")
     print(f"  background  {'reuse the cached plate' if plate.exists() else 'one new plate'}")
+    if args.title:
+        print("  title card  one, its lettering read back by the vision model")
+    print("  setting     one more if the script names no place of its own")
     print(f"  narration   {fit['estimate']['shots']} clips")
+    print(f"  images      {cost['images'][0]}-{cost['images'][1]} in all, "
+          f"about {cost['minutes'][0]:.0f}-{cost['minutes'][1]:.0f} min "
+          f"at {WORKERS} at a time")
     print()
     if not fit["ok"]:
         print("BEFORE BUILDING: the requested length is not reachable. Either")
